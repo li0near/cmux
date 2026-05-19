@@ -304,6 +304,56 @@ final class BonsplitTabDragUITests: XCTestCase {
         )
     }
 
+    func testDoubleClickingPaneTabOpensRenameFlow() {
+        let (app, dataPath) = launchConfiguredApp()
+
+        XCTAssertTrue(
+            ensureForegroundAfterLaunch(app, timeout: launchTimeout),
+            "Expected app to launch for pane tab double-click rename UI test. state=\(app.state.rawValue)"
+        )
+        XCTAssertTrue(waitForAnyJSON(atPath: dataPath, timeout: setupTimeout), "Expected tab-drag setup data at \(dataPath)")
+        guard let ready = waitForJSONKey("ready", equals: "1", atPath: dataPath, timeout: setupTimeout) else {
+            XCTFail("Timed out waiting for ready=1. data=\(loadJSON(atPath: dataPath) ?? [:])")
+            return
+        }
+
+        if let setupError = ready["setupError"], !setupError.isEmpty {
+            XCTFail("Setup failed: \(setupError)")
+            return
+        }
+
+        let betaTitle = ready["betaTitle"] ?? "UITest Beta"
+        let renamedTitle = "Renamed Beta \(UUID().uuidString.prefix(4))"
+        let window = app.windows.element(boundBy: 0)
+        let betaTab = app.buttons[betaTitle]
+
+        XCTAssertTrue(window.waitForExistence(timeout: 5.0), "Expected main window to exist")
+        XCTAssertTrue(betaTab.waitForExistence(timeout: 5.0), "Expected beta tab to exist")
+
+        doubleClick(in: window, atAccessibilityPoint: CGPoint(x: betaTab.frame.midX, y: betaTab.frame.midY))
+
+        let dialog = app.dialogs.containing(.staticText, identifier: "Rename Tab").firstMatch
+        XCTAssertTrue(dialog.waitForExistence(timeout: 3.0), "Expected double-clicking a pane tab to open the Rename Tab dialog")
+
+        let nameField = dialog.textFields.firstMatch
+        XCTAssertTrue(nameField.waitForExistence(timeout: 2.0), "Expected Rename Tab dialog to expose a tab-name field")
+        nameField.click()
+        app.typeKey("a", modifierFlags: [.command])
+        app.typeText(renamedTitle)
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+
+        XCTAssertTrue(
+            app.buttons[renamedTitle].waitForExistence(timeout: 5.0),
+            "Expected the renamed pane tab to be visible"
+        )
+        XCTAssertTrue(
+            waitForCondition(timeout: 5.0) {
+                loadJSON(atPath: dataPath)?["trackedPaneTabTitles"]?.contains(renamedTitle) == true
+            },
+            "Expected recorder state to include renamed pane tab. data=\(loadJSON(atPath: dataPath) ?? [:])"
+        )
+    }
+
     func testSidebarWorkspaceRowsKeepStableTopInsetAcrossPresentationModes() {
         let expectedTopInset: CGFloat = 32
 

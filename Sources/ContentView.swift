@@ -13001,6 +13001,11 @@ private struct TabItemView: View, Equatable {
         .onTapGesture {
             updateSelection()
         }
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                beginRenameFromDoubleClick()
+            }
+        )
         .safeHelp(workspaceSnapshot.title)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityTitle))
@@ -13449,6 +13454,14 @@ private struct TabItemView: View, Equatable {
             )
         }
         setSelectionToTabs()
+    }
+
+    private func beginRenameFromDoubleClick() {
+        selectedTabIds = [tab.id]
+        lastSidebarSelectionIndex = index
+        tabManager.selectTab(tab)
+        setSelectionToTabs()
+        promptRename()
     }
 
     private func closeTabs(_ targetIds: [UUID], allowPinned: Bool) {
