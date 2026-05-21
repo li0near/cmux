@@ -172,8 +172,14 @@ struct AgentInspectorPanelView: View {
                     // Bridge-issued programmatic scroll. Token-bearing so
                     // repeated requests for the same chunk id still apply.
                     guard let target = newTarget else { return }
+                    let unitPoint: UnitPoint = {
+                        switch target.anchorPoint {
+                        case .top: return .top
+                        case .bottom: return .bottom
+                        }
+                    }()
                     withAnimation(.linear(duration: 0.12)) {
-                        proxy.scrollTo(target.chunkId, anchor: .top)
+                        proxy.scrollTo(target.chunkId, anchor: unitPoint)
                     }
                     panel.consumePendingScrollTarget()
                 }

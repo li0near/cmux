@@ -59,7 +59,16 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     /// User-selected scroll-sync mode. `.followTail` matches the
     /// pre-Phase-B behaviour. `.syncToTerminal` engages the
     /// `TurnAnchorStore`-backed bridge.
-    @Published var syncMode: InspectorSyncMode = .followTail
+    @Published var syncMode: InspectorSyncMode = .followTail {
+        didSet {
+            if syncMode == .syncToTerminal && oldValue != .syncToTerminal {
+                // Initial alignment: a notification might not fire for a
+                // while if the terminal isn't actively scrolling. Pull
+                // from the cached scrollbar state and align right now.
+                alignToCurrentTerminalScrollState()
+            }
+        }
+    }
     /// Chunk id the view should programmatically scroll to. The view
     /// observes this, calls `proxy.scrollTo(...)`, and clears it back to
     /// nil so subsequent equal values re-trigger.
@@ -67,10 +76,18 @@ final class AgentInspectorPanel: Panel, ObservableObject {
 
     /// One-off command issued by the bridge to ask the view to scroll to a
     /// specific chunk. Carries an opaque token so the view can dedupe
-    /// even when the same chunk id repeats.
+    /// even when the same chunk id repeats. `anchorPoint` controls which
+    /// part of the row aligns with the viewport (top for mid-turn snaps,
+    /// bottom for tail-following).
     struct PendingScrollTarget: Equatable {
         let chunkId: String
         let token: UInt64
+        let anchorPoint: ScrollAnchor
+
+        enum ScrollAnchor: Equatable {
+            case top
+            case bottom
+        }
     }
 
     /// Turn anchors keyed by user-chunk id. Populated as new chunks land
@@ -164,18 +181,29 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     /// haven't seen before. Idempotent via `recordTurnStart` skipping
     /// existing entries. Pairs the most-recent unpaired user chunk with
     /// the next AI chunk.
+    ///
+    /// **Skips anchor recording when no scrollbar update has been seen yet
+    /// for the surface.** Otherwise we would record `terminalRow: 0` for
+    /// every chunk that pre-existed when the inspector opened (history
+    /// loaded from disk before any Ghostty scroll event), which would
+    /// cause `anchorContaining(row:)` to match those historical chunks
+    /// for any visible row. Anchors only get populated for turns that
+    /// happen *while the inspector is open and the terminal is alive*.
+    /// Sync mode falls back to a proportional mapping for unanchored
+    /// chunks.
     private func captureTurnAnchorsForNewChunks() {
         guard case .live = mode,
               let surfaceUUIDString = resolvedSession?.surfaceId,
               let surfaceUUID = UUID(uuidString: surfaceUUIDString) else { return }
         let chunks = stream.chunks
         guard !chunks.isEmpty else { return }
-        let scrollbar = ScrollbarStateCache.shared.latest(for: surfaceUUID)
+        guard let scrollbar = ScrollbarStateCache.shared.latest(for: surfaceUUID) else {
+            // No scrollbar info yet — don't pollute the store with row=0
+            // anchors that would shadow real turns once they arrive.
+            return
+        }
 
         var lastUnpairedUserId: String? = {
-            // Find the most recent user chunk in the existing store that
-            // doesn't yet have an AI pairing — earlier user chunks already
-            // saw their pairing and don't need re-pairing.
             for anchor in turnAnchorStore.orderedAnchors.reversed() {
                 if anchor.aiChunkId == nil { return anchor.userChunkId }
             }
@@ -186,8 +214,10 @@ final class AgentInspectorPanel: Panel, ObservableObject {
             switch chunk {
             case .user(let user):
                 if turnAnchorStore.anchor(forChunkId: user.id) == nil {
-                    let row = scrollbar?.total ?? 0
-                    turnAnchorStore.recordTurnStart(userChunkId: user.id, terminalRow: row)
+                    turnAnchorStore.recordTurnStart(
+                        userChunkId: user.id,
+                        terminalRow: scrollbar.total
+                    )
                 }
                 lastUnpairedUserId = user.id
             case .ai(let ai):
@@ -202,32 +232,85 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     }
 
     /// React to `ghosttyDidUpdateScrollbar` from the paired terminal: in
-    /// `.syncToTerminal` mode, find the turn whose `terminalRowAtSubmit`
-    /// is the largest value ≤ the current visible top row, and scroll the
-    /// inspector to that turn's chunk.
-    ///
-    /// In other modes the handler returns early — keeping the subscription
-    /// always-on simplifies focus / mode-flip transitions.
+    /// `.syncToTerminal` mode, recompute alignment from the new scrollbar
+    /// state. Filtered by surface so a noisy unrelated terminal doesn't
+    /// jolt the inspector.
     private func handleScrollbarUpdate(_ note: Notification) {
         guard case .live = mode, syncMode == .syncToTerminal else { return }
         guard let surfaceUUIDString = resolvedSession?.surfaceId,
               let surfaceUUID = UUID(uuidString: surfaceUUIDString) else { return }
         guard let view = note.object as? GhosttyNSView,
               view.terminalSurface?.id == surfaceUUID else { return }
-        guard let scrollbar = note.userInfo?[GhosttyNotificationKey.scrollbar] as? GhosttyScrollbar else {
+        alignToCurrentTerminalScrollState()
+    }
+
+    /// Compute a scroll target for the inspector based on the cached
+    /// scrollbar state of the paired terminal. Three alignment regimes:
+    ///
+    /// 1. **At-bottom snap**: when the terminal viewport reaches the tail
+    ///    of the scrollback, scroll the inspector to its last chunk's
+    ///    bottom. Matches the `followTail` feel.
+    /// 2. **Anchored**: if a `TurnAnchor` exists whose
+    ///    `terminalRowAtSubmit` is `≤ scrollbar.offset`, scroll to that
+    ///    turn's chunk header. The natural "this turn is currently
+    ///    visible in the terminal" mapping.
+    /// 3. **Proportional fallback**: when no anchor matches (e.g. fresh
+    ///    session with no turns yet, or pre-inspector-open turns), pick
+    ///    the chunk at the same scroll fraction as the terminal.
+    ///
+    /// Issued via `pendingScrollTarget` so the view's `.onChange` can
+    /// drive the actual `proxy.scrollTo(...)` and the panel does not
+    /// touch SwiftUI scrolling primitives directly.
+    func alignToCurrentTerminalScrollState() {
+        guard case .live = mode,
+              let surfaceUUIDString = resolvedSession?.surfaceId,
+              let surfaceUUID = UUID(uuidString: surfaceUUIDString) else { return }
+        guard let scrollbar = ScrollbarStateCache.shared.latest(for: surfaceUUID) else { return }
+
+        let chunks = stream.chunks
+        guard !chunks.isEmpty else { return }
+
+        // (1) At-bottom snap.
+        let viewportEnd = scrollbar.offset &+ scrollbar.len
+        let isAtBottom = scrollbar.total == 0 || viewportEnd >= scrollbar.total
+        if isAtBottom, let last = chunks.last {
+            publishScrollTarget(chunkId: last.id, anchor: .bottom)
             return
         }
 
-        // Visible top row = first scrollback row currently on screen.
-        // `offset` is what Ghostty reports as the first visible row.
-        let visibleTopRow = scrollbar.offset
-        guard let anchor = turnAnchorStore.anchorContaining(row: visibleTopRow) else {
+        // (2) Anchored match.
+        if let anchor = turnAnchorStore.anchorContaining(row: scrollbar.offset) {
+            let chunkId = anchor.aiChunkId ?? anchor.userChunkId
+            publishScrollTarget(chunkId: chunkId, anchor: .top)
             return
         }
-        let chunkId = anchor.aiChunkId ?? anchor.userChunkId
+
+        // (3) Proportional fallback over user chunks (turns are the
+        //     natural alignment unit; user chunks delimit them).
+        let userIds = chunks.compactMap { chunk -> String? in
+            if case .user(let u) = chunk { return u.id }
+            return nil
+        }
+        let pool = userIds.isEmpty ? chunks.map(\.id) : userIds
+        guard !pool.isEmpty else { return }
+
+        // Denominator = total scrollable rows. Avoid div-by-zero when the
+        // scrollback fits entirely in the viewport.
+        let scrollableRows: UInt64 = scrollbar.total > scrollbar.len
+            ? scrollbar.total - scrollbar.len
+            : 0
+        let fraction: Double = scrollableRows == 0
+            ? 0
+            : min(1.0, Double(scrollbar.offset) / Double(scrollableRows))
+        let lastIndex = pool.count - 1
+        let idx = min(lastIndex, max(0, Int((Double(lastIndex) * fraction).rounded())))
+        publishScrollTarget(chunkId: pool[idx], anchor: .top)
+    }
+
+    private func publishScrollTarget(chunkId: String, anchor: PendingScrollTarget.ScrollAnchor) {
         let token = nextScrollToken
         nextScrollToken &+= 1
-        pendingScrollTarget = PendingScrollTarget(chunkId: chunkId, token: token)
+        pendingScrollTarget = PendingScrollTarget(chunkId: chunkId, token: token, anchorPoint: anchor)
     }
 
     /// View calls this after consuming `pendingScrollTarget` so a re-issue
