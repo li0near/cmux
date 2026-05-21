@@ -5763,6 +5763,8 @@ struct ContentView: View {
             return String(localized: "commandPalette.kind.filePreview", defaultValue: "File Preview")
         case .rightSidebarTool:
             return String(localized: "commandPalette.kind.rightSidebarTool", defaultValue: "Tool")
+        case .agentInspector:
+            return String(localized: "commandPalette.kind.agentInspector", defaultValue: "Agent Inspector")
         }
     }
 
@@ -5778,6 +5780,8 @@ struct ContentView: View {
             return ["file", "preview", "text", "pdf", "image", "audio", "video"]
         case .rightSidebarTool:
             return ["tool", "files", "find", "vault", "sidebar"]
+        case .agentInspector:
+            return ["agent", "inspector", "claude", "codex", "transcript", "session"]
         }
     }
 

@@ -87,6 +87,17 @@ struct PanelContentView: View {
                     onRequestPanelFocus: onRequestPanelFocus
                 )
             }
+        case .agentInspector:
+            if let agentInspectorPanel = panel as? AgentInspectorPanel {
+                AgentInspectorPanelView(
+                    panel: agentInspectorPanel,
+                    isFocused: isFocused,
+                    isVisibleInUI: isVisibleInUI,
+                    portalPriority: portalPriority,
+                    appearance: appearance,
+                    onRequestPanelFocus: onRequestPanelFocus
+                )
+            }
         }
     }
 
@@ -104,7 +115,7 @@ struct PanelContentView: View {
     private var shouldInstallPaneDropTarget: Bool {
         guard isVisibleInUI else { return false }
         switch panel.panelType {
-        case .markdown, .filePreview, .rightSidebarTool:
+        case .markdown, .filePreview, .rightSidebarTool, .agentInspector:
             return true
         case .terminal, .browser:
             return false

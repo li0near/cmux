@@ -564,6 +564,16 @@ extension Workspace {
             markdownSnapshot = nil
             filePreviewSnapshot = nil
             rightSidebarToolSnapshot = SessionRightSidebarToolPanelSnapshot(mode: toolPanel.mode)
+        case .agentInspector:
+            // Persist the panel's existence (so the pane comes back with an
+            // inspector after relaunch) but no typed state — the inspector's
+            // session is resolved dynamically from focus + the hook store on
+            // every recompute, so there's nothing to encode here.
+            terminalSnapshot = nil
+            browserSnapshot = nil
+            markdownSnapshot = nil
+            filePreviewSnapshot = nil
+            rightSidebarToolSnapshot = nil
         }
 
         return SessionPanelSnapshot(
@@ -1056,6 +1066,19 @@ extension Workspace {
             }
             applySessionPanelMetadata(snapshot, toPanelId: toolPanel.id)
             return toolPanel.id
+        case .agentInspector:
+            // Re-create the inspector panel via its existing factory. No
+            // typed snapshot to consult — the panel rediscovers its session
+            // from focus + the hook store after the workspace finishes
+            // restoration. See `Sources/Panels/AgentInspector/Workspace+AgentInspector.swift`.
+            guard let inspectorPanel = newAgentInspectorSurface(
+                inPane: paneId,
+                focus: false
+            ) else {
+                return nil
+            }
+            applySessionPanelMetadata(snapshot, toPanelId: inspectorPanel.id)
+            return inspectorPanel.id
         }
     }
 
@@ -7408,7 +7431,11 @@ final class Workspace: Identifiable, ObservableObject {
     var panelSubscriptions: [UUID: AnyCancellable] = [:]
 
     /// When true, suppresses auto-creation in didSplitPane (programmatic splits handle their own panels)
-    private var isProgrammaticSplit = false
+    // Access relaxed from `private` to module-internal so the
+    // Sources/Panels/AgentInspector/Workspace+AgentInspector.swift extension
+    // can set the flag around its programmatic split, mirroring the same
+    // pattern used by `splitPaneWithMarkdown` and friends in this file.
+    var isProgrammaticSplit = false
     private var debugStressPreloadSelectionDepth = 0
 
     /// Last terminal panel used as an inheritance source (typically last focused terminal).
@@ -8525,6 +8552,8 @@ final class Workspace: Identifiable, ObservableObject {
             return SurfaceKind.filePreview
         case .rightSidebarTool:
             return SurfaceKind.rightSidebarTool
+        case .agentInspector:
+            return SurfaceKind.agentInspector
         }
     }
 

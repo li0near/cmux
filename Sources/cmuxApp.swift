@@ -349,6 +349,8 @@ struct cmuxApp: App {
                     appDelegate.openDebugStressWorkspacesWithLoadedSurfaces(nil)
                 }
 
+                AgentInspectorDebugMenu(appDelegate: appDelegate)
+
                 Divider()
                 Menu("Debug Windows") {
                     Button("Background Debug…") {

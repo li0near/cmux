@@ -1,0 +1,128 @@
+# Agent Inspector — Fork Notes
+
+This is a **fork-side feature**. The cmux fork tracks upstream
+`manaflow-ai/cmux`, and this directory (`Sources/Panels/AgentInspector/`)
+is the home of all new code. Most of the implementation lives here and
+will not conflict on upstream merges.
+
+A small number of *upstream files* have surgical edits — listed below — to
+register `PanelType.agentInspector` and route through cmux's exhaustive
+switch sites. **On every upstream pull, re-verify each line in this table**
+and re-apply if upstream replaced the surrounding code.
+
+## Phase 0 upstream-touch surface
+
+| File | What we added | Why |
+|---|---|---|
+| `Sources/Panels/Panel.swift` | `case agentInspector` to `PanelType` enum + `agentInspector` branch in `init(from:)` decoder. | Register the new panel kind. |
+| `Sources/Panels/PanelContentView.swift` | `case .agentInspector:` arm in `renderedPanel` (instantiates `AgentInspectorPanelView`). Added `.agentInspector` to the `case .markdown, .filePreview, .rightSidebarTool:` list in `shouldInstallPaneDropTarget`. | Render the panel; behave like markdown for drop-target gating. |
+| `Sources/Workspace.swift` | `case .agentInspector: return nil` in `sessionPanelSnapshot(...)` switch (~line 567); `case .agentInspector: return SurfaceKind.agentInspector` in `surfaceKind(for:)` switch (~line 8527). | Skip session persistence in Phase 0; map to a stable surface-kind tag. |
+| `Sources/CmuxLifecycleEventPublishing.swift` | `case .agentInspector: return "agent_inspector"` in `cmuxEventSurfaceKind(_:)`. | cmux event-bus surface tag. |
+| `Sources/TerminalPaneDropTargetView.swift` | `case .agentInspector: return nil` in the panelType-routing switch. | No editor/terminal drop semantics for the inspector. |
+| `Sources/ContentView.swift` | `case .agentInspector:` arms in `commandPaletteSurfaceKindLabel(for:)` and `commandPaletteSurfaceKeywords(for:)`. | Make the inspector discoverable in the command palette. |
+| `Sources/Search/GlobalSearchDocuments.swift` | Added `.agentInspector` to the existing `case .terminal, .filePreview, .rightSidebarTool:` group in the `kind` switch. | Title-only search index for the inspector (no body content yet). |
+| `Sources/cmuxApp.swift` | One line inside `#if DEBUG CommandMenu("Debug")`: `AgentInspectorDebugMenu(appDelegate: appDelegate)`. | Open-from-debug-menu entry. The menu group itself lives in this directory's `cmuxApp+AgentInspectorDebugMenu.swift`. |
+| `Sources/Workspace.swift` | Relax `private var isProgrammaticSplit = false` to module-internal so `Workspace+AgentInspector.swift` can wrap programmatic splits the same way `splitPaneWithMarkdown` does. Single-character change (drop `private`). | Required for the side-by-side pane UX (split the focused pane and drop the inspector in the new sibling). |
+| `Resources/Localizable.xcstrings` | New keys: `agentInspector.title`, `agentInspector.placeholder.header`, `agentInspector.placeholder.noSession`, `agentInspector.debug.menu.openCurrent`, `commandPalette.kind.agentInspector`. | Localization. Additive only; never conflicts. |
+| `cmux.xcodeproj/project.pbxproj` | New PBXFileReference, PBXBuildFile, PBXGroup, PBXSourcesBuildPhase entries for the files under `Sources/Panels/AgentInspector/`. Generated with the `xcodeproj` Ruby gem. | Register new compilation units in the cmux target. |
+
+## Files owned by this fork (no upstream conflict expected)
+
+```
+Sources/Panels/AgentInspector/
+  AgentInspectorPanel.swift
+  AgentInspectorPanelView.swift
+  Workspace+AgentInspector.swift
+  cmuxApp+AgentInspectorDebugMenu.swift
+  FORK_NOTES.md
+  DECISIONS.md
+  Adapters/
+    Claude/
+      ClaudeJSONLLine.swift
+      ClaudeChunkBuilder.swift
+      ClaudeHookSessionStore.swift
+    Codex/
+      CodexRolloutLine.swift
+      CodexChunkBuilder.swift
+      CodexHookSessionStore.swift
+      CodexSyntheticTimestamps.swift
+  Attach/
+    AgentSessionResolver.swift
+    FocusedSurfaceObserver.swift
+  Detail/
+    AgentInspectorDetailContent.swift          # Phase A++ (rendering revamp)
+    AgentInspectorDetailView.swift             # Phase A++
+  Model/
+    AgentChunk.swift
+    AgentToolCall.swift
+  Render/
+    HudPalette.swift
+    ChunkRowSnapshot.swift
+    ChunkRowView.swift
+    InspectorIcon.swift                        # Phase A++ (per-action SF Symbols)
+    ClaudeModelNameMap.swift                   # Phase A++ (friendly model names)
+  Tail/
+    JSONLTail.swift
+    TranscriptStream.swift
+
+cmuxTests/AgentInspector/
+  ClaudeChunkBuilderTests.swift
+  ClaudeHookSessionStoreTests.swift
+  CodexChunkBuilderTests.swift
+  JSONLTailTests.swift
+  AgentSessionResolverTests.swift
+  ClaudeModelNameMapTests.swift                # Phase A++
+  InspectorIconTests.swift                     # Phase A++
+  AgentInspectorDetailContentTests.swift       # Phase A++
+cmuxTests/Resources/AgentInspector/
+  claude-sample.jsonl
+  claude-hook-sessions.json
+  codex-sample.jsonl
+```
+
+## Reapplying after an upstream pull
+
+1. `git pull upstream main`
+2. Resolve any conflicts in the upstream-touch files above. Each conflict
+   is a one-line addition; preserve our `case .agentInspector:` arms.
+3. Re-run the pbxproj registration script if any upstream file was added or
+   if the project structure changed materially.
+4. `./scripts/reload.sh --tag agent-inspector` and run the Phase 0
+   verification gate from the implementation plan.
+
+## Local build environment notes (macOS 26 / Tahoe + Xcode 26.4+)
+
+cmux pins Zig 0.15.2, but Apple unified TBD target strings in Xcode 26.4+
+(`arm64-macos` → `arm64e-macos`). Stock Zig 0.15.2 can't read the new
+libSystem.tbd and fails with `undefined symbol: _free, _getenv, _sigaction…`.
+Refs: [ghostty-org/ghostty#11991](https://github.com/ghostty-org/ghostty/issues/11991),
+[Homebrew zig 0.15.2_1 patch](https://github.com/Homebrew/homebrew-core/commit/65c0019eac45be44fbd5b81397399e731e060741).
+
+**One-time setup:**
+
+```bash
+brew install zig@0.15                   # Homebrew's patched 0.15.2 (keg-only)
+xcodebuild -downloadComponent MetalToolchain   # Required by Ghostty's Metal build
+```
+
+**Every reload:**
+
+```bash
+PATH="/opt/homebrew/opt/zig@0.15/bin:$PATH" \
+CMUX_ZIG=/opt/homebrew/opt/zig@0.15/bin/zig \
+./scripts/reload.sh --tag agent-inspector
+```
+
+The patched zig must come first in PATH so `ensure-ghosttykit.sh`'s
+`command -v zig` picks it up; `CMUX_ZIG` covers `build-ghostty-cli-helper.sh`'s
+override env var. Stock homebrew `zig` 0.16.0 fails because Ghostty's
+`build.zig` requires exactly 0.15.2 via `requireZig`.
+
+## Upstream-touch additions for restored-session wrapper fix
+
+| File | Purpose | Lines | Risk on upstream merge |
+|---|---|---|---|
+| `Sources/RestorableAgentSession.swift` | `case .claude:` in `resumeArguments` discards `launchCommand.executablePath` and rewrites `arguments[0]` to bare `"claude"` so the cmux wrapper resolves at exec time | ~25 lines added; no signatures changed | Low — additive within an existing switch case; conflicts only if upstream restructures `resumeArguments` |
+| `docs/proposals/claude-wrapper-path-precedence.md` | Standalone PR-draft doc documenting the bug, the existing wrapper architecture, the fix, and a maintainer test plan | NEW (no merge risk) | None — new file in a new directory |
+
+Pre-existing `Resources/shell-integration/cmux-zsh-integration.zsh` and `Sources/GhosttyTerminalView.swift` are untouched.

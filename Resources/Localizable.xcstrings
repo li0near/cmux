@@ -29641,6 +29641,11 @@
         }
       }
     },
+    "agentInspector.title": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Agent Inspector" } }, "ja": { "stringUnit": { "state": "translated", "value": "エージェントインスペクター" } } } },
+    "agentInspector.placeholder.header": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Agent Inspector" } }, "ja": { "stringUnit": { "state": "translated", "value": "エージェントインスペクター" } } } },
+    "agentInspector.placeholder.noSession": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "No session yet. Focus a terminal running claude or codex — the inspector follows the focused terminal automatically." } }, "ja": { "stringUnit": { "state": "translated", "value": "セッションがありません。claude または codex を実行中のターミナルにフォーカスしてください。インスペクターは自動的に追従します。" } } } },
+    "agentInspector.debug.menu.openCurrent": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Open Agent Inspector (Split Right)" } }, "ja": { "stringUnit": { "state": "translated", "value": "エージェントインスペクターを開く（右側に分割）" } } } },
+    "commandPalette.kind.agentInspector": { "extractionState": "manual", "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Agent Inspector" } }, "ja": { "stringUnit": { "state": "translated", "value": "エージェントインスペクター" } } } },
     "commandPalette.kind.rightSidebarTool": {
       "extractionState": "manual",
       "localizations": {

@@ -1,0 +1,9 @@
+{"type":"session_meta","payload":{"id":"codex-1","cwd":"/Users/dev/proj","git":{"branch":"main"}}}
+{"type":"turn_context","payload":{"model":"o4","approval_policy":"untrusted","sandbox_policy":{"type":"workspace-write"},"effort":"high"}}
+{"type":"event_msg","payload":{"type":"thread_name_updated","thread_name":"Initial planning"}}
+{"type":"event_msg","payload":{"type":"user_message","message":"Plan a refactor of the widget renderer."}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I'll start by reading the current code."}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Then propose a smaller WidgetView protocol."}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<system-reminder>noise</system-reminder>"}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Sounds good, proceed."}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done. Here's the diff."}]}}
