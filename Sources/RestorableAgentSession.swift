@@ -213,9 +213,31 @@ enum AgentResumeCommandBuilder {
 
         switch kind {
         case .claude:
+            // Discard the captured executable path (e.g. /opt/homebrew/bin/claude)
+            // and use bare "claude" so cmux's installed shell function — which
+            // wraps the bundled Resources/bin/claude — resolves at execution
+            // time. Replaying an absolute path bypasses both the shell function
+            // and the bundled wrapper, so SessionStart hooks never fire and
+            // restored sessions stay invisible to the Agent Inspector.
+            // See docs/proposals/claude-wrapper-path-precedence.md for details.
+            let stripped = launchCommand.map { lc -> AgentLaunchCommandSnapshot in
+                var newArgs = lc.arguments
+                if !newArgs.isEmpty {
+                    newArgs[0] = "claude"
+                }
+                return AgentLaunchCommandSnapshot(
+                    launcher: lc.launcher,
+                    executablePath: nil,
+                    arguments: newArgs,
+                    workingDirectory: lc.workingDirectory,
+                    environment: lc.environment,
+                    capturedAt: lc.capturedAt,
+                    source: lc.source
+                )
+            }
             return resumeWithOption(
                 kind: "claude",
-                launchCommand: launchCommand,
+                launchCommand: stripped,
                 fallbackExecutable: "claude",
                 option: "--resume",
                 sessionId: sessionId
