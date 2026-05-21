@@ -105,6 +105,11 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     /// Monotonic token assigned to every programmatic scroll. Lets the view
     /// dedupe identical chunk ids without losing repeat-tap intent.
     private var nextScrollToken: UInt64 = 1
+    /// Coalesces high-frequency scrollbar updates. Set when a notification
+    /// matching the paired surface arrives; cleared when the trailing
+    /// alignment fires. A single user scroll gesture at 120Hz collapses
+    /// into one alignment per display frame instead of one per event.
+    private var hasPendingScrollbarRecompute = false
 
     init(workspace: Workspace) {
         self.id = UUID()
@@ -141,13 +146,17 @@ final class AgentInspectorPanel: Panel, ObservableObject {
         // Subscribe once for terminal-driven scroll sync. The handler
         // ignores notifications outside `.syncToTerminal` mode so the
         // overhead is a single `==` per scroll event when the mode is off.
+        // Notifications arrive at the terminal's render rate (up to 120Hz
+        // on ProMotion); we coalesce them into a trailing 16ms tick so a
+        // single user scroll gesture produces at most one programmatic
+        // inspector scroll per display frame instead of one per event.
         scrollbarObserver = NotificationCenter.default.addObserver(
             forName: .ghosttyDidUpdateScrollbar,
             object: nil,
             queue: .main
         ) { [weak self] note in
             MainActor.assumeIsolated {
-                self?.handleScrollbarUpdate(note)
+                self?.queueScrollbarUpdate(note)
             }
         }
     }
@@ -231,17 +240,27 @@ final class AgentInspectorPanel: Panel, ObservableObject {
         }
     }
 
-    /// React to `ghosttyDidUpdateScrollbar` from the paired terminal: in
-    /// `.syncToTerminal` mode, recompute alignment from the new scrollbar
-    /// state. Filtered by surface so a noisy unrelated terminal doesn't
-    /// jolt the inspector.
-    private func handleScrollbarUpdate(_ note: Notification) {
+    /// Notification entry point. Filters by surface and bails outside
+    /// `.syncToTerminal` mode in O(1). Coalesces multiple events that
+    /// arrive within one ~16ms display frame into a single trailing
+    /// alignment — VS Code uses the same pattern at 50ms in
+    /// `markdown-language-features/preview-src/index.ts`.
+    private func queueScrollbarUpdate(_ note: Notification) {
         guard case .live = mode, syncMode == .syncToTerminal else { return }
         guard let surfaceUUIDString = resolvedSession?.surfaceId,
               let surfaceUUID = UUID(uuidString: surfaceUUIDString) else { return }
         guard let view = note.object as? GhosttyNSView,
               view.terminalSurface?.id == surfaceUUID else { return }
-        alignToCurrentTerminalScrollState()
+        guard !hasPendingScrollbarRecompute else { return }
+        hasPendingScrollbarRecompute = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(16)) { [weak self] in
+            guard let self else { return }
+            self.hasPendingScrollbarRecompute = false
+            // The cache has been updated by all notifications that
+            // arrived during the throttle window; reading `latest(for:)`
+            // gives the most recent state in one place.
+            self.alignToCurrentTerminalScrollState()
+        }
     }
 
     /// Compute a scroll target for the inspector based on the cached
@@ -254,9 +273,15 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     ///    `terminalRowAtSubmit` is `≤ scrollbar.offset`, scroll to that
     ///    turn's chunk header. The natural "this turn is currently
     ///    visible in the terminal" mapping.
-    /// 3. **Proportional fallback**: when no anchor matches (e.g. fresh
-    ///    session with no turns yet, or pre-inspector-open turns), pick
-    ///    the chunk at the same scroll fraction as the terminal.
+    /// 3. **Proportional fallback** *over post-compaction chunks*: when
+    ///    no anchor matches (fresh session with no in-view turns yet, or
+    ///    pre-inspector-open turns), pick the chunk at the same scroll
+    ///    fraction as the terminal — clamped to the post-compaction
+    ///    region so pre-compaction terminal rows don't pull the
+    ///    inspector into stale chunks. Compaction marks a hard divergence
+    ///    point: claude's active context resets, the JSONL still has
+    ///    every line, but the terminal scrollback above the compaction
+    ///    boundary doesn't correspond 1:1 to anything claude can see.
     ///
     /// Issued via `pendingScrollTarget` so the view's `.onChange` can
     /// drive the actual `proxy.scrollTo(...)` and the panel does not
@@ -285,13 +310,28 @@ final class AgentInspectorPanel: Panel, ObservableObject {
             return
         }
 
-        // (3) Proportional fallback over user chunks (turns are the
-        //     natural alignment unit; user chunks delimit them).
-        let userIds = chunks.compactMap { chunk -> String? in
+        // (3) Proportional fallback. Restrict the pool to the
+        // post-compaction region so the inspector stays in claude's
+        // active context. Compaction is signalled by a `CompactChunk` in
+        // the stream — start the pool right after the most recent one.
+        let postCompactionChunks: [AgentChunk] = {
+            if let lastCompactIdx = chunks.lastIndex(where: {
+                if case .compact = $0 { return true }
+                return false
+            }) {
+                return Array(chunks[(lastCompactIdx + 1)...])
+            }
+            return chunks
+        }()
+        guard !postCompactionChunks.isEmpty else {
+            // Entire stream is pre-compaction (rare). Don't move.
+            return
+        }
+        let userIds = postCompactionChunks.compactMap { chunk -> String? in
             if case .user(let u) = chunk { return u.id }
             return nil
         }
-        let pool = userIds.isEmpty ? chunks.map(\.id) : userIds
+        let pool = userIds.isEmpty ? postCompactionChunks.map(\.id) : userIds
         guard !pool.isEmpty else { return }
 
         // Denominator = total scrollable rows. Avoid div-by-zero when the
@@ -310,7 +350,17 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     private func publishScrollTarget(chunkId: String, anchor: PendingScrollTarget.ScrollAnchor) {
         let token = nextScrollToken
         nextScrollToken &+= 1
-        pendingScrollTarget = PendingScrollTarget(chunkId: chunkId, token: token, anchorPoint: anchor)
+        let next = PendingScrollTarget(chunkId: chunkId, token: token, anchorPoint: anchor)
+        // Equality short-circuit: if the latest pending target points at
+        // the same chunk + anchor, don't republish — saves a SwiftUI body
+        // invalidation per redundant scroll tick. (AppKit's
+        // SynchroScrollView uses the same idea.)
+        if let current = pendingScrollTarget,
+           current.chunkId == chunkId,
+           current.anchorPoint == anchor {
+            return
+        }
+        pendingScrollTarget = next
     }
 
     /// View calls this after consuming `pendingScrollTarget` so a re-issue

@@ -171,6 +171,16 @@ struct AgentInspectorPanelView: View {
                 .onChange(of: panel.pendingScrollTarget) { newTarget in
                     // Bridge-issued programmatic scroll. Token-bearing so
                     // repeated requests for the same chunk id still apply.
+                    //
+                    // **No animation.** SwiftUI's implicit scroll
+                    // animation queues at the view's animation rate, and
+                    // at 120Hz the queue overflows producing the lag the
+                    // user reported. VS Code, Beyond Compare, and
+                    // AppKit's SynchroScrollView all set scroll position
+                    // synchronously — the visible feedback IS the user's
+                    // own scroll on the source pane. See
+                    // `Transaction.disablesAnimations` in
+                    // https://developer.apple.com/documentation/swiftui/transaction.
                     guard let target = newTarget else { return }
                     let unitPoint: UnitPoint = {
                         switch target.anchorPoint {
@@ -178,7 +188,9 @@ struct AgentInspectorPanelView: View {
                         case .bottom: return .bottom
                         }
                     }()
-                    withAnimation(.linear(duration: 0.12)) {
+                    var tx = Transaction()
+                    tx.disablesAnimations = true
+                    withTransaction(tx) {
                         proxy.scrollTo(target.chunkId, anchor: unitPoint)
                     }
                     panel.consumePendingScrollTarget()
