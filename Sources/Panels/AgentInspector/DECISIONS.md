@@ -534,3 +534,125 @@ that exceeds an inline cap.
   `openAgentInspectorDetail(content:fromInspectorPanelId:)` factory.
 - `cmuxTests/AgentInspector/ClaudeChunkBuilderTests.swift` — new
   `endTime` assertion (2-second duration on the fixture's AI chunk).
+
+## Phase B scroll-sync (terminal → inspector, unidirectional MVP)
+
+Phase B ships proportional within-turn scroll-sync from the paired
+terminal to the inspector. Inspector → terminal direction is **deferred**
+to a follow-up because it requires a public `surfaceView` accessor on
+`TerminalPanel` (small upstream-touch addition) plus
+`onScrollGeometryChange`-based loop-guard wiring.
+
+### Architecture
+
+- **`ScrollbarStateCache`** (`Sync/ScrollbarStateCache.swift`,
+  `@MainActor` singleton, **non**-`@Published`). Subscribes once to
+  `Notification.Name.ghosttyDidUpdateScrollbar` and caches the latest
+  `GhosttyScrollbar` (`{total, offset, len}`) per panel UUID. The
+  notification's `object` is a `GhosttyNSView`; its
+  `terminalSurface.id` is the panel UUID = `CMUX_SURFACE_ID`. Consumers
+  read on demand via `latest(for:)` so the cache doesn't invalidate
+  parent SwiftUI bodies.
+
+- **`TurnAnchorStore`** (`Sync/TurnAnchorStore.swift`,
+  `@MainActor`, **non**-`@Published`). Maps `userChunkId` →
+  `TurnAnchor { terminalRowAtSubmit, aiChunkId? }`. Anchor end-rows are
+  implicit — the next anchor's submit row defines the current turn's
+  end. That's enough for proportional within-turn mapping. Scoped per
+  `(workspaceId, surfaceId)`; cleared wholesale on focus change.
+
+- **`InspectorSyncMode`** (`Sync/InspectorSyncMode.swift`).
+  `off / followTail / syncToTerminal` enum. Mutually exclusive. `.off`
+  disables auto-scroll; `.followTail` matches pre-Phase-B behaviour;
+  `.syncToTerminal` engages the bridge. Default: `.followTail` for
+  backward compatibility.
+
+- **Bridge lives on `AgentInspectorPanel`** alongside the existing
+  observer + transcript stream. No separate bridge class — the panel
+  itself owns:
+  - The stream-change subscription (already there) — extended to also
+    call `captureTurnAnchorsForNewChunks()` once per main-queue tick
+    after a stream update.
+  - A `NotificationCenter` token for `ghosttyDidUpdateScrollbar` —
+    handler is always-subscribed but returns early outside
+    `.syncToTerminal` mode (single `==` per scroll event when off).
+  - A `@Published var pendingScrollTarget: PendingScrollTarget?` token
+    the view consumes via `.onChange(of:)`.
+
+### Anchor capture timing
+
+Anchors are captured **in-app** when the inspector's stream first
+exposes a chunk — not via a v2 socket verb on hook receipt. Reasons:
+
+- Avoids a CLI/cmux.swift edit and a `TerminalController.swift` v2
+  router edit. Smaller fork-touch surface.
+- The inspector observes the JSONL on disk; new lines surface within
+  a tail-debounce of being written. The scrollbar-state cache updates
+  on every render frame from Ghostty, so the cached `total` at chunk
+  observation time is accurate to within a few rows of the actual
+  prompt-submit moment.
+- Sub-100ms staleness window is sub-perceptual for turn-grain
+  alignment.
+
+`captureTurnAnchorsForNewChunks()` walks `stream.chunks` and for each
+unseen `UserChunk` records `(userChunkId, scrollbar.total, now)`.
+Subsequent `AIChunk`s are paired with the most recent unpaired user
+chunk via `pairAIChunk(userChunkId:aiChunkId:)`.
+
+### Terminal → inspector mapping
+
+On `ghosttyDidUpdateScrollbar` for the paired surface, the panel's
+handler:
+
+1. Filters: same `workspaceId` + `surfaceId` as the resolved session;
+   bails otherwise.
+2. Computes `visibleTopRow = scrollbar.offset` (Ghostty reports the
+   first visible row in `offset`).
+3. `turnAnchorStore.anchorContaining(row:)` returns the anchor whose
+   `terminalRowAtSubmit` is the largest value ≤ `visibleTopRow` — the
+   turn currently visible.
+4. Sets `pendingScrollTarget = (chunkId: aiChunkId ?? userChunkId,
+   token: monotonic)`. Token-bearing so repeats of the same chunk id
+   still re-issue.
+5. View's `.onChange(of: panel.pendingScrollTarget)` calls
+   `proxy.scrollTo(target.chunkId, anchor: .top)` with a 120ms linear
+   animation, then `consumePendingScrollTarget()` to clear.
+
+### UI
+
+The status bar's `Toggle("Follow tail")` was replaced with a compact
+three-state pill button (`scroll: off | tail | sync`). Click cycles
+modes. Color-coded: dim for off, cyan for tail, green for sync.
+
+### Tests
+
+- `cmuxTests/AgentInspector/TurnAnchorStoreTests.swift` (7 cases):
+  record idempotency, AI pairing idempotency, `anchorContaining(row:)`
+  with edge cases (before-first, exact match, after-last), surface
+  re-scoping, insertion-order preservation.
+
+`ScrollbarStateCache` and the panel-level wiring aren't unit-tested —
+they require a live Ghostty surface or an injected NotificationCenter
+mock. Manual smoke-test path documented in the plan file.
+
+### Deferred (Phase B follow-ups)
+
+- **Inspector → terminal direction.** Needs:
+  - Public `surfaceView` accessor on `TerminalPanel` (+1 line of
+    upstream-touch surface).
+  - `.onScrollGeometryChange(for: CGRect.self, ...)` on the inspector
+    ScrollView reporting `visibleTopY` to the panel.
+  - `EstimatedHeightTable` mapping chunk id → estimated Y, corrected
+    by `PreferenceKey`-reported real frames as rows materialize.
+  - Bridge maps inspector top-Y to a turn (which chunk Y range
+    contains it) → reverse-maps to `terminalRowAtSubmit` → calls
+    `surfaceView.performBindingAction("scroll_to_row:N")`.
+  - Loop-guard: epoch counter + 150ms ignore window so programmatic
+    scrolls don't echo.
+- **Sub-row precision within a turn.** Current implementation snaps
+  to the chunk header on terminal scroll. Proper proportional mapping
+  requires the inspector-side anchors that Phase B's deferred work
+  provides.
+- **Codex compatibility.** Codex JSONL has no per-line timestamps;
+  `endTime` is nil and `durationSeconds` shows nothing. Anchor
+  capture still works (uses `scrollbar.total` not chunk timestamps).

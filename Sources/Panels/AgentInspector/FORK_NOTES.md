@@ -61,6 +61,10 @@ Sources/Panels/AgentInspector/
     ChunkRowView.swift
     InspectorIcon.swift                        # Phase A++ (per-action SF Symbols)
     ClaudeModelNameMap.swift                   # Phase A++ (friendly model names)
+  Sync/
+    ScrollbarStateCache.swift                  # Phase B (terminal → inspector sync)
+    TurnAnchorStore.swift                      # Phase B
+    InspectorSyncMode.swift                    # Phase B
   Tail/
     JSONLTail.swift
     TranscriptStream.swift
@@ -74,6 +78,7 @@ cmuxTests/AgentInspector/
   ClaudeModelNameMapTests.swift                # Phase A++
   InspectorIconTests.swift                     # Phase A++
   AgentInspectorDetailContentTests.swift       # Phase A++
+  TurnAnchorStoreTests.swift                   # Phase B
 cmuxTests/Resources/AgentInspector/
   claude-sample.jsonl
   claude-hook-sessions.json

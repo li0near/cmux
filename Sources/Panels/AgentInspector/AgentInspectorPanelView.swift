@@ -20,8 +20,6 @@ struct AgentInspectorPanelView: View {
     let appearance: PanelAppearance
     let onRequestPanelFocus: () -> Void
 
-    @State private var followTail: Bool = true
-
     var body: some View {
         switch panel.mode {
         case .live:
@@ -52,18 +50,52 @@ struct AgentInspectorPanelView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 8)
-            Toggle(isOn: $followTail) {
-                Text("Follow tail")
-                    .font(.system(size: 11, design: .monospaced))
-            }
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
+            syncModePill
             Text("\(panel.stream.lineCount) lines")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(Color(nsColor: appearance.foregroundColor).opacity(0.55))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    /// Three-state mode pill for sync behaviour. Cycles through
+    /// off → tail → sync → off on each click. Visually compact so it fits
+    /// the existing status bar.
+    private var syncModePill: some View {
+        Button(action: { panel.syncMode = nextSyncMode(after: panel.syncMode) }) {
+            HStack(spacing: 4) {
+                Text("scroll:")
+                    .foregroundColor(Color(nsColor: appearance.foregroundColor).opacity(0.55))
+                Text(panel.syncMode.label.lowercased())
+                    .foregroundColor(syncModeAccent)
+            }
+            .font(.system(size: 11, design: .monospaced))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(syncModeAccent.opacity(0.45), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var syncModeAccent: Color {
+        let palette = HudPalette(appearance: appearance)
+        switch panel.syncMode {
+        case .off: return palette.dim
+        case .followTail: return palette.cyan
+        case .syncToTerminal: return palette.green
+        }
+    }
+
+    private func nextSyncMode(after mode: InspectorSyncMode) -> InspectorSyncMode {
+        switch mode {
+        case .off: return .followTail
+        case .followTail: return .syncToTerminal
+        case .syncToTerminal: return .off
+        }
     }
 
     private var statusGlyph: String {
@@ -128,11 +160,22 @@ struct AgentInspectorPanelView: View {
                     .padding(.vertical, 6)
                 }
                 .onChange(of: snapshots.count) { _ in
-                    if followTail, let last = snapshots.last {
-                        withAnimation(.linear(duration: 0.12)) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
+                    // Tail-follow only fires when new content arrives at the
+                    // bottom in `.followTail` mode. `.syncToTerminal` and
+                    // `.off` ignore append events.
+                    guard panel.syncMode == .followTail, let last = snapshots.last else { return }
+                    withAnimation(.linear(duration: 0.12)) {
+                        proxy.scrollTo(last.id, anchor: .bottom)
                     }
+                }
+                .onChange(of: panel.pendingScrollTarget) { newTarget in
+                    // Bridge-issued programmatic scroll. Token-bearing so
+                    // repeated requests for the same chunk id still apply.
+                    guard let target = newTarget else { return }
+                    withAnimation(.linear(duration: 0.12)) {
+                        proxy.scrollTo(target.chunkId, anchor: .top)
+                    }
+                    panel.consumePendingScrollTarget()
                 }
             }
         }
