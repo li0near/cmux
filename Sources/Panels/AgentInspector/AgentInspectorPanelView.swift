@@ -20,6 +20,14 @@ struct AgentInspectorPanelView: View {
     let appearance: PanelAppearance
     let onRequestPanelFocus: () -> Void
 
+    /// Stable id of the invisible sentinel appended after the chunk
+    /// list. Targeting this from `ScrollViewProxy.scrollTo(_:anchor:)`
+    /// lands at the literal bottom of the LazyVStack — past the
+    /// trailing Divider and vertical padding. Without this sentinel,
+    /// scrolling to the last chunk's id leaves visible content below
+    /// the anchored row.
+    private static let bottomSentinelId = "__cmux_inspector_bottom_sentinel__"
+
     var body: some View {
         switch panel.mode {
         case .live:
@@ -170,6 +178,20 @@ struct AgentInspectorPanelView: View {
                             Divider()
                                 .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
                         }
+                        // Sentinel target for "scroll to the visual
+                        // bottom of the inspector." The last chunk's
+                        // own id sits above the trailing Divider and
+                        // 6pt vertical padding — scrolling to it
+                        // leaves a few visible pixels below the
+                        // anchored row, so we'd visually undershoot
+                        // the real end of the scrollable region. The
+                        // sentinel is the literal bottom of the
+                        // LazyVStack, so `proxy.scrollTo(.bottom)`
+                        // matches what the user can reach by
+                        // scrolling manually.
+                        Color.clear
+                            .frame(height: 1)
+                            .id(Self.bottomSentinelId)
                     }
                     .padding(.vertical, 6)
                 }
@@ -213,13 +235,8 @@ struct AgentInspectorPanelView: View {
                 // pre-anchored history) are not auto-scrolled —
                 // the user is browsing those deliberately.
                 .onChange(of: panel.stream.lineCount) { _ in
-                    guard isFollowingLiveTail(snapshots: snapshots),
-                          let lastId = snapshots.last?.id else { return }
-                    var tx = Transaction()
-                    tx.disablesAnimations = true
-                    withTransaction(tx) {
-                        proxy.scrollTo(lastId, anchor: .bottom)
-                    }
+                    guard isFollowingLiveTail(snapshots: snapshots) else { return }
+                    scrollToBottom(proxy: proxy, snapshots: snapshots)
                 }
             }
         }
@@ -238,19 +255,20 @@ struct AgentInspectorPanelView: View {
         return displayedLastId == streamLastId
     }
 
-    /// Scroll the inspector to the bottom of the currently displayed
-    /// chunk list. Animations disabled to avoid the SwiftUI
-    /// animation-queue overflow that bit Phase B v1 — this is a
-    /// one-shot snap, not a continuous follow.
+    /// Scroll the inspector to the literal bottom of the displayed
+    /// chunk list — the invisible sentinel after the LazyVStack's
+    /// trailing Divider, matching the furthest point the user can
+    /// reach by scrolling manually. Animations disabled to avoid the
+    /// SwiftUI animation-queue overflow that bit Phase B v1.
     private func scrollToBottom(
         proxy: ScrollViewProxy,
         snapshots: [ChunkRowSnapshot]
     ) {
-        guard let lastId = snapshots.last?.id else { return }
+        guard !snapshots.isEmpty else { return }
         var tx = Transaction()
         tx.disablesAnimations = true
         withTransaction(tx) {
-            proxy.scrollTo(lastId, anchor: .bottom)
+            proxy.scrollTo(Self.bottomSentinelId, anchor: .bottom)
         }
     }
 
