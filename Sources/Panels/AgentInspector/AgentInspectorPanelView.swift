@@ -20,14 +20,6 @@ struct AgentInspectorPanelView: View {
     let appearance: PanelAppearance
     let onRequestPanelFocus: () -> Void
 
-    /// Stable id of the invisible sentinel appended after the chunk
-    /// list. Targeting this from `ScrollViewProxy.scrollTo(_:anchor:)`
-    /// lands at the literal bottom of the LazyVStack — past the
-    /// trailing Divider and vertical padding. Without this sentinel,
-    /// scrolling to the last chunk's id leaves visible content below
-    /// the anchored row.
-    private static let bottomSentinelId = "__cmux_inspector_bottom_sentinel__"
-
     var body: some View {
         switch panel.mode {
         case .live:
@@ -164,9 +156,20 @@ struct AgentInspectorPanelView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(snapshots) { snapshot in
+                        // Dividers sit *between* rows rather than
+                        // after each, so the LazyVStack's bottom
+                        // edge equals the last chunk's bottom edge.
+                        // That makes `scrollTo(lastId, anchor:
+                        // .bottom)` land at the same point the user
+                        // can reach by manual scroll — no sentinel,
+                        // no trailing padding to chase past.
+                        ForEach(Array(snapshots.enumerated()), id: \.element.id) { item in
+                            if item.offset > 0 {
+                                Divider()
+                                    .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
+                            }
                             ChunkRowView(
-                                snapshot: snapshot,
+                                snapshot: item.element,
                                 palette: palette,
                                 streamingAIChunkId: streamingAIChunkId,
                                 onOpenDetail: { request in
@@ -174,26 +177,10 @@ struct AgentInspectorPanelView: View {
                                 }
                             )
                             .equatable()
-                            .id(snapshot.id)
-                            Divider()
-                                .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
+                            .id(item.element.id)
                         }
-                        // Sentinel target for "scroll to the visual
-                        // bottom of the inspector." The last chunk's
-                        // own id sits above the trailing Divider and
-                        // 6pt vertical padding — scrolling to it
-                        // leaves a few visible pixels below the
-                        // anchored row, so we'd visually undershoot
-                        // the real end of the scrollable region. The
-                        // sentinel is the literal bottom of the
-                        // LazyVStack, so `proxy.scrollTo(.bottom)`
-                        // matches what the user can reach by
-                        // scrolling manually.
-                        Color.clear
-                            .frame(height: 1)
-                            .id(Self.bottomSentinelId)
                     }
-                    .padding(.vertical, 6)
+                    .padding(.top, 6)
                 }
                 // Match Ghostty's terminal scroller style: never show
                 // the macOS legacy scrollbar (which would always be
@@ -255,20 +242,21 @@ struct AgentInspectorPanelView: View {
         return displayedLastId == streamLastId
     }
 
-    /// Scroll the inspector to the literal bottom of the displayed
-    /// chunk list — the invisible sentinel after the LazyVStack's
-    /// trailing Divider, matching the furthest point the user can
-    /// reach by scrolling manually. Animations disabled to avoid the
-    /// SwiftUI animation-queue overflow that bit Phase B v1.
+    /// Scroll the inspector to the bottom edge of the last chunk —
+    /// which, because dividers sit between rows (not after each) and
+    /// there is no trailing vertical padding, equals the LazyVStack's
+    /// own bottom and the furthest the user can manually scroll.
+    /// Animations disabled to avoid the SwiftUI animation-queue
+    /// overflow that bit Phase B v1.
     private func scrollToBottom(
         proxy: ScrollViewProxy,
         snapshots: [ChunkRowSnapshot]
     ) {
-        guard !snapshots.isEmpty else { return }
+        guard let lastId = snapshots.last?.id else { return }
         var tx = Transaction()
         tx.disablesAnimations = true
         withTransaction(tx) {
-            proxy.scrollTo(Self.bottomSentinelId, anchor: .bottom)
+            proxy.scrollTo(lastId, anchor: .bottom)
         }
     }
 
