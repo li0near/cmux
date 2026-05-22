@@ -20,6 +20,14 @@ struct AgentInspectorPanelView: View {
     let appearance: PanelAppearance
     let onRequestPanelFocus: () -> Void
 
+    /// Stable id of the LazyVStack containing the chunk rows.
+    /// Targeting this from `ScrollViewProxy.scrollTo(_:anchor:)` with
+    /// anchor `.bottom` aligns the LazyVStack's own bottom edge with
+    /// the viewport bottom — equivalent to the furthest the user can
+    /// scroll manually inside the LazyVStack, with no sentinel view
+    /// added to the layout.
+    private static let chunkListId = "__cmux_inspector_chunk_list__"
+
     var body: some View {
         switch panel.mode {
         case .live:
@@ -156,20 +164,9 @@ struct AgentInspectorPanelView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        // Dividers sit *between* rows rather than
-                        // after each, so the LazyVStack's bottom
-                        // edge equals the last chunk's bottom edge.
-                        // That makes `scrollTo(lastId, anchor:
-                        // .bottom)` land at the same point the user
-                        // can reach by manual scroll — no sentinel,
-                        // no trailing padding to chase past.
-                        ForEach(Array(snapshots.enumerated()), id: \.element.id) { item in
-                            if item.offset > 0 {
-                                Divider()
-                                    .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
-                            }
+                        ForEach(snapshots) { snapshot in
                             ChunkRowView(
-                                snapshot: item.element,
+                                snapshot: snapshot,
                                 palette: palette,
                                 streamingAIChunkId: streamingAIChunkId,
                                 onOpenDetail: { request in
@@ -177,10 +174,13 @@ struct AgentInspectorPanelView: View {
                                 }
                             )
                             .equatable()
-                            .id(item.element.id)
+                            .id(snapshot.id)
+                            Divider()
+                                .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
                         }
                     }
-                    .padding(.top, 6)
+                    .id(Self.chunkListId)
+                    .padding(.vertical, 6)
                 }
                 // Match Ghostty's terminal scroller style: never show
                 // the macOS legacy scrollbar (which would always be
@@ -242,21 +242,22 @@ struct AgentInspectorPanelView: View {
         return displayedLastId == streamLastId
     }
 
-    /// Scroll the inspector to the bottom edge of the last chunk —
-    /// which, because dividers sit between rows (not after each) and
-    /// there is no trailing vertical padding, equals the LazyVStack's
-    /// own bottom and the furthest the user can manually scroll.
-    /// Animations disabled to avoid the SwiftUI animation-queue
-    /// overflow that bit Phase B v1.
+    /// Scroll the inspector to the bottom of the LazyVStack containing
+    /// the chunk rows. Aligning the LazyVStack's own bottom edge with
+    /// the viewport bottom lands at exactly the spot the user can
+    /// reach by manual scroll inside the chunk list — including past
+    /// the trailing Divider — without adding a sentinel view to the
+    /// layout. Animations disabled to avoid the SwiftUI
+    /// animation-queue overflow that bit Phase B v1.
     private func scrollToBottom(
         proxy: ScrollViewProxy,
         snapshots: [ChunkRowSnapshot]
     ) {
-        guard let lastId = snapshots.last?.id else { return }
+        guard !snapshots.isEmpty else { return }
         var tx = Transaction()
         tx.disablesAnimations = true
         withTransaction(tx) {
-            proxy.scrollTo(lastId, anchor: .bottom)
+            proxy.scrollTo(Self.chunkListId, anchor: .bottom)
         }
     }
 
