@@ -226,6 +226,16 @@ final class AgentInspectorPanel: Panel, ObservableObject {
         // Drop pending anchor records for the previous session — they
         // can't apply to the new one.
         pendingClaudeAnchors.removeAll(keepingCapacity: true)
+        // Recompute the visible-turn filter SYNCHRONOUSLY against the
+        // new session's chunks. Without this, SwiftUI's first re-render
+        // after the session swap uses the stale filter from the
+        // previous session — typically `.turns([oldUserId])` whose id
+        // does not exist in the new chunk set, producing an empty
+        // `visibleChunks` and a brief "Waiting for transcript" flash
+        // before `streamCancellable`'s deferred recompute lands on the
+        // next runloop.
+        recomputeVisibleTurnFilter()
+        recomputeStreamingAIChunkId()
         objectWillChange.send()
     }
 
