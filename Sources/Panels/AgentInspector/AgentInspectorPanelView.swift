@@ -194,18 +194,6 @@ struct AgentInspectorPanelView: View {
                     .id(Self.chunkListId)
                     .padding(.vertical, 6)
                 }
-                // Maintain bottom-of-content as the scroll anchor on
-                // every layout / resize. When the filter transitions
-                // (e.g. `.turns([latest])` → `.preAnchored` as the
-                // user scrolls the terminal off-bottom in a resumed
-                // session), the new chunk set lands with its bottom
-                // at the viewport bottom from the first frame —
-                // SwiftUI no longer preserves the prior scroll
-                // offset and renders the new content mid-transcript
-                // before snapping. User-initiated scrolls still set
-                // their own anchor, so this does not fight manual
-                // scrolling within the chunk list.
-                .defaultScrollAnchor(.bottom)
                 // Match Ghostty's terminal scroller style: never show
                 // the macOS legacy scrollbar (which would always be
                 // visible and re-size as the LazyVStack estimates new
