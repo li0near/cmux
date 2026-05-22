@@ -173,36 +173,39 @@ struct AgentInspectorPanelView: View {
                     }
                     .padding(.vertical, 6)
                 }
-                // Match Ghostty's terminal scroller style: auto-hide
-                // overlay rather than always-visible legacy scrollers.
-                .scrollIndicators(.hidden)
-                // Default the `.preAnchored` zone to its tail so the
-                // user lands on the latest pre-inspector messages —
-                // mirrors how Claude positions the cursor at the end
-                // of the conversation when resuming a session. We
-                // only scroll on **transitions** into `.preAnchored`
-                // (not on every chunk update), so the user keeps
-                // their position once they start scrolling.
+                // Match Ghostty's terminal scroller style: never show
+                // the macOS legacy scrollbar (which would always be
+                // visible and re-size as the LazyVStack estimates new
+                // content heights). User scrolls via wheel / trackpad
+                // — same model as the terminal pane.
+                .scrollIndicators(.never)
+                // On ANY filter transition, scroll to the bottom of
+                // the displayed chunk list. Preserving the previous
+                // scroll position across filter changes is hard
+                // (LazyVStack content shape changes when the chunk
+                // list changes), and the user explicitly prefers
+                // landing at the bottom over landing at the top:
+                //
+                //   - `.turns(latestTurnId)` — log-tail follow.
+                //   - `.turns(olderTurnId)` — bottom of that turn's
+                //     chunks (user just navigated there; show the
+                //     most recent content of the turn).
+                //   - `.preAnchored` — bottom of the unanchored
+                //     history (mirrors Claude's resume positioning).
                 .onAppear {
-                    scrollToBottomIfPreAnchored(proxy: proxy, snapshots: snapshots)
+                    scrollToBottom(proxy: proxy, snapshots: snapshots)
                 }
-                .onChange(of: panel.visibleTurnFilter) { newFilter in
-                    guard case .preAnchored = newFilter else { return }
-                    guard let lastId = snapshots.last?.id else { return }
-                    var tx = Transaction()
-                    tx.disablesAnimations = true
-                    withTransaction(tx) {
-                        proxy.scrollTo(lastId, anchor: .bottom)
-                    }
+                .onChange(of: panel.visibleTurnFilter) { _ in
+                    scrollToBottom(proxy: proxy, snapshots: snapshots)
                 }
                 // Log-tail behavior: when a new chunk lands AND the
-                // filter is showing the live tail (the latest user
-                // chunk's turn), auto-scroll the inspector to its
-                // own bottom so the user keeps seeing new content
-                // without having to scroll manually. Other filter
-                // states (older anchored turns, free-scroll
-                // pre-anchored history) are not auto-scrolled —
-                // the user is browsing those deliberately.
+                // filter is currently rendering the live tail, auto-
+                // scroll the inspector to its own bottom so the user
+                // keeps seeing new content without having to scroll
+                // manually. Other filter states (older anchored
+                // turns, free-scroll pre-anchored history) are not
+                // auto-scrolled — the user is browsing those
+                // deliberately.
                 .onChange(of: snapshots.last?.id) { newLastId in
                     guard let newLastId,
                           isFollowingLiveTail(snapshots: snapshots) else { return }
@@ -229,15 +232,14 @@ struct AgentInspectorPanelView: View {
         return displayedLastId == streamLastId
     }
 
-    /// Scroll to the last visible chunk's bottom edge if the panel is
-    /// currently in the `.preAnchored` filter case. Called from the
-    /// `ScrollViewReader`'s `onAppear` so the initial display lands at
-    /// the end of the unanchored history zone.
-    private func scrollToBottomIfPreAnchored(
+    /// Scroll the inspector to the bottom of the currently displayed
+    /// chunk list. Animations disabled to avoid the SwiftUI
+    /// animation-queue overflow that bit Phase B v1 — this is a
+    /// one-shot snap, not a continuous follow.
+    private func scrollToBottom(
         proxy: ScrollViewProxy,
         snapshots: [ChunkRowSnapshot]
     ) {
-        guard case .preAnchored = panel.visibleTurnFilter else { return }
         guard let lastId = snapshots.last?.id else { return }
         var tx = Transaction()
         tx.disablesAnimations = true
