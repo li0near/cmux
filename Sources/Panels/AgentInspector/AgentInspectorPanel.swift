@@ -56,39 +56,38 @@ final class AgentInspectorPanel: Panel, ObservableObject {
 
     @Published private(set) var focusFlashToken: Int = 0
     @Published private(set) var resolvedSession: ResolvedAgentSession?
-    /// User-selected scroll-sync mode. `.followTail` matches the
-    /// pre-Phase-B behaviour. `.syncToTerminal` engages the
-    /// `TurnAnchorStore`-backed bridge.
-    @Published var syncMode: InspectorSyncMode = .followTail {
+    /// Visible-turn filter mode. `.off` shows the entire transcript;
+    /// `.snap` filters to chunks whose turn is currently visible in the
+    /// paired terminal viewport (with implicit live tail at the bottom).
+    @Published var syncMode: InspectorSyncMode = .snap {
         didSet {
-            if syncMode == .syncToTerminal && oldValue != .syncToTerminal {
-                // Initial alignment: a notification might not fire for a
-                // while if the terminal isn't actively scrolling. Pull
-                // from the cached scrollbar state and align right now.
-                alignToCurrentTerminalScrollState()
+            if syncMode == .snap && oldValue != .snap {
+                // Initial filter pass: a notification might not fire for
+                // a while if the terminal isn't actively scrolling. Pull
+                // from the cached scrollbar state and compute now.
+                recomputeVisibleTurnIds()
+            } else if syncMode == .off {
+                // Free scroll — view ignores visibleTurnIds, but clear it
+                // so the published value reflects reality.
+                if !visibleTurnIds.isEmpty {
+                    visibleTurnIds = []
+                }
             }
         }
     }
-    /// Chunk id the view should programmatically scroll to. The view
-    /// observes this, calls `proxy.scrollTo(...)`, and clears it back to
-    /// nil so subsequent equal values re-trigger.
-    @Published var pendingScrollTarget: PendingScrollTarget?
 
-    /// One-off command issued by the bridge to ask the view to scroll to a
-    /// specific chunk. Carries an opaque token so the view can dedupe
-    /// even when the same chunk id repeats. `anchorPoint` controls which
-    /// part of the row aligns with the viewport (top for mid-turn snaps,
-    /// bottom for tail-following).
-    struct PendingScrollTarget: Equatable {
-        let chunkId: String
-        let token: UInt64
-        let anchorPoint: ScrollAnchor
+    /// User-chunk ids whose turn is currently visible in the paired
+    /// terminal viewport. The view filters the chunk list to chunks
+    /// belonging to these turns when `syncMode == .snap`. Empty when
+    /// sync is off, the stream is empty, or no scrollbar state is
+    /// available yet.
+    @Published private(set) var visibleTurnIds: Set<String> = []
 
-        enum ScrollAnchor: Equatable {
-            case top
-            case bottom
-        }
-    }
+    /// Id of the trailing AI chunk while it is still streaming. Drives
+    /// the pulsing `microbe.fill` glyph in the AI row header. Cleared
+    /// when no AI chunk is the latest, or when the latest AI chunk's
+    /// `endTime` is more than `streamingFreshnessWindow` in the past.
+    @Published private(set) var streamingAIChunkId: String?
 
     /// Turn anchors keyed by user-chunk id. Populated as new chunks land
     /// in the stream by reading `ScrollbarStateCache` for the paired
@@ -102,14 +101,20 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     private var sessionCancellable: AnyCancellable?
     private var streamCancellable: AnyCancellable?
     private var scrollbarObserver: NSObjectProtocol?
-    /// Monotonic token assigned to every programmatic scroll. Lets the view
-    /// dedupe identical chunk ids without losing repeat-tap intent.
-    private var nextScrollToken: UInt64 = 1
     /// Coalesces high-frequency scrollbar updates. Set when a notification
     /// matching the paired surface arrives; cleared when the trailing
-    /// alignment fires. A single user scroll gesture at 120Hz collapses
-    /// into one alignment per display frame instead of one per event.
+    /// recompute fires. A single user scroll gesture at 120Hz collapses
+    /// into one recompute per display frame instead of one per event.
     private var hasPendingScrollbarRecompute = false
+    /// One-shot timer that re-checks `streamingAIChunkId` after the
+    /// freshness window elapses. Cleared on every recompute.
+    private var streamingFreshnessTimer: Timer?
+
+    /// AI chunks whose `endTime` is within this many seconds of "now"
+    /// are considered actively streaming. Picked to be loose enough that
+    /// inter-line gaps during a turn don't stutter the pulse, tight
+    /// enough that the pulse settles soon after the turn ends.
+    private static let streamingFreshnessWindow: TimeInterval = 1.5
 
     init(workspace: Workspace) {
         self.id = UUID()
@@ -130,26 +135,30 @@ final class AgentInspectorPanel: Panel, ObservableObject {
         // `panel.stream.chunks`. Forward stream updates into our own
         // objectWillChange so the inspector view re-renders when chunks /
         // lineCount change after a tab switch resets the stream. Also use
-        // this hook to capture turn anchors for any newly-arrived chunks.
+        // this hook to capture turn anchors for any newly-arrived chunks
+        // and refresh the visible-turn filter + streaming-pulse state.
         streamCancellable = stream.objectWillChange
             .sink { [weak self] in
                 guard let self else { return }
                 self.objectWillChange.send()
-                // Anchor capture happens AFTER the upstream change is
-                // applied; defer one tick so `stream.chunks` reflects the
-                // new state.
+                // Anchor capture and downstream recomputes happen AFTER
+                // the upstream change is applied; defer one tick so
+                // `stream.chunks` reflects the new state.
                 DispatchQueue.main.async { [weak self] in
-                    self?.captureTurnAnchorsForNewChunks()
+                    guard let self else { return }
+                    self.captureTurnAnchorsForNewChunks()
+                    self.recomputeVisibleTurnIds()
+                    self.recomputeStreamingAIChunkId()
                 }
             }
 
-        // Subscribe once for terminal-driven scroll sync. The handler
-        // ignores notifications outside `.syncToTerminal` mode so the
-        // overhead is a single `==` per scroll event when the mode is off.
-        // Notifications arrive at the terminal's render rate (up to 120Hz
-        // on ProMotion); we coalesce them into a trailing 16ms tick so a
-        // single user scroll gesture produces at most one programmatic
-        // inspector scroll per display frame instead of one per event.
+        // Subscribe once for terminal-driven visible-turn updates. The
+        // handler ignores notifications outside `.snap` mode so the
+        // overhead is a single `==` per scroll event when the mode is
+        // off. Notifications arrive at the terminal's render rate (up to
+        // 120Hz on ProMotion); we coalesce them into a trailing 16ms
+        // tick so a single user scroll gesture produces at most one
+        // recompute per display frame.
         scrollbarObserver = NotificationCenter.default.addObserver(
             forName: .ghosttyDidUpdateScrollbar,
             object: nil,
@@ -241,12 +250,12 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     }
 
     /// Notification entry point. Filters by surface and bails outside
-    /// `.syncToTerminal` mode in O(1). Coalesces multiple events that
-    /// arrive within one ~16ms display frame into a single trailing
-    /// alignment — VS Code uses the same pattern at 50ms in
+    /// `.snap` mode in O(1). Coalesces multiple events that arrive within
+    /// one ~16ms display frame into a single trailing recompute — VS
+    /// Code uses the same pattern at 50ms in
     /// `markdown-language-features/preview-src/index.ts`.
     private func queueScrollbarUpdate(_ note: Notification) {
-        guard case .live = mode, syncMode == .syncToTerminal else { return }
+        guard case .live = mode, syncMode == .snap else { return }
         guard let surfaceUUIDString = resolvedSession?.surfaceId,
               let surfaceUUID = UUID(uuidString: surfaceUUIDString) else { return }
         guard let view = note.object as? GhosttyNSView,
@@ -259,115 +268,78 @@ final class AgentInspectorPanel: Panel, ObservableObject {
             // The cache has been updated by all notifications that
             // arrived during the throttle window; reading `latest(for:)`
             // gives the most recent state in one place.
-            self.alignToCurrentTerminalScrollState()
+            self.recomputeVisibleTurnIds()
         }
     }
 
-    /// Compute a scroll target for the inspector based on the cached
-    /// scrollbar state of the paired terminal. Three alignment regimes:
-    ///
-    /// 1. **At-bottom snap**: when the terminal viewport reaches the tail
-    ///    of the scrollback, scroll the inspector to its last chunk's
-    ///    bottom. Matches the `followTail` feel.
-    /// 2. **Anchored**: if a `TurnAnchor` exists whose
-    ///    `terminalRowAtSubmit` is `≤ scrollbar.offset`, scroll to that
-    ///    turn's chunk header. The natural "this turn is currently
-    ///    visible in the terminal" mapping.
-    /// 3. **Proportional fallback** *over post-compaction chunks*: when
-    ///    no anchor matches (fresh session with no in-view turns yet, or
-    ///    pre-inspector-open turns), pick the chunk at the same scroll
-    ///    fraction as the terminal — clamped to the post-compaction
-    ///    region so pre-compaction terminal rows don't pull the
-    ///    inspector into stale chunks. Compaction marks a hard divergence
-    ///    point: claude's active context resets, the JSONL still has
-    ///    every line, but the terminal scrollback above the compaction
-    ///    boundary doesn't correspond 1:1 to anything claude can see.
-    ///
-    /// Issued via `pendingScrollTarget` so the view's `.onChange` can
-    /// drive the actual `proxy.scrollTo(...)` and the panel does not
-    /// touch SwiftUI scrolling primitives directly.
-    func alignToCurrentTerminalScrollState() {
-        guard case .live = mode,
-              let surfaceUUIDString = resolvedSession?.surfaceId,
-              let surfaceUUID = UUID(uuidString: surfaceUUIDString) else { return }
-        guard let scrollbar = ScrollbarStateCache.shared.latest(for: surfaceUUID) else { return }
+    /// Compute the visible-turn id set from the cached scrollbar state of
+    /// the paired terminal and publish it. Equality short-circuit on the
+    /// `Set` keeps redundant scroll events within the same turn from
+    /// invalidating the parent view body.
+    func recomputeVisibleTurnIds() {
+        guard case .live = mode else { return }
+        guard syncMode == .snap else {
+            if !visibleTurnIds.isEmpty { visibleTurnIds = [] }
+            return
+        }
+        guard let surfaceUUIDString = resolvedSession?.surfaceId,
+              let surfaceUUID = UUID(uuidString: surfaceUUIDString) else {
+            if !visibleTurnIds.isEmpty { visibleTurnIds = [] }
+            return
+        }
+        let scrollbar = ScrollbarStateCache.shared.latest(for: surfaceUUID)
+        let snapshot = scrollbar.map(VisibleTurnScrollSnapshot.init)
+        let computed = computeVisibleTurnIds(
+            scrollbar: snapshot,
+            chunks: stream.chunks,
+            anchors: turnAnchorStore.orderedAnchors
+        )
+        if computed != visibleTurnIds {
+            visibleTurnIds = computed
+        }
+    }
 
+    /// Set `streamingAIChunkId` to the trailing AI chunk's id when that
+    /// chunk is still being written to (per
+    /// `streamingFreshnessWindow`), nil otherwise. Schedules a one-shot
+    /// recheck after the freshness window so the pulse settles even if
+    /// no further chunks land.
+    func recomputeStreamingAIChunkId() {
+        streamingFreshnessTimer?.invalidate()
+        streamingFreshnessTimer = nil
+
+        guard case .live = mode else {
+            if streamingAIChunkId != nil { streamingAIChunkId = nil }
+            return
+        }
         let chunks = stream.chunks
-        guard !chunks.isEmpty else { return }
-
-        // (1) At-bottom snap.
-        let viewportEnd = scrollbar.offset &+ scrollbar.len
-        let isAtBottom = scrollbar.total == 0 || viewportEnd >= scrollbar.total
-        if isAtBottom, let last = chunks.last {
-            publishScrollTarget(chunkId: last.id, anchor: .bottom)
+        guard case let .ai(ai) = chunks.last else {
+            if streamingAIChunkId != nil { streamingAIChunkId = nil }
             return
         }
-
-        // (2) Anchored match.
-        if let anchor = turnAnchorStore.anchorContaining(row: scrollbar.offset) {
-            let chunkId = anchor.aiChunkId ?? anchor.userChunkId
-            publishScrollTarget(chunkId: chunkId, anchor: .top)
-            return
-        }
-
-        // (3) Proportional fallback. Restrict the pool to the
-        // post-compaction region so the inspector stays in claude's
-        // active context. Compaction is signalled by a `CompactChunk` in
-        // the stream — start the pool right after the most recent one.
-        let postCompactionChunks: [AgentChunk] = {
-            if let lastCompactIdx = chunks.lastIndex(where: {
-                if case .compact = $0 { return true }
-                return false
-            }) {
-                return Array(chunks[(lastCompactIdx + 1)...])
-            }
-            return chunks
+        // Codex rollouts have no per-line timestamps (`endTime == nil`).
+        // Treat them as "fresh while at the tail" — the next non-AI
+        // chunk landing is what flips the pulse off in that case.
+        let isFresh: Bool = {
+            guard let endTime = ai.endTime else { return true }
+            return Date().timeIntervalSince(endTime) < Self.streamingFreshnessWindow
         }()
-        guard !postCompactionChunks.isEmpty else {
-            // Entire stream is pre-compaction (rare). Don't move.
-            return
+        if isFresh {
+            if streamingAIChunkId != ai.id {
+                streamingAIChunkId = ai.id
+            }
+            // Re-check after the freshness window so we eventually clear
+            // the pulse even if no further chunks land.
+            let interval = Self.streamingFreshnessWindow + 0.1
+            let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.recomputeStreamingAIChunkId()
+                }
+            }
+            streamingFreshnessTimer = timer
+        } else {
+            if streamingAIChunkId != nil { streamingAIChunkId = nil }
         }
-        let userIds = postCompactionChunks.compactMap { chunk -> String? in
-            if case .user(let u) = chunk { return u.id }
-            return nil
-        }
-        let pool = userIds.isEmpty ? postCompactionChunks.map(\.id) : userIds
-        guard !pool.isEmpty else { return }
-
-        // Denominator = total scrollable rows. Avoid div-by-zero when the
-        // scrollback fits entirely in the viewport.
-        let scrollableRows: UInt64 = scrollbar.total > scrollbar.len
-            ? scrollbar.total - scrollbar.len
-            : 0
-        let fraction: Double = scrollableRows == 0
-            ? 0
-            : min(1.0, Double(scrollbar.offset) / Double(scrollableRows))
-        let lastIndex = pool.count - 1
-        let idx = min(lastIndex, max(0, Int((Double(lastIndex) * fraction).rounded())))
-        publishScrollTarget(chunkId: pool[idx], anchor: .top)
-    }
-
-    private func publishScrollTarget(chunkId: String, anchor: PendingScrollTarget.ScrollAnchor) {
-        let token = nextScrollToken
-        nextScrollToken &+= 1
-        let next = PendingScrollTarget(chunkId: chunkId, token: token, anchorPoint: anchor)
-        // Equality short-circuit: if the latest pending target points at
-        // the same chunk + anchor, don't republish — saves a SwiftUI body
-        // invalidation per redundant scroll tick. (AppKit's
-        // SynchroScrollView uses the same idea.)
-        if let current = pendingScrollTarget,
-           current.chunkId == chunkId,
-           current.anchorPoint == anchor {
-            return
-        }
-        pendingScrollTarget = next
-    }
-
-    /// View calls this after consuming `pendingScrollTarget` so a re-issue
-    /// of the same chunk id (e.g. user keeps scrolling within the same
-    /// turn) doesn't lose the next intent.
-    func consumePendingScrollTarget() {
-        pendingScrollTarget = nil
     }
 
     // MARK: - Panel protocol
@@ -390,6 +362,8 @@ final class AgentInspectorPanel: Panel, ObservableObject {
             NotificationCenter.default.removeObserver(scrollbarObserver)
         }
         scrollbarObserver = nil
+        streamingFreshnessTimer?.invalidate()
+        streamingFreshnessTimer = nil
         stream.attach(session: nil)
     }
 

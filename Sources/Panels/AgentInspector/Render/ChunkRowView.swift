@@ -26,11 +26,17 @@ enum InspectorDetailRequest: Equatable {
 struct ChunkRowView: View, Equatable {
     let snapshot: ChunkRowSnapshot
     let palette: HudPaletteToken
+    /// Id of the AI chunk currently streaming. When this matches the
+    /// snapshot's id, the AI row's header glyph pulses. Snapshot-policy
+    /// safe — plain value type.
+    let streamingAIChunkId: String?
     /// Stable closure reference. Ignored by `==` per the snapshot policy.
     let onOpenDetail: (InspectorDetailRequest) -> Void
 
     static func == (lhs: ChunkRowView, rhs: ChunkRowView) -> Bool {
-        lhs.snapshot == rhs.snapshot && lhs.palette == rhs.palette
+        lhs.snapshot == rhs.snapshot
+            && lhs.palette == rhs.palette
+            && lhs.streamingAIChunkId == rhs.streamingAIChunkId
     }
 
     var body: some View {
@@ -38,7 +44,12 @@ struct ChunkRowView: View, Equatable {
         case .user:
             UserChunkRow(snapshot: snapshot, palette: palette, onOpenDetail: onOpenDetail)
         case .ai:
-            AIChunkRow(snapshot: snapshot, palette: palette, onOpenDetail: onOpenDetail)
+            AIChunkRow(
+                snapshot: snapshot,
+                palette: palette,
+                isStreaming: streamingAIChunkId == snapshot.id,
+                onOpenDetail: onOpenDetail
+            )
         case .system:
             SystemChunkRow(snapshot: snapshot, palette: palette, onOpenDetail: onOpenDetail)
         case .compact:
@@ -112,6 +123,9 @@ private struct UserChunkRow: View {
 private struct AIChunkRow: View {
     let snapshot: ChunkRowSnapshot
     let palette: HudPaletteToken
+    /// Drives the pulse animation on the header glyph while the trailing
+    /// AI chunk is still being written.
+    let isStreaming: Bool
     let onOpenDetail: (InspectorDetailRequest) -> Void
     @State private var aiExpanded = true
     @State private var thinkingExpanded = false
@@ -119,13 +133,14 @@ private struct AIChunkRow: View {
     /// Independent of `aiExpanded` — the tokens segment toggles between
     /// total (default) and per-bucket breakdown when clicked.
     @State private var tokensExpanded = false
-    /// Per-tool expansion override. nil → use default (errored tools default
-    /// expanded, others collapsed); non-nil overrides explicit user toggle.
+    /// Per-tool expansion override. nil → use default (collapsed,
+    /// regardless of status — red glyph + red name flag errors); non-nil
+    /// is the user's explicit toggle.
     @State private var toolExpansionOverrides: [String: Bool] = [:]
 
     private func isToolExpanded(_ tool: ChunkRowSnapshot.ToolCallSnapshot) -> Bool {
         if let override = toolExpansionOverrides[tool.id] { return override }
-        return tool.isError
+        return false
     }
 
     private func toggleTool(_ tool: ChunkRowSnapshot.ToolCallSnapshot) {
@@ -167,9 +182,10 @@ private struct AIChunkRow: View {
     /// when neither inner button absorbed the tap.
     private var header: some View {
         HStack(spacing: 8) {
-            typeIcon(
+            pulsingTypeIcon(
                 systemName: InspectorIcon.ai.systemName(expanded: aiExpanded),
-                color: palette.claude
+                color: palette.claude,
+                isPulsing: isStreaming
             )
             Text(snapshot.modelFriendly ?? snapshot.aiHeaderLabel)
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -278,9 +294,10 @@ private struct AIChunkRow: View {
         return VStack(alignment: .leading, spacing: 2) {
             Button(action: { if canExpand { toggleTool(tool) } }) {
                 HStack(spacing: 6) {
-                    typeIcon(
+                    pulsingTypeIcon(
                         systemName: iconPair.systemName(expanded: expanded && canExpand),
-                        color: iconColor
+                        color: iconColor,
+                        isPulsing: tool.status == .pending
                     )
                     Text(tool.name)
                         .foregroundColor(tool.isError ? palette.red : palette.primary)
@@ -414,32 +431,38 @@ private struct SystemChunkRow: View {
 
 // MARK: - Compact row
 
+/// Visible boundary chip for a `CompactChunk`. Renders as
+/// `─── context compacted at HH:MM:SS ───` centered across the row,
+/// dim foreground. The compaction event itself is informational only —
+/// the inspector does not gate visibility on it (per Phase B v2's
+/// "always show some turn" rule).
 private struct CompactChunkRow: View {
     let snapshot: ChunkRowSnapshot
     let palette: HudPaletteToken
 
     var body: some View {
         HStack(spacing: 8) {
-            typeIcon(
-                systemName: InspectorIcon.compact.collapsed,
-                color: palette.dim
-            )
-            Text("compact")
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                .foregroundColor(palette.kindColor(for: .compact))
-            Text(snapshot.compactSummary)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(palette.dim)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 8)
-            Text(formatTime(snapshot.timestamp))
+            ruleSegment
+            Text(label)
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(palette.dim)
+                .lineLimit(1)
+            ruleSegment
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private var label: String {
+        "context compacted at \(formatTime(snapshot.timestamp))"
+    }
+
+    private var ruleSegment: some View {
+        Rectangle()
+            .fill(palette.dim.opacity(0.4))
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
     }
 }
 
@@ -497,6 +520,25 @@ private func typeIcon(systemName: String, color: Color) -> some View {
         .font(.system(size: 11))
         .foregroundColor(color)
         .frame(width: 14, height: 12, alignment: .center)
+}
+
+/// Same as `typeIcon`, but pulses while `isPulsing` is true. Used for
+/// running tools (`status == .pending`) and the AI header glyph during
+/// the trailing AIChunk's streaming window.
+@ViewBuilder
+private func pulsingTypeIcon(systemName: String, color: Color, isPulsing: Bool) -> some View {
+    if isPulsing {
+        Image(systemName: systemName)
+            .font(.system(size: 11))
+            .foregroundColor(color)
+            .frame(width: 14, height: 12, alignment: .center)
+            .symbolEffect(.pulse, options: .repeating, isActive: true)
+    } else {
+        Image(systemName: systemName)
+            .font(.system(size: 11))
+            .foregroundColor(color)
+            .frame(width: 14, height: 12, alignment: .center)
+    }
 }
 
 private func formatToolDuration(_ ms: Int) -> String {

@@ -656,3 +656,152 @@ mock. Manual smoke-test path documented in the plan file.
 - **Codex compatibility.** Codex JSONL has no per-line timestamps;
   `endTime` is nil and `durationSeconds` shows nothing. Anchor
   capture still works (uses `scrollbar.total` not chunk timestamps).
+
+## Phase B v2: Visible-turn filter (replaces continuous scroll-sync)
+
+Phase B v1 shipped a continuous bidirectional scroll-sync between the
+inspector and the paired terminal. After dogfooding, the user
+identified two architectural problems:
+
+1. **Lag.** Per-event `proxy.scrollTo` calls inside SwiftUI animation
+   transactions queued at 120Hz on ProMotion, making terminal scrolling
+   noticeably laggy when sync was on.
+2. **The two views were never really aligned** — the terminal renders
+   continuous ANSI scrollback; the inspector reads JSONL and retains
+   every chunk including pre-compaction. Anchors mapped row-counts to
+   chunk-indices over fundamentally different content domains.
+
+Phase B v2 reframes the inspector as a **filtered status panel** rather
+than a parallel scrolling view. It renders only chunks whose **turn**
+is currently visible in the paired terminal viewport. Net delta is
+mostly *deletions* of v1's scroll-target machinery.
+
+### Decisions
+
+- **Two-state pill (`scroll: free | snap`).** Drops `tail` from the
+  three-state pill. Tail-follow is implicit when `snap` is on AND the
+  terminal is at the bottom of its scrollback (regime 1 of
+  `computeVisibleTurnIds`).
+
+- **"Fully visible user prompt" anchor rule.** When at least one user
+  prompt is fully visible in the terminal viewport
+  (`terminalRowAtSubmit ∈ [viewportTop, viewportBottom]`), the visible
+  set is the union of those prompts. When *no* prompt is fully visible
+  (we're mid-AI-response), the visible set is the prompt **before** the
+  visible region — so the user always sees what prompt initiated
+  what's on screen.
+
+- **Floor (not round) on the proportional fallback.** v1 used
+  `.rounded()`, which could land on the prompt *after* the visible
+  region. Floor guarantees we land at-or-before the visible region.
+
+- **Drop the post-compaction restriction.** v1 restricted the
+  proportional fallback's pool to chunks past the most recent
+  `CompactChunk`. v2 always shows *some* turn (compaction is
+  informational only, rendered as a centered horizontal-rule chip
+  inline in the chunk list).
+
+- **No programmatic scrolls.** v1's `pendingScrollTarget` →
+  `proxy.scrollTo(...)` round-trip is gone. The inspector renders the
+  visible-turn subset and the user scrolls within it freely. Removes
+  the entire animation-queue lag class.
+
+- **Errored tools default to collapsed.** v1 expanded errored tools by
+  default. The red glyph + red name color already flag the error; the
+  expanded body added vertical noise without giving the user actionable
+  signal. Click to expand.
+
+- **Pulse animations on running state.**
+  `symbolEffect(.pulse, options: .repeating, isActive:)` on
+  `tool.status == .pending` and on the AI header `microbe.fill` glyph
+  while the trailing `AIChunk` is "fresh" (`endTime` within 1.5s of
+  now). Codex rollouts have no per-line timestamps, so they are treated
+  as fresh while the AI chunk remains the trailing chunk — the next
+  non-AI chunk landing is what flips the pulse off in that case.
+
+- **Compaction boundary chip.** `CompactChunkRow` renders as a centered
+  `─── context compacted at HH:MM:SS ───` rule. Replaces the v1 row
+  that showed "compact · summary · time" left-aligned.
+
+- **Algorithm extracted to a free function** — `computeVisibleTurnIds`
+  in `Sync/VisibleTurnIds.swift` takes pure values
+  (`VisibleTurnScrollSnapshot`, `[AgentChunk]`, `[TurnAnchor]`) and
+  returns `Set<String>`. Decouples the algorithm from `GhosttyScrollbar`
+  / `AgentInspectorPanel` so unit tests can drive it without spinning
+  up a terminal surface. 13 unit tests in `VisibleTurnIdsTests`.
+
+- **Filter projection lives in the view** as `chunksInVisibleTurns`,
+  not in the panel. The panel publishes `visibleTurnIds: Set<String>`;
+  the view filters `stream.chunks` by it. Equality short-circuit on the
+  publish keeps redundant scroll events within the same turn from
+  invalidating the parent body.
+
+- **Streaming detection threshold = 1500ms.** Fresh AI chunks pulse;
+  the panel schedules a one-shot `Timer` that re-checks 1.6s later so
+  the pulse settles even if no further chunks land. Loose enough that
+  inter-line gaps during a turn don't stutter the pulse, tight enough
+  that the pulse settles soon after the turn ends.
+
+### Files added in Phase B v2
+
+- `Sources/Panels/AgentInspector/Sync/VisibleTurnIds.swift` — pure
+  algorithm + `chunksInVisibleTurns` view-side filter.
+- `cmuxTests/AgentInspector/VisibleTurnIdsTests.swift` (13 cases:
+  empty/nil, at-bottom regimes, fully-visible single/multiple, no
+  prompt fully visible, proportional floor at 11%/75%, viewport above
+  all anchors, no-user-chunk fallback, compaction-non-gating).
+
+### Files deleted in Phase B v2
+
+None. v1's `Sync/InspectorSyncMode.swift`, `Sync/TurnAnchorStore.swift`,
+and `Sync/ScrollbarStateCache.swift` are kept (the first is narrowed,
+the latter two are unchanged surface).
+
+### Files modified in Phase B v2
+
+- `Sources/Panels/AgentInspector/Sync/InspectorSyncMode.swift` — drops
+  `.followTail` and renames `.syncToTerminal` to `.snap`. Labels
+  become "free" / "snap".
+- `Sources/Panels/AgentInspector/AgentInspectorPanel.swift` — removes
+  `pendingScrollTarget`, `nextScrollToken`, `publishScrollTarget`,
+  `consumePendingScrollTarget`, `alignToCurrentTerminalScrollState`.
+  Adds `visibleTurnIds`, `streamingAIChunkId`,
+  `recomputeVisibleTurnIds()`, `recomputeStreamingAIChunkId()`. The
+  stream-update closure now captures anchors AND recomputes both
+  derived states.
+- `Sources/Panels/AgentInspector/AgentInspectorPanelView.swift` — drops
+  `ScrollViewReader` and the two `onChange(of:)` programmatic-scroll
+  blocks. Two-state pill. Filter projection via `chunksInVisibleTurns`.
+  Forwards `streamingAIChunkId` into `ChunkRowView`.
+- `Sources/Panels/AgentInspector/Render/ChunkRowView.swift` — adds
+  `streamingAIChunkId` to `ChunkRowView` and `isStreaming` to
+  `AIChunkRow`. New `pulsingTypeIcon(...)` helper. Errored tools
+  default collapsed. `CompactChunkRow` rendered as a centered
+  horizontal-rule chip.
+
+### Why this v2 is right and v1 was wrong
+
+1. v1 tried to align two views with fundamentally different content
+   models (terminal scrollback vs structured chunks). v2 reframes the
+   inspector as a filtered status panel, sidestepping the alignment
+   problem.
+2. v1 ran `proxy.scrollTo` per scroll event with implicit animation
+   transactions; that was the lag source on 120Hz. v2 has zero
+   programmatic scrolls.
+3. v1's "post-compaction restriction" violated the "always show
+   context" goal. v2 drops it.
+4. v1's proportional fallback used `.rounded()` which could land on
+   the user prompt AFTER the visible region. v2 floors.
+
+### Explicitly deferred (still)
+
+- Within-turn linear interpolation via measured chunk frames
+  (`PreferenceKey` + `EstimatedHeightTable`). Defer unless turn-snap
+  UX feels insufficient.
+- Bidirectional sync (inspector → terminal). Likely never needed in
+  the filtered-status-panel model.
+- Subagent transcript folding (`SubagentLinker` watching
+  `agent_<id>.jsonl`).
+- 6-category context attribution badge.
+- Connector-line overlay between paired panes.
+- Keyboard shortcuts + command-palette entry.

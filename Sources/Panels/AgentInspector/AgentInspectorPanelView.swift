@@ -59,15 +59,16 @@ struct AgentInspectorPanelView: View {
         .padding(.vertical, 6)
     }
 
-    /// Three-state mode pill for sync behaviour. Cycles through
-    /// off → tail → sync → off on each click. Visually compact so it fits
-    /// the existing status bar.
+    /// Two-state mode pill. `free` = render the entire transcript;
+    /// `snap` = filter to chunks belonging to the turn(s) currently
+    /// visible in the paired terminal viewport (with implicit live tail
+    /// at the bottom).
     private var syncModePill: some View {
         Button(action: { panel.syncMode = nextSyncMode(after: panel.syncMode) }) {
             HStack(spacing: 4) {
                 Text("scroll:")
                     .foregroundColor(Color(nsColor: appearance.foregroundColor).opacity(0.55))
-                Text(panel.syncMode.label.lowercased())
+                Text(panel.syncMode.label)
                     .foregroundColor(syncModeAccent)
             }
             .font(.system(size: 11, design: .monospaced))
@@ -85,16 +86,14 @@ struct AgentInspectorPanelView: View {
         let palette = HudPalette(appearance: appearance)
         switch panel.syncMode {
         case .off: return palette.dim
-        case .followTail: return palette.cyan
-        case .syncToTerminal: return palette.green
+        case .snap: return palette.green
         }
     }
 
     private func nextSyncMode(after mode: InspectorSyncMode) -> InspectorSyncMode {
         switch mode {
-        case .off: return .followTail
-        case .followTail: return .syncToTerminal
-        case .syncToTerminal: return .off
+        case .off: return .snap
+        case .snap: return .off
         }
     }
 
@@ -132,69 +131,42 @@ struct AgentInspectorPanelView: View {
             case .none: return .unknown
             }
         }()
-        let snapshots = panel.stream.chunks.map {
+        let allChunks = panel.stream.chunks
+        let visibleChunks: [AgentChunk] = {
+            switch panel.syncMode {
+            case .off:
+                return allChunks
+            case .snap:
+                return chunksInVisibleTurns(chunks: allChunks, visibleIds: panel.visibleTurnIds)
+            }
+        }()
+        let snapshots = visibleChunks.map {
             ChunkRowSnapshot.from($0, agentKind: agentKind)
         }
         let palette = HudPaletteToken.from(HudPalette(appearance: appearance))
+        let streamingAIChunkId = panel.streamingAIChunkId
 
         if snapshots.isEmpty {
             emptyTranscriptView
         } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(snapshots) { snapshot in
-                            ChunkRowView(
-                                snapshot: snapshot,
-                                palette: palette,
-                                onOpenDetail: { request in
-                                    panel.openDetail(request: request)
-                                }
-                            )
-                            .equatable()
-                            .id(snapshot.id)
-                            Divider()
-                                .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
-                        }
-                    }
-                    .padding(.vertical, 6)
-                }
-                .onChange(of: snapshots.count) { _ in
-                    // Tail-follow only fires when new content arrives at the
-                    // bottom in `.followTail` mode. `.syncToTerminal` and
-                    // `.off` ignore append events.
-                    guard panel.syncMode == .followTail, let last = snapshots.last else { return }
-                    withAnimation(.linear(duration: 0.12)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(snapshots) { snapshot in
+                        ChunkRowView(
+                            snapshot: snapshot,
+                            palette: palette,
+                            streamingAIChunkId: streamingAIChunkId,
+                            onOpenDetail: { request in
+                                panel.openDetail(request: request)
+                            }
+                        )
+                        .equatable()
+                        .id(snapshot.id)
+                        Divider()
+                            .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
                     }
                 }
-                .onChange(of: panel.pendingScrollTarget) { newTarget in
-                    // Bridge-issued programmatic scroll. Token-bearing so
-                    // repeated requests for the same chunk id still apply.
-                    //
-                    // **No animation.** SwiftUI's implicit scroll
-                    // animation queues at the view's animation rate, and
-                    // at 120Hz the queue overflows producing the lag the
-                    // user reported. VS Code, Beyond Compare, and
-                    // AppKit's SynchroScrollView all set scroll position
-                    // synchronously — the visible feedback IS the user's
-                    // own scroll on the source pane. See
-                    // `Transaction.disablesAnimations` in
-                    // https://developer.apple.com/documentation/swiftui/transaction.
-                    guard let target = newTarget else { return }
-                    let unitPoint: UnitPoint = {
-                        switch target.anchorPoint {
-                        case .top: return .top
-                        case .bottom: return .bottom
-                        }
-                    }()
-                    var tx = Transaction()
-                    tx.disablesAnimations = true
-                    withTransaction(tx) {
-                        proxy.scrollTo(target.chunkId, anchor: unitPoint)
-                    }
-                    panel.consumePendingScrollTarget()
-                }
+                .padding(.vertical, 6)
             }
         }
     }

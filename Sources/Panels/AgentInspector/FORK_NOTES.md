@@ -65,6 +65,7 @@ Sources/Panels/AgentInspector/
     ScrollbarStateCache.swift                  # Phase B (terminal → inspector sync)
     TurnAnchorStore.swift                      # Phase B
     InspectorSyncMode.swift                    # Phase B
+    VisibleTurnIds.swift                       # Phase B v2 (visible-turn filter algorithm)
   Tail/
     JSONLTail.swift
     TranscriptStream.swift
@@ -79,6 +80,7 @@ cmuxTests/AgentInspector/
   InspectorIconTests.swift                     # Phase A++
   AgentInspectorDetailContentTests.swift       # Phase A++
   TurnAnchorStoreTests.swift                   # Phase B
+  VisibleTurnIdsTests.swift                    # Phase B v2
 cmuxTests/Resources/AgentInspector/
   claude-sample.jsonl
   claude-hook-sessions.json
