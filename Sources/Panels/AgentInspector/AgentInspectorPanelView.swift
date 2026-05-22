@@ -12,6 +12,16 @@ import AppKit
 /// - All transformations (chunk → snapshot) happen on the main actor here,
 ///   in a `let` projection — never inside any view's `body` (CLAUDE.md
 ///   "No state mutation inside view-body computations.").
+/// Reference-type holder for cancellable scroll work. `@State` on a
+/// class persists across view re-renders without re-publishing on
+/// every mutation (we mutate the stored property, not the reference
+/// itself). Cancelling the previous work item before scheduling a
+/// new one prevents stacked deferred scrolls from racing each other
+/// during rapid filter transitions.
+private final class InspectorScrollCoordinator {
+    var pendingWork: DispatchWorkItem?
+}
+
 struct AgentInspectorPanelView: View {
     @ObservedObject var panel: AgentInspectorPanel
     let isFocused: Bool
@@ -27,6 +37,8 @@ struct AgentInspectorPanelView: View {
     /// scroll manually inside the LazyVStack, with no sentinel view
     /// added to the layout.
     private static let chunkListId = "__cmux_inspector_chunk_list__"
+
+    @State private var scrollCoordinator = InspectorScrollCoordinator()
 
     var body: some View {
         switch panel.mode {
@@ -182,6 +194,17 @@ struct AgentInspectorPanelView: View {
                     .id(Self.chunkListId)
                     .padding(.vertical, 6)
                 }
+                // Session-keyed identity: when the user switches
+                // tabs, FocusedSurfaceObserver emits a different
+                // session and the inspector rebuilds its chunk list.
+                // Tagging the ScrollView with the session id forces
+                // SwiftUI to tear down the old container and create a
+                // fresh one — `.onAppear` then fires for the new
+                // ScrollView, triggering the snap-to-bottom path.
+                // Without this id, SwiftUI reuses the prior
+                // ScrollView's scroll offset (which often lands at
+                // the top of the new chunk list).
+                .id(panel.resolvedSession?.sessionId ?? "__no_session__")
                 // Match Ghostty's terminal scroller style: never show
                 // the macOS legacy scrollbar (which would always be
                 // visible and re-size as the LazyVStack estimates new
@@ -205,6 +228,13 @@ struct AgentInspectorPanelView: View {
                     scrollToBottom(proxy: proxy, snapshots: snapshots)
                 }
                 .onChange(of: panel.visibleTurnFilter) { _ in
+                    scrollToBottom(proxy: proxy, snapshots: snapshots)
+                }
+                // Belt-and-suspenders for tab-switch: even if the
+                // ScrollView's session-keyed identity didn't flip
+                // (rare race), an explicit handler on session change
+                // forces the bottom snap.
+                .onChange(of: panel.resolvedSession?.sessionId) { _ in
                     scrollToBottom(proxy: proxy, snapshots: snapshots)
                 }
                 // Log-tail behavior: when a new JSONL line lands AND
@@ -247,26 +277,36 @@ struct AgentInspectorPanelView: View {
     /// the viewport bottom lands at exactly the spot the user can
     /// reach by manual scroll inside the chunk list — including past
     /// the trailing Divider — without adding a sentinel view to the
-    /// layout. Animations disabled to avoid the SwiftUI
-    /// animation-queue overflow that bit Phase B v1.
+    /// layout.
     ///
     /// **Deferred to the next main runloop** because filter
     /// transitions and stream updates rebuild the LazyVStack's
     /// content set; calling `scrollTo` synchronously would target a
     /// partially-materialized tree and land at arbitrary offsets.
     /// The async hop lets SwiftUI commit the new layout first.
+    ///
+    /// **Cancellable** via `InspectorScrollCoordinator`: a single
+    /// user gesture can produce several filter transitions in rapid
+    /// succession. Without cancellation, all of them would dispatch
+    /// scroll-to-bottom work items that execute in order, briefly
+    /// flashing the LazyVStack to intermediate positions before
+    /// settling. Cancelling the previous work item before
+    /// scheduling a new one keeps only the trailing scroll.
     private func scrollToBottom(
         proxy: ScrollViewProxy,
         snapshots: [ChunkRowSnapshot]
     ) {
         guard !snapshots.isEmpty else { return }
-        DispatchQueue.main.async {
+        scrollCoordinator.pendingWork?.cancel()
+        let work = DispatchWorkItem {
             var tx = Transaction()
             tx.disablesAnimations = true
             withTransaction(tx) {
                 proxy.scrollTo(Self.chunkListId, anchor: .bottom)
             }
         }
+        scrollCoordinator.pendingWork = work
+        DispatchQueue.main.async(execute: work)
     }
 
     private var emptyTranscriptView: some View {

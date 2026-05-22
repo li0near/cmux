@@ -61,10 +61,11 @@ final class VisibleTurnFilterTests: XCTestCase {
         XCTAssertEqual(result, .turns([]))
     }
 
-    func testNilScrollbarReturnsEmptyTurnsSet() {
+    func testNilScrollbarWithEmptyChunksReturnsEmptyTurnsSet() {
+        // Both scrollbar nil AND chunks empty: nothing to show.
         let result = computeVisibleTurnFilter(
             scrollbar: nil,
-            chunks: [userChunk("u1")],
+            chunks: [],
             anchors: []
         )
         XCTAssertEqual(result, .turns([]))
@@ -182,7 +183,9 @@ final class VisibleTurnFilterTests: XCTestCase {
             userChunk("u2"),
             userChunk("u3")
         ]
-        // Anchor only for u3, but viewport is below u3's row.
+        // Anchor only for u3, but viewport is below u3's row. With at
+        // least one anchor present, viewport above all of them falls
+        // through to the .preAnchored regime.
         let result = computeVisibleTurnFilter(
             scrollbar: VisibleTurnScrollSnapshot(total: 1000, offset: 50, len: 100),
             chunks: chunks,
@@ -191,7 +194,12 @@ final class VisibleTurnFilterTests: XCTestCase {
         XCTAssertEqual(result, .preAnchored)
     }
 
-    func testNoAnchorsAtAllAndNotAtBottomReturnsPreAnchored() {
+    func testNoAnchorsAtAllStaysOnLatestTurn() {
+        // Resumed-session shape: zero anchors, viewport not at-bottom.
+        // The filter must NOT collapse to .preAnchored — that would
+        // expand the inspector to the full stream and back as the
+        // user scrolls slightly off-bottom (observed UI flash). Stay
+        // on the latest user turn.
         let chunks = [
             userChunk("u1"),
             userChunk("u2"),
@@ -203,7 +211,27 @@ final class VisibleTurnFilterTests: XCTestCase {
             chunks: chunks,
             anchors: []
         )
-        XCTAssertEqual(result, .preAnchored)
+        XCTAssertEqual(result, .turns(["u4"]))
+    }
+
+    // MARK: - No-scrollbar cold attach
+
+    func testNilScrollbarWithChunksReturnsLatestTurn() {
+        // Cold attach / tab-switch / resume before Ghostty's first
+        // scrollbar tick: scrollbar is nil but the stream already
+        // has chunks. Must show the live tail, not an empty pane.
+        let chunks = [
+            userChunk("u1"),
+            aiChunk("a1"),
+            userChunk("u2"),
+            aiChunk("a2")
+        ]
+        let result = computeVisibleTurnFilter(
+            scrollbar: nil,
+            chunks: chunks,
+            anchors: []
+        )
+        XCTAssertEqual(result, .turns(["u2"]))
     }
 
     // MARK: - Resize scaling
