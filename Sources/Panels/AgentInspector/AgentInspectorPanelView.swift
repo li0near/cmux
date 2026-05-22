@@ -173,6 +173,9 @@ struct AgentInspectorPanelView: View {
                     }
                     .padding(.vertical, 6)
                 }
+                // Match Ghostty's terminal scroller style: auto-hide
+                // overlay rather than always-visible legacy scrollers.
+                .scrollIndicators(.hidden)
                 // Default the `.preAnchored` zone to its tail so the
                 // user lands on the latest pre-inspector messages —
                 // mirrors how Claude positions the cursor at the end
@@ -192,8 +195,38 @@ struct AgentInspectorPanelView: View {
                         proxy.scrollTo(lastId, anchor: .bottom)
                     }
                 }
+                // Log-tail behavior: when a new chunk lands AND the
+                // filter is showing the live tail (the latest user
+                // chunk's turn), auto-scroll the inspector to its
+                // own bottom so the user keeps seeing new content
+                // without having to scroll manually. Other filter
+                // states (older anchored turns, free-scroll
+                // pre-anchored history) are not auto-scrolled —
+                // the user is browsing those deliberately.
+                .onChange(of: snapshots.last?.id) { newLastId in
+                    guard let newLastId,
+                          isFollowingLiveTail(snapshots: snapshots) else { return }
+                    var tx = Transaction()
+                    tx.disablesAnimations = true
+                    withTransaction(tx) {
+                        proxy.scrollTo(newLastId, anchor: .bottom)
+                    }
+                }
             }
         }
+    }
+
+    /// True when the inspector is currently rendering the live tail —
+    /// i.e. the last chunk in the displayed snapshot list is also the
+    /// last user chunk (or last chunk overall) of the full stream. In
+    /// this state, new chunks landing at the bottom should auto-scroll
+    /// the inspector. Older anchored turns and pre-anchored free-scroll
+    /// zones are not auto-scrolled.
+    private func isFollowingLiveTail(snapshots: [ChunkRowSnapshot]) -> Bool {
+        guard let displayedLastId = snapshots.last?.id else { return false }
+        let allChunks = panel.stream.chunks
+        guard let streamLastId = allChunks.last?.id else { return false }
+        return displayedLastId == streamLastId
     }
 
     /// Scroll to the last visible chunk's bottom edge if the panel is
