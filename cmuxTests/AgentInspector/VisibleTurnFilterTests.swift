@@ -194,12 +194,14 @@ final class VisibleTurnFilterTests: XCTestCase {
         XCTAssertEqual(result, .preAnchored)
     }
 
-    func testNoAnchorsAtAllStaysOnLatestTurn() {
-        // Resumed-session shape: zero anchors, viewport not at-bottom.
-        // The filter must NOT collapse to .preAnchored — that would
-        // expand the inspector to the full stream and back as the
-        // user scrolls slightly off-bottom (observed UI flash). Stay
-        // on the latest user turn.
+    func testNoAnchorsAtAllAndNotAtBottomReturnsPreAnchored() {
+        // Resumed-session shape: zero anchors, viewport not at-bottom
+        // (well past the at-bottom tolerance band). The user scrolled
+        // significantly off-bottom into the resumed-history zone.
+        // Inspector enters .preAnchored — free-scroll the unanchored
+        // history. The at-bottom tolerance prevents borderline flap
+        // back to .turns([latest]) when the user is only a few rows
+        // shy of `total`.
         let chunks = [
             userChunk("u1"),
             userChunk("u2"),
@@ -211,7 +213,26 @@ final class VisibleTurnFilterTests: XCTestCase {
             chunks: chunks,
             anchors: []
         )
-        XCTAssertEqual(result, .turns(["u4"]))
+        XCTAssertEqual(result, .preAnchored)
+    }
+
+    func testAtBottomToleranceKeepsLatestTurnNearBottom() {
+        // Viewport ends 2 rows shy of `total` — within the
+        // atBottomToleranceRows band — should still register as
+        // at-bottom and return the latest user chunk's turn.
+        // Without the tolerance, mouse-wheel ticks and overscroll
+        // bounce flap the filter into .preAnchored and back.
+        let chunks = [
+            userChunk("u1"),
+            userChunk("u2"),
+            userChunk("u3")
+        ]
+        let result = computeVisibleTurnFilter(
+            scrollbar: VisibleTurnScrollSnapshot(total: 1000, offset: 948, len: 50),
+            chunks: chunks,
+            anchors: []
+        )
+        XCTAssertEqual(result, .turns(["u3"]))
     }
 
     // MARK: - No-scrollbar cold attach

@@ -194,17 +194,6 @@ struct AgentInspectorPanelView: View {
                     .id(Self.chunkListId)
                     .padding(.vertical, 6)
                 }
-                // Session-keyed identity: when the user switches
-                // tabs, FocusedSurfaceObserver emits a different
-                // session and the inspector rebuilds its chunk list.
-                // Tagging the ScrollView with the session id forces
-                // SwiftUI to tear down the old container and create a
-                // fresh one — `.onAppear` then fires for the new
-                // ScrollView, triggering the snap-to-bottom path.
-                // Without this id, SwiftUI reuses the prior
-                // ScrollView's scroll offset (which often lands at
-                // the top of the new chunk list).
-                .id(panel.resolvedSession?.sessionId ?? "__no_session__")
                 // Match Ghostty's terminal scroller style: never show
                 // the macOS legacy scrollbar (which would always be
                 // visible and re-size as the LazyVStack estimates new

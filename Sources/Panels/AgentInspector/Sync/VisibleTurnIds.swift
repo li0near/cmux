@@ -38,6 +38,17 @@ enum VisibleTurnFilter: Equatable {
     case preAnchored
 }
 
+/// Number of rows of slack at the bottom of the scrollback that
+/// still count as "at bottom." Small scroll movements (mouse-wheel
+/// ticks, overscroll bounce, sub-row reports during a drag gesture)
+/// can leave the terminal a few rows shy of `total` while the user
+/// considers themselves at the bottom. Without this tolerance the
+/// filter flaps between `.turns([latest])` and `.preAnchored` for
+/// the same gesture, especially in resumed sessions where the
+/// `.preAnchored` zone covers the entire transcript and any flap
+/// rebuilds the LazyVStack with a very different content count.
+private let atBottomToleranceRows: UInt64 = 3
+
 /// Compute the visible-turn filter from the paired terminal's
 /// scrollbar state, the inspector's chunk list, and the recorded
 /// turn anchors.
@@ -49,22 +60,17 @@ enum VisibleTurnFilter: Equatable {
 ///    Ghostty's first scrollbar tick): treat as at-bottom — return
 ///    the latest user chunk's turn so the inspector shows live tail
 ///    instead of an empty placeholder.
-/// 3. **At-bottom snap** (`viewportEnd ≥ total`) → `.turns([lastUserChunkId])`.
-///    The user is explicitly looking at the latest content; show that
-///    turn whether or not it's anchored.
-/// 4. **No anchors recorded yet** (e.g. resumed session whose past
-///    prompts never fired prompt-submit hooks under the live cmux):
-///    keep the filter on `.turns([lastUserChunkId])` instead of
-///    flipping to `.preAnchored`. Without this, the first scroll-up
-///    off-bottom would expand the inspector to render the entire
-///    stream and back, producing a visible flash.
-/// 5. **Anchored fully-visible**: every anchor whose effective row
+/// 3. **At-bottom snap** (within `atBottomToleranceRows` of `total`)
+///    → `.turns([lastUserChunkId])`. The user is explicitly looking
+///    at the latest content; show that turn whether or not it's
+///    anchored.
+/// 4. **Anchored fully-visible**: every anchor whose effective row
 ///    sits within `[viewportTop, viewportEnd]` → `.turns(matched)`.
-/// 6. **Anchored "before"**: largest anchor with effective row ≤
+/// 5. **Anchored "before"**: largest anchor with effective row ≤
 ///    `viewportTop` → `.turns([before.userChunkId])`. The user is
 ///    mid-AI-response; show the prompt that initiated it.
-/// 7. **No anchor coverage** → `.preAnchored`. Free-scroll the
-///    pre-inspector zone.
+/// 6. **No anchor coverage** → `.preAnchored`. Free-scroll the
+///    pre-inspector / resumed-history zone.
 ///
 /// **Resize compensation.** Each anchor stores
 /// `terminalRowAtSubmit` and `totalAtCapture`. On terminal resize,
@@ -88,35 +94,30 @@ func computeVisibleTurnFilter(
     }
 
     let viewportEnd = scrollbar.offset &+ scrollbar.len
-    let isAtBottom = scrollbar.total == 0 || viewportEnd >= scrollbar.total
+    let isAtBottom = scrollbar.total == 0
+        || viewportEnd &+ atBottomToleranceRows >= scrollbar.total
     if isAtBottom {
         return .turns([chunks.lastUserChunkId ?? chunks.last!.id])
     }
 
-    // Anchors empty (resumed / pre-inspector content): there is no
-    // way to map the viewport to a specific older turn, so stay on
-    // the latest turn instead of expanding to render the entire
-    // stream. Without this guard, scrolling slightly off-bottom in
-    // a resumed session would flash the full transcript and snap
-    // back, producing the observed UI flicker.
-    guard !anchors.isEmpty else {
-        return .turns([chunks.lastUserChunkId ?? chunks.last!.id])
-    }
-
-    let viewportTop = scrollbar.offset
-    let viewportBot = viewportEnd
-    let scaled: [(anchor: TurnAnchor, row: UInt64)] = anchors.map {
-        (anchor: $0, row: scaledRow($0, currentTotal: scrollbar.total))
-    }
-    let fullyVisible = scaled.filter { $0.row >= viewportTop && $0.row <= viewportBot }
-    if !fullyVisible.isEmpty {
-        return .turns(Set(fullyVisible.map { $0.anchor.userChunkId }))
-    }
-    let before = scaled
-        .filter { $0.row <= viewportTop }
-        .max(by: { $0.row < $1.row })
-    if let before {
-        return .turns([before.anchor.userChunkId])
+    if !anchors.isEmpty {
+        let viewportTop = scrollbar.offset
+        let viewportBot = viewportEnd
+        let scaled: [(anchor: TurnAnchor, row: UInt64)] = anchors.map {
+            (anchor: $0, row: scaledRow($0, currentTotal: scrollbar.total))
+        }
+        let fullyVisible = scaled.filter { $0.row >= viewportTop && $0.row <= viewportBot }
+        if !fullyVisible.isEmpty {
+            return .turns(Set(fullyVisible.map { $0.anchor.userChunkId }))
+        }
+        let before = scaled
+            .filter { $0.row <= viewportTop }
+            .max(by: { $0.row < $1.row })
+        if let before {
+            return .turns([before.anchor.userChunkId])
+        }
+        // Viewport is above all anchored rows → fall through to
+        // .preAnchored (free-scroll history zone).
     }
 
     return .preAnchored
