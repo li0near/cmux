@@ -153,25 +153,63 @@ struct AgentInspectorPanelView: View {
         if snapshots.isEmpty {
             emptyTranscriptView
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(snapshots) { snapshot in
-                        ChunkRowView(
-                            snapshot: snapshot,
-                            palette: palette,
-                            streamingAIChunkId: streamingAIChunkId,
-                            onOpenDetail: { request in
-                                panel.openDetail(request: request)
-                            }
-                        )
-                        .equatable()
-                        .id(snapshot.id)
-                        Divider()
-                            .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(snapshots) { snapshot in
+                            ChunkRowView(
+                                snapshot: snapshot,
+                                palette: palette,
+                                streamingAIChunkId: streamingAIChunkId,
+                                onOpenDetail: { request in
+                                    panel.openDetail(request: request)
+                                }
+                            )
+                            .equatable()
+                            .id(snapshot.id)
+                            Divider()
+                                .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+                // Default the `.preAnchored` zone to its tail so the
+                // user lands on the latest pre-inspector messages —
+                // mirrors how Claude positions the cursor at the end
+                // of the conversation when resuming a session. We
+                // only scroll on **transitions** into `.preAnchored`
+                // (not on every chunk update), so the user keeps
+                // their position once they start scrolling.
+                .onAppear {
+                    scrollToBottomIfPreAnchored(proxy: proxy, snapshots: snapshots)
+                }
+                .onChange(of: panel.visibleTurnFilter) { newFilter in
+                    guard case .preAnchored = newFilter else { return }
+                    guard let lastId = snapshots.last?.id else { return }
+                    var tx = Transaction()
+                    tx.disablesAnimations = true
+                    withTransaction(tx) {
+                        proxy.scrollTo(lastId, anchor: .bottom)
                     }
                 }
-                .padding(.vertical, 6)
             }
+        }
+    }
+
+    /// Scroll to the last visible chunk's bottom edge if the panel is
+    /// currently in the `.preAnchored` filter case. Called from the
+    /// `ScrollViewReader`'s `onAppear` so the initial display lands at
+    /// the end of the unanchored history zone.
+    private func scrollToBottomIfPreAnchored(
+        proxy: ScrollViewProxy,
+        snapshots: [ChunkRowSnapshot]
+    ) {
+        guard case .preAnchored = panel.visibleTurnFilter else { return }
+        guard let lastId = snapshots.last?.id else { return }
+        var tx = Transaction()
+        tx.disablesAnimations = true
+        withTransaction(tx) {
+            proxy.scrollTo(lastId, anchor: .bottom)
         }
     }
 
