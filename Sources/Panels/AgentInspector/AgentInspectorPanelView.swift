@@ -249,15 +249,23 @@ struct AgentInspectorPanelView: View {
     /// the trailing Divider — without adding a sentinel view to the
     /// layout. Animations disabled to avoid the SwiftUI
     /// animation-queue overflow that bit Phase B v1.
+    ///
+    /// **Deferred to the next main runloop** because filter
+    /// transitions and stream updates rebuild the LazyVStack's
+    /// content set; calling `scrollTo` synchronously would target a
+    /// partially-materialized tree and land at arbitrary offsets.
+    /// The async hop lets SwiftUI commit the new layout first.
     private func scrollToBottom(
         proxy: ScrollViewProxy,
         snapshots: [ChunkRowSnapshot]
     ) {
         guard !snapshots.isEmpty else { return }
-        var tx = Transaction()
-        tx.disablesAnimations = true
-        withTransaction(tx) {
-            proxy.scrollTo(Self.chunkListId, anchor: .bottom)
+        DispatchQueue.main.async {
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) {
+                proxy.scrollTo(Self.chunkListId, anchor: .bottom)
+            }
         }
     }
 
