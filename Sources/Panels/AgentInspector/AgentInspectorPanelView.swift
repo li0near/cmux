@@ -137,7 +137,11 @@ struct AgentInspectorPanelView: View {
             case .off:
                 return allChunks
             case .snap:
-                return chunksInVisibleTurns(chunks: allChunks, visibleIds: panel.visibleTurnIds)
+                return chunksForFilter(
+                    chunks: allChunks,
+                    filter: panel.visibleTurnFilter,
+                    anchoredUserIds: panel.anchoredUserIds
+                )
             }
         }()
         let snapshots = visibleChunks.map {

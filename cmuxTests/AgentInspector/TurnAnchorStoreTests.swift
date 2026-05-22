@@ -84,4 +84,16 @@ final class TurnAnchorStoreTests: XCTestCase {
         store.recordTurnStart(userChunkId: "m", terminalRow: 300)
         XCTAssertEqual(store.orderedAnchors.map(\.userChunkId), ["z", "a", "m"])
     }
+
+    func testRecordTurnStartWithTotalAtCaptureRoundtrips() {
+        let store = TurnAnchorStore()
+        store.recordTurnStart(
+            userChunkId: "u1",
+            terminalRow: 250,
+            totalAtCapture: 500
+        )
+        let anchor = store.anchor(forChunkId: "u1")
+        XCTAssertEqual(anchor?.terminalRowAtSubmit, 250)
+        XCTAssertEqual(anchor?.totalAtCapture, 500)
+    }
 }

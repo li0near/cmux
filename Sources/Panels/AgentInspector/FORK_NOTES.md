@@ -66,6 +66,7 @@ Sources/Panels/AgentInspector/
     TurnAnchorStore.swift                      # Phase B
     InspectorSyncMode.swift                    # Phase B
     VisibleTurnIds.swift                       # Phase B v2 (visible-turn filter algorithm)
+    ClaudeAnchorPayload.swift                  # Phase C (live-anchor payload from claude_anchor socket)
   Tail/
     JSONLTail.swift
     TranscriptStream.swift
@@ -80,7 +81,8 @@ cmuxTests/AgentInspector/
   InspectorIconTests.swift                     # Phase A++
   AgentInspectorDetailContentTests.swift       # Phase A++
   TurnAnchorStoreTests.swift                   # Phase B
-  VisibleTurnIdsTests.swift                    # Phase B v2
+  VisibleTurnFilterTests.swift                 # Phase B v2 → renamed in Phase C
+  LiveAnchorReceiverTests.swift                # Phase C
 cmuxTests/Resources/AgentInspector/
   claude-sample.jsonl
   claude-hook-sessions.json
@@ -131,5 +133,13 @@ override env var. Stock homebrew `zig` 0.16.0 fails because Ghostty's
 |---|---|---|---|
 | `Sources/RestorableAgentSession.swift` | `case .claude:` in `resumeArguments` discards `launchCommand.executablePath` and rewrites `arguments[0]` to bare `"claude"` so the cmux wrapper resolves at exec time | ~25 lines added; no signatures changed | Low — additive within an existing switch case; conflicts only if upstream restructures `resumeArguments` |
 | `docs/proposals/claude-wrapper-path-precedence.md` | Standalone PR-draft doc documenting the bug, the existing wrapper architecture, the fix, and a maintainer test plan | NEW (no merge risk) | None — new file in a new directory |
+
+## Phase C upstream-touch additions for live-anchor wire
+
+| File | Purpose | Lines | Risk on upstream merge |
+|---|---|---|---|
+| `CLI/cmux.swift` | After the existing `clear_notifications` socket call in the `prompt-submit` claude-hook handler (~line 17320), send a new v1-text `claude_anchor <surfaceUUID> <turnId> <sessionId> <transcriptBytes>` command via `sendV1Command`. Skipped silently if any required field is missing. | ~18 lines added; no signatures changed | Low — additive, isolated to the `prompt-submit` case body |
+| `Sources/TerminalController.swift` | New v1 router branch `case "claude_anchor":` (~line 2504) plus a small `claudeAnchor(_ args:)` private handler near `notifyTargetQueued` (~line 15569) that parses tokens, reads `ScrollbarStateCache.shared.latest(for:)`, and posts `Notification.Name.cmuxClaudePromptSubmitted` with `ClaudeAnchorPayload`. | ~70 lines added; no signatures changed | Low — additive case + private handler |
+| `Sources/GhosttyTerminalView.swift` | New entry in the `extension Notification.Name` block (~line 10344): `cmuxClaudePromptSubmitted`, with a comment naming the AgentInspector consumer. | 5 lines added | Low — additive at the bottom of an enumeration |
 
 Pre-existing `Resources/shell-integration/cmux-zsh-integration.zsh` and `Sources/GhosttyTerminalView.swift` are untouched.

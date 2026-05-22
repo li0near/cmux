@@ -10349,6 +10349,11 @@ extension Notification.Name {
     static let ghosttyConfigDidReload = Notification.Name("ghosttyConfigDidReload")
     static let ghosttyDefaultBackgroundDidChange = Notification.Name("ghosttyDefaultBackgroundDidChange")
     static let browserSearchFocus = Notification.Name("browserSearchFocus")
+    /// Posted by the v1 socket `claude_anchor` handler when a Claude
+    /// prompt-submit hook fires. `userInfo[Notification.claudeAnchorPayloadKey]`
+    /// carries a `ClaudeAnchorPayload` value. Consumed by
+    /// `AgentInspectorPanel` to record an exact turn anchor.
+    static let cmuxClaudePromptSubmitted = Notification.Name("cmuxClaudePromptSubmitted")
 }
 
 // MARK: - Scroll View Wrapper (Ghostty-style scrollbar)

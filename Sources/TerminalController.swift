@@ -2501,6 +2501,9 @@ class TerminalController {
         case "clear_notifications":
             return clearNotifications(args)
 
+        case "claude_anchor":
+            return claudeAnchor(args)
+
         case "set_app_focus":
             return setAppFocusOverride(args)
 
@@ -15561,6 +15564,77 @@ class TerminalController {
             )
         }
         return result
+    }
+
+    /// v1 socket handler for the `claude_anchor` command emitted by
+    /// `cmux hooks claude prompt-submit`. Captures the live
+    /// `scrollbar.total` for the surface and posts
+    /// `Notification.Name.cmuxClaudePromptSubmitted` so the
+    /// `AgentInspectorPanel` can record an exact turn anchor.
+    ///
+    /// Wire format (space-separated tokens):
+    ///   `claude_anchor <surfaceUUID> <turnId> <sessionId> <transcriptBytes>`
+    ///
+    /// The handler runs on `@MainActor` (this class is `@MainActor`),
+    /// so it can read `ScrollbarStateCache.shared.latest(for:)`
+    /// synchronously without a sync hop.
+    private func claudeAnchor(_ args: String) -> String {
+        let trimmed = args.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "ERROR: Usage: claude_anchor <surface_uuid> <turn_id> <session_id> <transcript_bytes>"
+        }
+        let parts = trimmed.split(separator: " ", maxSplits: 3).map(String.init)
+        guard parts.count == 4 else {
+            return "ERROR: Usage: claude_anchor <surface_uuid> <turn_id> <session_id> <transcript_bytes>"
+        }
+        guard let surfaceUUID = UUID(uuidString: parts[0]) else {
+            return "ERROR: claude_anchor requires surface_uuid to be a UUID"
+        }
+        let turnId = parts[1]
+        let sessionId = parts[2]
+        guard let transcriptBytes = UInt64(parts[3]) else {
+            return "ERROR: claude_anchor requires transcript_bytes to be a non-negative integer"
+        }
+        guard !turnId.isEmpty, !sessionId.isEmpty else {
+            return "ERROR: claude_anchor requires non-empty turn_id and session_id"
+        }
+
+        let scrollbar = ScrollbarStateCache.shared.latest(for: surfaceUUID)
+        guard let scrollbar else {
+#if DEBUG
+            cmuxDebugLog(
+                "socket.claudeAnchor.miss surface=\(surfaceUUID.uuidString.prefix(8)) turn=\(turnId.prefix(8)) reason=no_scrollbar_cache"
+            )
+#endif
+            // No live scrollbar yet — the inspector can't use this
+            // anchor, but we still ack so the hook doesn't surface an
+            // error to the user. This is rare in practice (the cache
+            // populates on the first Ghostty render, well before any
+            // prompt submission).
+            return "OK"
+        }
+
+        let payload = ClaudeAnchorPayload(
+            sessionId: sessionId,
+            surfaceId: surfaceUUID,
+            turnId: turnId,
+            transcriptPath: "",
+            transcriptBytes: transcriptBytes,
+            terminalRowAtSubmit: scrollbar.total,
+            totalAtCapture: scrollbar.total,
+            capturedAt: Date()
+        )
+#if DEBUG
+        cmuxDebugLog(
+            "socket.claudeAnchor surface=\(surfaceUUID.uuidString.prefix(8)) turn=\(turnId.prefix(8)) row=\(scrollbar.total) bytes=\(transcriptBytes)"
+        )
+#endif
+        NotificationCenter.default.post(
+            name: .cmuxClaudePromptSubmitted,
+            object: nil,
+            userInfo: [Notification.claudeAnchorPayloadKey: payload]
+        )
+        return "OK"
     }
 
     private func notifyTargetQueued(_ args: String) -> String {

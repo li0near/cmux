@@ -17318,6 +17318,26 @@ struct CMUXCLI {
                 )
             }
             _ = try sendV1Command("clear_notifications --tab=\(workspaceId)", client: client)
+            // Send an exact-anchor record to the running cmux app so
+            // the AgentInspector can capture `scrollbar.total` for this
+            // surface at the precise moment of submission. Skip
+            // silently if any required field is missing — the app
+            // gracefully falls back to no-anchor for this turn.
+            if let sessionId = parsedInput.sessionId,
+               let turnId = parsedInput.turnId,
+               !sessionId.isEmpty,
+               !turnId.isEmpty,
+               !surfaceId.isEmpty {
+                let transcriptBytes: UInt64 = {
+                    guard let path = parsedInput.transcriptPath, !path.isEmpty else { return 0 }
+                    let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+                    return (attrs?[.size] as? NSNumber)?.uint64Value ?? 0
+                }()
+                _ = try? sendV1Command(
+                    "claude_anchor \(surfaceId) \(turnId) \(sessionId) \(transcriptBytes)",
+                    client: client
+                )
+            }
             try setClaudeStatus(
                 client: client,
                 workspaceId: workspaceId,

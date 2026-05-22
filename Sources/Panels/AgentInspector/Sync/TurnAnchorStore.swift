@@ -17,8 +17,15 @@ struct TurnAnchor: Equatable, Sendable {
     var aiChunkId: String?
     /// Terminal `total` scrollback rows at user-prompt observation time.
     /// Read from `ScrollbarStateCache.latest(for:)` when the user chunk
-    /// first appears in the stream.
+    /// first appears in the stream, OR delivered exactly via the
+    /// `claude_anchor` socket command when the inspector + cmux are
+    /// running together.
     let terminalRowAtSubmit: UInt64
+    /// `scrollbar.total` snapshot at capture time. Used by
+    /// `computeVisibleTurnFilter` to scale `terminalRowAtSubmit` on
+    /// terminal resize / rewrap. `0` means "treat as unscaled" (used
+    /// for synthetic / test-only anchors).
+    let totalAtCapture: UInt64
     /// Wallclock at which the anchor was captured. Useful for debugging
     /// stale-cache races.
     let capturedAt: Date
@@ -59,9 +66,15 @@ final class TurnAnchorStore {
 
     /// Record the anchor for a freshly-observed user prompt. Idempotent:
     /// re-discovery of the same chunk does not shift the anchor.
+    ///
+    /// `totalAtCapture` is the `scrollbar.total` snapshot at the moment
+    /// `terminalRow` was read; the visible-turn algorithm uses it to
+    /// scale the row on terminal resize. Pass `0` for synthetic /
+    /// test-only anchors that should not be scaled.
     func recordTurnStart(
         userChunkId: String,
         terminalRow: UInt64,
+        totalAtCapture: UInt64 = 0,
         at date: Date = Date()
     ) {
         if anchors[userChunkId] != nil { return }
@@ -69,6 +82,7 @@ final class TurnAnchorStore {
             userChunkId: userChunkId,
             aiChunkId: nil,
             terminalRowAtSubmit: terminalRow,
+            totalAtCapture: totalAtCapture,
             capturedAt: date
         )
         anchors[userChunkId] = anchor

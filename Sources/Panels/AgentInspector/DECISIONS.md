@@ -805,3 +805,137 @@ the latter two are unchanged surface).
 - 6-category context attribution badge.
 - Connector-line overlay between paired panes.
 - Keyboard shortcuts + command-palette entry.
+
+## Phase C: Exact live anchors via prompt-submit hook
+
+After dogfooding Phase B v2, the user observed two issues with the
+visible-turn filter:
+
+1. Live anchors were captured at JSONL-tail debounce time, not at
+   actual prompt submission — typically 50–200 ms late. Within-turn
+   scroll occasionally landed on the wrong prompt.
+2. Historical chunks loaded from disk all received the same
+   `scrollbar.total` value at inspector-attach time, causing the
+   filter to flicker between turns as the user scrolled within one
+   response.
+
+The user pushed back on a coarse "even-distribution" bootstrap fix:
+
+> "I would propose pre-inspector turns to be free scroll only, no
+> estimation, no coarse mapping, if it's inaccurate, it's useless."
+
+Phase C narrows the precision domain rather than expanding the
+fallback. Live prompts get **exact** anchors via a new hook → socket
+wire; pre-inspector content is rendered free-scroll in its own zone
+without trying to align with the terminal.
+
+### Decisions
+
+- **Three-way filter (`VisibleTurnFilter`).** Replaces v2's
+  `Set<String>` return type from `computeVisibleTurnIds`. New cases:
+  `.all` (free scroll), `.turns(Set<String>)` (anchored region),
+  `.preAnchored` (free scroll within unanchored history). The
+  proportional fallback regime is dropped entirely.
+
+- **Hook → socket → notification → FIFO drain.**
+  `cmux hooks claude prompt-submit` (already installed by the cmux
+  wrapper at `Resources/bin/claude:485`) sends a new v1-text command
+  `claude_anchor <surfaceUUID> <turnId> <sessionId> <transcriptBytes>`
+  to the running cmux app via the existing `sendV1Command` path. The
+  app's v1 router handler reads
+  `ScrollbarStateCache.shared.latest(for: surfaceUUID)?.total`
+  synchronously (router is `@MainActor`), constructs a
+  `ClaudeAnchorPayload`, and posts
+  `Notification.Name.cmuxClaudePromptSubmitted`.
+  `AgentInspectorPanel` subscribes; payloads matching the resolved
+  session are queued. On each stream update, the panel calls the
+  pure `pairClaudeAnchorsToUserChunks(...)` free function (in
+  `VisibleTurnIds.swift`) to FIFO-pair queued payloads with newly-
+  arrived user chunks and apply each as
+  `turnAnchorStore.recordTurnStart(userChunkId:, terminalRow:,
+  totalAtCapture:)` with the exact row.
+
+- **Anchors carry `totalAtCapture`.** `TurnAnchor` gains a new
+  `totalAtCapture: UInt64` field. `computeVisibleTurnFilter` scales
+  each anchor's row on read via
+  `scaledRow = terminalRowAtSubmit × currentTotal / totalAtCapture`
+  to compensate for terminal resize / rewrap. Approximate (rewrap is
+  non-uniform) but bounded; anchors with `totalAtCapture == 0` are
+  treated as unscaled (synthetic / test-only).
+
+- **No bootstrap distribution; pre-inspector chunks have no anchor.**
+  An earlier draft fix that distributed historical user chunks evenly
+  across `[0, scrollbar.total]` at inspector-attach time was rejected
+  by the user as "if it's inaccurate, it's useless." The
+  `.preAnchored` filter case shows pre-inspector chunks as a free-
+  scroll zone independent of terminal scroll position.
+
+- **Inspector + cmux must both be running.** Anchors are recorded
+  only for prompts whose hook fires while the inspector + cmux are
+  both active. Pre-inspector turns and `--resume`-painted history
+  fall into the `.preAnchored` zone. This is the user's stated scope
+  ("in-session post-inspector precision only") and keeps the touch
+  surface minimal.
+
+- **Content-search escape hatch ruled out.** Investigated whether
+  Claude's TUI emits any sentinel sequences cmux could mine
+  (OSC 133, custom escapes, env-driven structured event streams).
+  Empirical capture: claude emits no per-turn markers; v2.1.139
+  blocks hooks from /dev/tty so injection is impossible; the only
+  per-turn signal Anthropic exposes is the `prompt-submit` hook
+  itself. No silver bullet.
+
+### Files added in Phase C
+
+- `Sources/Panels/AgentInspector/Sync/ClaudeAnchorPayload.swift` —
+  value-typed payload + `Notification.claudeAnchorPayloadKey`.
+- `cmuxTests/AgentInspector/LiveAnchorReceiverTests.swift` (8 cases:
+  empty queue, empty chunks, single pair, multi-pair FIFO,
+  already-anchored skip, residual-queue, pre-inspector-without-queue,
+  notification payload roundtrip).
+
+### Files renamed in Phase C
+
+- `cmuxTests/AgentInspector/VisibleTurnIdsTests.swift` →
+  `VisibleTurnFilterTests.swift` (12 cases; algorithm rewritten for
+  the enum filter; resize-scaling cases added).
+
+### Files modified in Phase C
+
+- `CLI/cmux.swift` — `prompt-submit` handler sends the new
+  `claude_anchor` socket command after the existing
+  `clear_notifications`.
+- `Sources/TerminalController.swift` — new v1 router branch +
+  `claudeAnchor(_ args:)` handler.
+- `Sources/GhosttyTerminalView.swift` — new
+  `Notification.Name.cmuxClaudePromptSubmitted`.
+- `Sources/Panels/AgentInspector/Sync/InspectorSyncMode.swift` —
+  unchanged (still `.off` / `.snap`).
+- `Sources/Panels/AgentInspector/Sync/TurnAnchorStore.swift` —
+  `TurnAnchor.totalAtCapture: UInt64` field; `recordTurnStart`
+  gains `totalAtCapture:` parameter (default 0).
+- `Sources/Panels/AgentInspector/Sync/VisibleTurnIds.swift` — full
+  rewrite to `computeVisibleTurnFilter -> VisibleTurnFilter`; adds
+  resize scaling + `chunksForFilter(...)` view-side projection +
+  `pairClaudeAnchorsToUserChunks(...)` free function.
+- `Sources/Panels/AgentInspector/AgentInspectorPanel.swift` —
+  `visibleTurnIds: Set<String>` → `visibleTurnFilter: VisibleTurnFilter`;
+  `pendingClaudeAnchors` queue + `claudeAnchorObserver` lifecycle;
+  `drainPendingClaudeAnchors()` + `pairAIChunksToTurnAnchors()` +
+  `handleClaudeAnchorNotification(...)`. Old
+  `captureTurnAnchorsForNewChunks` removed entirely.
+- `Sources/Panels/AgentInspector/AgentInspectorPanelView.swift` —
+  switches on `visibleTurnFilter` enum; passes `anchoredUserIds`
+  computed property to `chunksForFilter`.
+
+### Why Phase C is the right precision boundary
+
+- **Honest about what we know.** Anchored zone is *exact*; pre-
+  anchored zone is *free scroll*. No synthetic anchors, no estimation,
+  no bootstrap heuristic. Users see precision where the data exists.
+- **No invasion of claude.** All work is hook-driven via cmux's
+  existing wrapper. Claude itself is unmodified.
+- **Settings-gated.** The cmux wrapper installs hooks only when the
+  `automation.claudeCodeIntegration` toggle is on. Toggling the
+  setting toggles the precision tier on a per-session basis; with
+  the toggle off, all chunks fall into `.preAnchored`.
