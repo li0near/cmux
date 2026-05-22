@@ -198,21 +198,27 @@ struct AgentInspectorPanelView: View {
                 .onChange(of: panel.visibleTurnFilter) { _ in
                     scrollToBottom(proxy: proxy, snapshots: snapshots)
                 }
-                // Log-tail behavior: when a new chunk lands AND the
-                // filter is currently rendering the live tail, auto-
-                // scroll the inspector to its own bottom so the user
-                // keeps seeing new content without having to scroll
-                // manually. Other filter states (older anchored
-                // turns, free-scroll pre-anchored history) are not
-                // auto-scrolled — the user is browsing those
-                // deliberately.
-                .onChange(of: snapshots.last?.id) { newLastId in
-                    guard let newLastId,
-                          isFollowingLiveTail(snapshots: snapshots) else { return }
+                // Log-tail behavior: when a new JSONL line lands AND
+                // the filter is currently rendering the live tail,
+                // auto-scroll the inspector to its own bottom so the
+                // user keeps seeing new content. We track
+                // `stream.lineCount` (not `snapshots.last?.id`)
+                // because tool results, thinking continuations, and
+                // assistant-text deltas are folded into the existing
+                // trailing AI chunk — its `id` stays the same, but
+                // the content grows. `lineCount` increments on every
+                // ingested line regardless of folding, so it catches
+                // tool calls landing inside the same turn. Other
+                // filter states (older anchored turns, free-scroll
+                // pre-anchored history) are not auto-scrolled —
+                // the user is browsing those deliberately.
+                .onChange(of: panel.stream.lineCount) { _ in
+                    guard isFollowingLiveTail(snapshots: snapshots),
+                          let lastId = snapshots.last?.id else { return }
                     var tx = Transaction()
                     tx.disablesAnimations = true
                     withTransaction(tx) {
-                        proxy.scrollTo(newLastId, anchor: .bottom)
+                        proxy.scrollTo(lastId, anchor: .bottom)
                     }
                 }
             }
