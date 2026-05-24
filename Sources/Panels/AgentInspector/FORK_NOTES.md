@@ -142,4 +142,41 @@ override env var. Stock homebrew `zig` 0.16.0 fails because Ghostty's
 | `Sources/TerminalController.swift` | New v1 router branch `case "claude_anchor":` (~line 2504) plus a small `claudeAnchor(_ args:)` private handler near `notifyTargetQueued` (~line 15569) that parses tokens, reads `ScrollbarStateCache.shared.latest(for:)`, and posts `Notification.Name.cmuxClaudePromptSubmitted` with `ClaudeAnchorPayload`. | ~70 lines added; no signatures changed | Low — additive case + private handler |
 | `Sources/GhosttyTerminalView.swift` | New entry in the `extension Notification.Name` block (~line 10344): `cmuxClaudePromptSubmitted`, with a comment naming the AgentInspector consumer. | 5 lines added | Low — additive at the bottom of an enumeration |
 
-Pre-existing `Resources/shell-integration/cmux-zsh-integration.zsh` and `Sources/GhosttyTerminalView.swift` are untouched.
+## Phase D upstream-touch addition for hookbin precedence fix
+
+| File | Purpose | Lines | Risk on upstream merge |
+|---|---|---|---|
+| `Resources/bin/claude` | Inverted priority in `resolve_hook_cmux_bin()`: prefer `$self_dir/cmux` (the cmux that ships in the *same* bundle as the wrapper) over `$CMUX_BUNDLED_CLI_PATH`. Fixes a regression in the tagged debug build where stale `CMUX_BUNDLED_CLI_PATH` env from production cmux leaked into terminals and routed claude hooks to the wrong cmux app, breaking AgentInspector auto-attach. | ~15 lines added, ~5 lines reordered | Low — bash-only, internal to the wrapper. Conflicts only if upstream rewrites `resolve_hook_cmux_bin`. |
+
+Pre-existing `Resources/shell-integration/cmux-zsh-integration.zsh` is untouched.
+
+## Current state and known limitations (as of Phase D)
+
+The inspector's snap mode is functionally correct on the committed
+tip of `agent-inspector`, but transitions between filter regimes
+(`.turns([latest])` ↔ `.preAnchored`) cause a visible content-set
+swap. Hysteresis (at-bottom tolerance = 3) reduces the *frequency*
+of these transitions; it does not eliminate the *amplitude*. The
+flash manifests as a brief render of new content at the previous
+scroll offset, followed by a deferred `proxy.scrollTo` that snaps
+to the appropriate position one frame later.
+
+This is **deferred** to a follow-up session. Two viable paths:
+
+1. **Filter + synchronous `proxy.scrollTo`** — drop the
+   `DispatchQueue.main.async` deferral; commit content + scroll in
+   one SwiftUI cycle. Small change.
+2. **NSScrollView wrapper** — replace the SwiftUI `ScrollView` with
+   a hand-rolled `NSViewRepresentable`-backed `NSScrollView` for
+   atomic content+offset commit. Larger refactor.
+
+A **rejected experiment** was also attempted (Option A): always
+render every chunk, repurpose the filter as a scroll target only.
+That eliminated the flash but lost the snap-mode visual constraint
+the user wanted. See `DECISIONS.md` Phase D section for full
+context. Don't re-walk that path.
+
+Debug probes (under `#if DEBUG`) are present in
+`AgentInspectorPanel.swift` and `FocusedSurfaceObserver.swift` and
+should be removed when Phase D's deferred work ships. Tail location:
+`/tmp/cmux-debug-agent-inspector.log`.
