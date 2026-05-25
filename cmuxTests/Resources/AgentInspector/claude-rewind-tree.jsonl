@@ -1,0 +1,7 @@
+{"type":"user","uuid":"u-root","parentUuid":null,"isSidechain":false,"timestamp":"2026-05-25T12:00:00.000Z","message":{"role":"user","content":"What's 2+2?"}}
+{"type":"assistant","uuid":"a-attempt1","parentUuid":"u-root","isSidechain":false,"timestamp":"2026-05-25T12:00:01.000Z","message":{"role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"It's five."}]}}
+{"type":"user","uuid":"u-attempt2","parentUuid":"u-root","isSidechain":false,"timestamp":"2026-05-25T12:00:10.000Z","message":{"role":"user","content":"What's 2+2?"}}
+{"type":"assistant","uuid":"a-attempt2","parentUuid":"u-attempt2","isSidechain":false,"timestamp":"2026-05-25T12:00:11.000Z","message":{"role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"Still wrong."}]}}
+{"type":"user","uuid":"u-active","parentUuid":"u-root","isSidechain":false,"timestamp":"2026-05-25T12:00:20.000Z","message":{"role":"user","content":"What's 2+2?"}}
+{"type":"assistant","uuid":"a-active","parentUuid":"u-active","isSidechain":false,"timestamp":"2026-05-25T12:00:21.000Z","message":{"role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"Four."}]}}
+{"type":"last-prompt","leafUuid":"a-active","sessionId":"sess-rewind"}

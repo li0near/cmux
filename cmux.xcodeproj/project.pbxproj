@@ -11,6 +11,11 @@
 		063BC42CEE257D6213A2E30C /* WindowAndDragTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEE83F8394D90ACACD8E19DD /* WindowAndDragTests.swift */; };
 		0D56BE882EAD4B67AC44F96D /* TerminalDirectoryOpenSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B8E2E03F4A64C61B729CF19 /* TerminalDirectoryOpenSupport.swift */; };
 		0EB2093EB5B613A44E2CE165 /* claude-sample.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = DDDB816BF585ED73ACF6792E /* claude-sample.jsonl */; };
+		BC0040000000000000000001 /* claude-rewind-tree.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = BC0030000000000000000001 /* claude-rewind-tree.jsonl */; };
+		BC0040000000000000000002 /* claude-sidechain-task.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = BC0030000000000000000002 /* claude-sidechain-task.jsonl */; };
+		BC0040000000000000000003 /* claude-recap.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = BC0030000000000000000003 /* claude-recap.jsonl */; };
+		BC0040000000000000000004 /* claude-multi-pr.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = BC0030000000000000000004 /* claude-multi-pr.jsonl */; };
+		BC0040000000000000000005 /* claude-meta-content.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = BC0030000000000000000005 /* claude-meta-content.jsonl */; };
 		0F2C25F9170130F8DC09DD1B /* WorkspaceManualUnreadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D301919B10F22B8708E8883 /* WorkspaceManualUnreadTests.swift */; };
 		125BAEF2FE3B454547B964D1 /* ShortcutHintPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = A080D1F6CCCBFBED8D95DD1D /* ShortcutHintPill.swift */; };
 		1521D55DC63D5E5FC4955E31 /* ShortcutAndCommandPaletteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6083A7DAD962E287FC2FFE94 /* ShortcutAndCommandPaletteTests.swift */; };
@@ -53,6 +58,9 @@
 		4D8B37E0E11A29997632765F /* InternalTabDragConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 610008EA5E3744DDBE05C8E2 /* InternalTabDragConfiguration.swift */; };
 		51D800000000000000000001 /* SidebarIdentifierFormattingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51D800000000000000000002 /* SidebarIdentifierFormattingTests.swift */; };
 		5533469E88E718FD4FF2990C /* VisibleTurnFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 326452752C3EE646FC31690F /* VisibleTurnFilterTests.swift */; };
+		BC0060000000000000000001 /* ClaudeBranchResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0050000000000000000001 /* ClaudeBranchResolverTests.swift */; };
+		BC0060000000000000000002 /* ClaudeContentDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0050000000000000000002 /* ClaudeContentDetectorTests.swift */; };
+		BC0060000000000000000003 /* ClaudeRenderPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0050000000000000000003 /* ClaudeRenderPolicyTests.swift */; };
 		59E62D77E4C42330E8698421 /* AgentInspectorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5D8A4E2C24398CB87D4BC1 /* AgentInspectorPanel.swift */; };
 		5C3E0454B6C24B02A2F091A8 /* ShortcutRoutingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B42A82C6AA614E74873D9A5F /* ShortcutRoutingSupport.swift */; };
 		5E87AB5489D2264F467B0528 /* Workspace+AgentInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80A7C86A07B85BCB466809EE /* Workspace+AgentInspector.swift */; };
@@ -63,6 +71,10 @@
 		66B47319DD21BB9F78BA1A84 /* ClaudeHookSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3608B5FB4BBC087ED90A5267 /* ClaudeHookSessionStore.swift */; };
 		698944F99A6ADFBA24A7BFB9 /* AuthSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B1EA8948C5F126FE63CFB4E /* AuthSettingsStore.swift */; };
 		6993606BC52E2E3298DF9B67 /* ClaudeChunkBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31C28C46344A71FD0E0C133B /* ClaudeChunkBuilder.swift */; };
+		BC0020000000000000000001 /* ClaudeBuilderConsts.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0010000000000000000001 /* ClaudeBuilderConsts.swift */; };
+		BC0020000000000000000002 /* ClaudeContentDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0010000000000000000002 /* ClaudeContentDetector.swift */; };
+		BC0020000000000000000003 /* ClaudeBranchResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0010000000000000000003 /* ClaudeBranchResolver.swift */; };
+		BC0020000000000000000004 /* ClaudeRenderPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0010000000000000000004 /* ClaudeRenderPolicy.swift */; };
 		6B05EA57C7B8E4791069A1F1 /* CodexRolloutLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D13347746F0791319907F61 /* CodexRolloutLine.swift */; };
 		6B524A0BA34FD46A771335AB /* WorkspaceUnitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F8ED91A4B55D34BE6A0668 /* WorkspaceUnitTests.swift */; };
 		6B524A0CB34FD46A771335AB /* WorkspaceSplitStartupCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F8ED92A4B55D34BE6A0668 /* WorkspaceSplitStartupCommandTests.swift */; };
@@ -641,6 +653,9 @@
 		312DE7503B4658DD173121B8 /* AuthManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		31C28C46344A71FD0E0C133B /* ClaudeChunkBuilder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeChunkBuilder.swift; path = Panels/AgentInspector/Adapters/Claude/ClaudeChunkBuilder.swift; sourceTree = "<group>"; };
 		326452752C3EE646FC31690F /* VisibleTurnFilterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = VisibleTurnFilterTests.swift; path = AgentInspector/VisibleTurnFilterTests.swift; sourceTree = "<group>"; };
+		BC0050000000000000000001 /* ClaudeBranchResolverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeBranchResolverTests.swift; path = AgentInspector/ClaudeBranchResolverTests.swift; sourceTree = "<group>"; };
+		BC0050000000000000000002 /* ClaudeContentDetectorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeContentDetectorTests.swift; path = AgentInspector/ClaudeContentDetectorTests.swift; sourceTree = "<group>"; };
+		BC0050000000000000000003 /* ClaudeRenderPolicyTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeRenderPolicyTests.swift; path = AgentInspector/ClaudeRenderPolicyTests.swift; sourceTree = "<group>"; };
 		3608B5FB4BBC087ED90A5267 /* ClaudeHookSessionStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeHookSessionStore.swift; path = Panels/AgentInspector/Adapters/Claude/ClaudeHookSessionStore.swift; sourceTree = "<group>"; };
 		36682BBAFABCD7C1CC745D61 /* AgentSessionResolverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgentSessionResolverTests.swift; path = AgentInspector/AgentSessionResolverTests.swift; sourceTree = "<group>"; };
 		3865B0013865B0013865B001 /* SearchIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Search/SearchIndex.swift; sourceTree = "<group>"; };
@@ -694,6 +709,10 @@
 		9D17A1852406E5B92E7B6404 /* FocusedSurfaceObserver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = FocusedSurfaceObserver.swift; path = Panels/AgentInspector/Attach/FocusedSurfaceObserver.swift; sourceTree = "<group>"; };
 		9DAB808A8EC74C40B95F7672 /* GhosttySurfaceConfigurationRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/GhosttySurfaceConfigurationRefresh.swift; sourceTree = "<group>"; };
 		9DEF2B6C4576B4B1E767BA97 /* ClaudeJSONLLine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeJSONLLine.swift; path = Panels/AgentInspector/Adapters/Claude/ClaudeJSONLLine.swift; sourceTree = "<group>"; };
+		BC0010000000000000000001 /* ClaudeBuilderConsts.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeBuilderConsts.swift; path = Panels/AgentInspector/Adapters/Claude/ClaudeBuilderConsts.swift; sourceTree = "<group>"; };
+		BC0010000000000000000002 /* ClaudeContentDetector.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeContentDetector.swift; path = Panels/AgentInspector/Adapters/Claude/ClaudeContentDetector.swift; sourceTree = "<group>"; };
+		BC0010000000000000000003 /* ClaudeBranchResolver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeBranchResolver.swift; path = Panels/AgentInspector/Adapters/Claude/ClaudeBranchResolver.swift; sourceTree = "<group>"; };
+		BC0010000000000000000004 /* ClaudeRenderPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeRenderPolicy.swift; path = Panels/AgentInspector/Adapters/Claude/ClaudeRenderPolicy.swift; sourceTree = "<group>"; };
 		9F087AEFD116809C7ED512CD /* ChunkRowSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChunkRowSnapshot.swift; path = Panels/AgentInspector/Render/ChunkRowSnapshot.swift; sourceTree = "<group>"; };
 		A080D1F6CCCBFBED8D95DD1D /* ShortcutHintPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutHintPill.swift; sourceTree = "<group>"; };
 		A11EAA000000000000000001 /* AppearanceSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsTests.swift; sourceTree = "<group>"; };
@@ -1036,6 +1055,11 @@
 		DA7A10CA710E000000000002 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		DD12F43630CDDDFFEB62AC68 /* InspectorIcon.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InspectorIcon.swift; path = Panels/AgentInspector/Render/InspectorIcon.swift; sourceTree = "<group>"; };
 		DDDB816BF585ED73ACF6792E /* claude-sample.jsonl */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = "claude-sample.jsonl"; path = "Resources/AgentInspector/claude-sample.jsonl"; sourceTree = "<group>"; };
+		BC0030000000000000000001 /* claude-rewind-tree.jsonl */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = "claude-rewind-tree.jsonl"; path = "Resources/AgentInspector/claude-rewind-tree.jsonl"; sourceTree = "<group>"; };
+		BC0030000000000000000002 /* claude-sidechain-task.jsonl */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = "claude-sidechain-task.jsonl"; path = "Resources/AgentInspector/claude-sidechain-task.jsonl"; sourceTree = "<group>"; };
+		BC0030000000000000000003 /* claude-recap.jsonl */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = "claude-recap.jsonl"; path = "Resources/AgentInspector/claude-recap.jsonl"; sourceTree = "<group>"; };
+		BC0030000000000000000004 /* claude-multi-pr.jsonl */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = "claude-multi-pr.jsonl"; path = "Resources/AgentInspector/claude-multi-pr.jsonl"; sourceTree = "<group>"; };
+		BC0030000000000000000005 /* claude-meta-content.jsonl */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; name = "claude-meta-content.jsonl"; path = "Resources/AgentInspector/claude-meta-content.jsonl"; sourceTree = "<group>"; };
 		DE0FB9DFE455367CF58958CC /* LiveAnchorReceiverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveAnchorReceiverTests.swift; path = AgentInspector/LiveAnchorReceiverTests.swift; sourceTree = "<group>"; };
 		E1000001A1B2C3D4E5F60718 /* MenuKeyEquivalentRoutingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuKeyEquivalentRoutingUITests.swift; sourceTree = "<group>"; };
 		E30750000000000000000001 /* WorkspaceTabColorResolution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceTabColorResolution.swift; sourceTree = "<group>"; };
@@ -1558,6 +1582,10 @@
 				EC6F10C5DF713CCC0116FD3E /* AgentToolCall.swift */,
 				9DEF2B6C4576B4B1E767BA97 /* ClaudeJSONLLine.swift */,
 				31C28C46344A71FD0E0C133B /* ClaudeChunkBuilder.swift */,
+				BC0010000000000000000001 /* ClaudeBuilderConsts.swift */,
+				BC0010000000000000000002 /* ClaudeContentDetector.swift */,
+				BC0010000000000000000003 /* ClaudeBranchResolver.swift */,
+				BC0010000000000000000004 /* ClaudeRenderPolicy.swift */,
 				3608B5FB4BBC087ED90A5267 /* ClaudeHookSessionStore.swift */,
 				F2D465C2D4D33AD33D49078A /* JSONLTail.swift */,
 				D7B8AFC648ABF0FF2C5E6B5B /* TranscriptStream.swift */,
@@ -1755,6 +1783,11 @@
 				7FFCBDA76DB4126603E8ECE9 /* ClaudeHookSessionStoreTests.swift */,
 				9A6358492E3693B6417C1135 /* JSONLTailTests.swift */,
 				DDDB816BF585ED73ACF6792E /* claude-sample.jsonl */,
+				BC0030000000000000000001 /* claude-rewind-tree.jsonl */,
+				BC0030000000000000000002 /* claude-sidechain-task.jsonl */,
+				BC0030000000000000000003 /* claude-recap.jsonl */,
+				BC0030000000000000000004 /* claude-multi-pr.jsonl */,
+				BC0030000000000000000005 /* claude-meta-content.jsonl */,
 				40768E325AA3AFEDD28D9198 /* claude-hook-sessions.json */,
 				AFBAE7C7E3703789CB7D5E51 /* CodexChunkBuilderTests.swift */,
 				3DE9E74B1B648C5B5C58C38B /* codex-sample.jsonl */,
@@ -1764,6 +1797,9 @@
 				71DB529BF61504378D30F3A7 /* AgentInspectorDetailContentTests.swift */,
 				23CED4F0077FD7E94AFEAD88 /* TurnAnchorStoreTests.swift */,
 				326452752C3EE646FC31690F /* VisibleTurnFilterTests.swift */,
+				BC0050000000000000000001 /* ClaudeBranchResolverTests.swift */,
+				BC0050000000000000000002 /* ClaudeContentDetectorTests.swift */,
+				BC0050000000000000000003 /* ClaudeRenderPolicyTests.swift */,
 				DE0FB9DFE455367CF58958CC /* LiveAnchorReceiverTests.swift */,
 			);
 			path = cmuxTests;
@@ -2004,6 +2040,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				0EB2093EB5B613A44E2CE165 /* claude-sample.jsonl in Resources */,
+				BC0040000000000000000001 /* claude-rewind-tree.jsonl in Resources */,
+				BC0040000000000000000002 /* claude-sidechain-task.jsonl in Resources */,
+				BC0040000000000000000003 /* claude-recap.jsonl in Resources */,
+				BC0040000000000000000004 /* claude-multi-pr.jsonl in Resources */,
+				BC0040000000000000000005 /* claude-meta-content.jsonl in Resources */,
 				3B736B030E9E39933AAE0B98 /* claude-hook-sessions.json in Resources */,
 				6BB15706948331E978CC2ECC /* codex-sample.jsonl in Resources */,
 			);
@@ -2370,6 +2411,10 @@
 				F438C15313CED34846437B44 /* AgentToolCall.swift in Sources */,
 				21E3FE221F6F5FA6EE5136E7 /* ClaudeJSONLLine.swift in Sources */,
 				6993606BC52E2E3298DF9B67 /* ClaudeChunkBuilder.swift in Sources */,
+				BC0020000000000000000001 /* ClaudeBuilderConsts.swift in Sources */,
+				BC0020000000000000000002 /* ClaudeContentDetector.swift in Sources */,
+				BC0020000000000000000003 /* ClaudeBranchResolver.swift in Sources */,
+				BC0020000000000000000004 /* ClaudeRenderPolicy.swift in Sources */,
 				66B47319DD21BB9F78BA1A84 /* ClaudeHookSessionStore.swift in Sources */,
 				AD05E4B9536F01859EECC0B0 /* JSONLTail.swift in Sources */,
 				956BEDB694100F67BF123347 /* TranscriptStream.swift in Sources */,
@@ -2604,6 +2649,9 @@
 				FABC77930BE2B3B513CDB101 /* AgentInspectorDetailContentTests.swift in Sources */,
 				EA361A1C27E1B889DE9785BD /* TurnAnchorStoreTests.swift in Sources */,
 				5533469E88E718FD4FF2990C /* VisibleTurnFilterTests.swift in Sources */,
+				BC0060000000000000000001 /* ClaudeBranchResolverTests.swift in Sources */,
+				BC0060000000000000000002 /* ClaudeContentDetectorTests.swift in Sources */,
+				BC0060000000000000000003 /* ClaudeRenderPolicyTests.swift in Sources */,
 				D76D7F25824B183F29286811 /* LiveAnchorReceiverTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

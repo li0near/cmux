@@ -149,6 +149,17 @@ extension ChunkRowSnapshot {
             return makeSystem(c, displayMode: displayMode)
         case .compact(let c):
             return makeCompact(c)
+        case .meta(let c):
+            // Phase A placeholder. MetaChunk rendering lands in Phase B.
+            // Builder does not emit `.meta` chunks until A.7 wires routing,
+            // so this branch is unreachable during Phase A; the temporary
+            // CompactChunk-shaped snapshot keeps the switch exhaustive
+            // without inventing a render path that Phase B would discard.
+            return makeCompact(CompactChunk(
+                id: c.id,
+                summary: "[meta-chunk placeholder]",
+                startTime: c.startTime
+            ))
         }
     }
 

@@ -208,4 +208,137 @@ final class ClaudeChunkBuilderTests: XCTestCase {
         builder.reset()
         XCTAssertEqual(builder.snapshot().count, 0)
     }
+
+    // MARK: - Phase A integration: rewind tree
+
+    private func decodeNamedFixture(_ name: String) throws -> [ClaudeJSONLLine] {
+        let bundle = Bundle(for: type(of: self))
+        let url: URL
+        if let bundled = bundle.url(forResource: name, withExtension: "jsonl") {
+            url = bundled
+        } else {
+            url = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Resources/AgentInspector/\(name).jsonl")
+        }
+        let raw = try String(contentsOf: url, encoding: .utf8)
+        return try raw
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { line in
+                try AgentInspectorJSON.decoder.decode(ClaudeJSONLLine.self, from: Data(line.utf8))
+            }
+    }
+
+    func testRewindTreeFixtureFiltersAbandonedAndEmitsBranchLinks() throws {
+        let lines = try decodeNamedFixture("claude-rewind-tree")
+        var builder = ClaudeChunkBuilder()
+        for line in lines { builder.ingest(line) }
+        let chunks = builder.snapshot()
+
+        // Active chain: u-root, u-active, a-active.
+        // Two abandoned branches anchored at u-root → 2 BranchLink chunks.
+        let users = chunks.compactMap { c -> String? in
+            if case .user(let u) = c { return u.id } else { return nil }
+        }
+        XCTAssertEqual(users, ["u-root", "u-active"])
+
+        let branchLinks = chunks.compactMap { c -> BranchLinkChunk? in
+            if case .meta(.branchLink(let b)) = c { return b } else { return nil }
+        }
+        XCTAssertEqual(branchLinks.count, 2)
+        XCTAssertEqual(branchLinks.first?.totalRewinds, 2)
+    }
+
+    // MARK: - Phase A integration: sidechain task
+
+    func testSidechainTaskAttachesTranscriptToParentToolCall() throws {
+        let lines = try decodeNamedFixture("claude-sidechain-task")
+        var builder = ClaudeChunkBuilder()
+        for line in lines { builder.ingest(line) }
+        let chunks = builder.snapshot()
+
+        // Find the AIChunk with the Task tool call.
+        let aiChunks = chunks.compactMap { c -> AIChunk? in
+            if case .ai(let ai) = c { return ai } else { return nil }
+        }
+        XCTAssertGreaterThan(aiChunks.count, 0)
+        let taskCall = aiChunks
+            .flatMap(\.toolCalls)
+            .first(where: { $0.name == "Task" })
+        XCTAssertNotNil(taskCall, "Task tool call should be present")
+        XCTAssertNotNil(taskCall?.sidechainTranscript,
+                        "Sidechain transcript should be attached")
+        XCTAssertEqual(taskCall?.subagentType, "general-purpose")
+    }
+
+    // MARK: - Phase A integration: recap
+
+    func testRecapFixtureEmitsRecapChunk() throws {
+        let lines = try decodeNamedFixture("claude-recap")
+        var builder = ClaudeChunkBuilder()
+        for line in lines { builder.ingest(line) }
+        let chunks = builder.snapshot()
+
+        let recaps = chunks.compactMap { c -> RecapChunk? in
+            if case .meta(.recap(let r)) = c { return r } else { return nil }
+        }
+        XCTAssertEqual(recaps.count, 1)
+        XCTAssertTrue(recaps[0].body.contains("deploying the service"))
+    }
+
+    // MARK: - Phase A integration: multi-PR
+
+    func testMultiPrFixtureEmitsTwoPrLinks() throws {
+        let lines = try decodeNamedFixture("claude-multi-pr")
+        var builder = ClaudeChunkBuilder()
+        for line in lines { builder.ingest(line) }
+        let chunks = builder.snapshot()
+
+        let prs = chunks.compactMap { c -> PrLinkChunk? in
+            if case .meta(.prLink(let p)) = c { return p } else { return nil }
+        }
+        XCTAssertEqual(prs.count, 2)
+        XCTAssertEqual(prs[0].prNumber, 42)
+        XCTAssertEqual(prs[1].prNumber, 7)
+    }
+
+    // MARK: - Phase A integration: meta content variety
+
+    func testMetaContentFixtureClassifiesEachCategory() throws {
+        let lines = try decodeNamedFixture("claude-meta-content")
+        var builder = ClaudeChunkBuilder()
+        for line in lines { builder.ingest(line) }
+        let chunks = builder.snapshot()
+
+        // Categories we expect to see (one each).
+        var sawSlashCmdInput = 0
+        var sawSlashCmdOutput = 0
+        var sawLocalCommandCaveat = 0
+        var sawSystemReminder = 0
+        var sawContextUsage = 0
+        var sawContinueResume = 0
+        var sawSkillTitle = 0
+        for chunk in chunks {
+            guard case .meta(let m) = chunk else { continue }
+            switch m {
+            case .slashCmdInput:    sawSlashCmdInput += 1
+            case .slashCmdOutput:   sawSlashCmdOutput += 1
+            case .localCommandCaveat: sawLocalCommandCaveat += 1
+            case .systemReminder:   sawSystemReminder += 1
+            case .contextUsage:     sawContextUsage += 1
+            case .continueResume:   sawContinueResume += 1
+            case .skillTitle:       sawSkillTitle += 1
+            case .branchLink, .recap, .prLink: break
+            }
+        }
+        // Two slashCmdInput entries: built-in /model and skill /browse-url.
+        XCTAssertEqual(sawSlashCmdInput, 2)
+        XCTAssertEqual(sawSlashCmdOutput, 1)
+        XCTAssertEqual(sawLocalCommandCaveat, 1)
+        XCTAssertEqual(sawSystemReminder, 1)
+        XCTAssertEqual(sawContextUsage, 1)
+        XCTAssertEqual(sawContinueResume, 1)
+        XCTAssertEqual(sawSkillTitle, 1)
+    }
 }

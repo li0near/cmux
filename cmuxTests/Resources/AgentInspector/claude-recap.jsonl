@@ -1,0 +1,4 @@
+{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"timestamp":"2026-05-25T14:00:00.000Z","message":{"role":"user","content":"Help me deploy the service."}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"timestamp":"2026-05-25T14:00:01.000Z","message":{"role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"Deployed successfully."}]}}
+{"type":"system","uuid":"sys-recap","parentUuid":"a1","subtype":"away_summary","content":"You were deploying the service when you stepped away. The deploy succeeded; logs are in /var/log.","timestamp":"2026-05-25T14:30:00.000Z"}
+{"type":"user","uuid":"u2","parentUuid":"sys-recap","isSidechain":false,"timestamp":"2026-05-25T14:30:30.000Z","message":{"role":"user","content":"Show the logs."}}

@@ -3,9 +3,20 @@ import Foundation
 /// Raw Claude Code session JSONL line. Each `~/.claude/projects/<dir>/<session>.jsonl`
 /// file contains one of these per line.
 ///
-/// Schema mirrors `claude-devtools/src/main/types/jsonl.ts`. We decode only the
-/// fields we need to classify and render; unknown fields are ignored by
-/// Swift's default Decodable.
+/// Schema borrows ideas from `claude-devtools/src/main/types/jsonl.ts`. We decode
+/// only the fields we need to classify, route, and render; unknown fields are
+/// ignored by Swift's default Decodable.
+///
+/// Type universe surveyed across a 523-session corpus:
+///   - Tree-affiliated (have `parentUuid`): `user`, `assistant`, `system`,
+///     `attachment`, `progress`.
+///   - Session-orphan (no `parentUuid`): `last-prompt`, `permission-mode`,
+///     `file-history-snapshot`, `agent-name`, `custom-title`, `pr-link`,
+///     `queue-operation`.
+///
+/// `system` lines carry a `subtype`: `turn_duration`, `stop_hook_summary`,
+/// `api_error`, `away_summary` (recap), `local_command`, `compact_boundary`,
+/// `informational`.
 struct ClaudeJSONLLine: Decodable {
     let type: String
     let timestamp: Date?
@@ -16,15 +27,174 @@ struct ClaudeJSONLLine: Decodable {
     /// User and assistant entries carry a `message` field. System/summary
     /// entries do not, so this is optional.
     let message: ClaudeMessage?
-    /// Compact-summary marker (newer Claude versions) — when true the line is
-    /// a CompactChunk.
+    /// Compact-summary marker (older `/compact`-style flow) — when true the
+    /// user line carries a synthesized compaction summary. The newer flow
+    /// emits a `system` line with `subtype: compact_boundary` instead.
     let isCompactSummary: Bool?
-    /// On `summary` entries.
+    /// Top-level `summary` text on legacy summary entries.
     let summary: String?
+
+    // MARK: - System subtype + per-turn timing
+    /// On `system` entries (`turn_duration`, `away_summary`, `compact_boundary`,
+    /// etc). Drives renderable-vs-skip routing for system lines.
+    let subtype: String?
+    /// `system.subtype: turn_duration` carries this aggregate duration for the
+    /// whole turn (user prompt → final assistant response). Distinct from
+    /// per-tool durations, which we still compute from message timestamps.
+    let durationMs: Int?
+    /// `system.subtype: turn_duration` companion: how many messages the turn
+    /// contained.
+    let messageCount: Int?
+    /// `system` lines representing renderable content (errors, hook summaries,
+    /// recap bodies, command output) carry the body here. Distinct from the
+    /// `message` envelope used by user/assistant lines.
+    let content: String?
+
+    // MARK: - Rewind tree marker (`type: last-prompt`)
+    /// UUID of the current active leaf in the rewind tree. Walk `parentUuid`
+    /// from this back to the root to derive the active branch.
+    let leafUuid: String?
+    /// Verbatim text of the prompt at the active leaf (preview only).
+    let lastPrompt: String?
+
+    // MARK: - PR link (`type: pr-link`)
+    let prNumber: Int?
+    let prUrl: String?
+    let prRepository: String?
+
+    // MARK: - Session-level metadata (skipped from rendering)
+    let agentName: String?
+    let customTitle: String?
+
+    // MARK: - Sub-agent / sidechain wiring
+    /// On sidechain lines (`isSidechain: true`) and `progress` lines, ties the
+    /// line back to its parent agent's `Task`/`Agent` tool-use id.
+    let parentToolUseID: String?
+    /// On tool-related lines, the `tool_use` id this line corresponds to.
+    let toolUseID: String?
+
+    // MARK: - Compact metadata (newer compact_boundary flow)
+    let compactMetadata: ClaudeCompactMetadata?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case timestamp
+        case uuid
+        case parentUuid
+        case isSidechain
+        case isMeta
+        case message
+        case isCompactSummary
+        case summary
+        case subtype
+        case durationMs
+        case messageCount
+        case content
+        case leafUuid
+        case lastPrompt
+        case prNumber
+        case prUrl
+        case prRepository
+        case agentName
+        case customTitle
+        case parentToolUseID
+        case toolUseID
+        case compactMetadata
+    }
 
     /// Convenience for callers that want a stable id even when uuid is absent.
     var stableId: String {
         uuid ?? UUID().uuidString
+    }
+
+    /// Memberwise init with sensible defaults for all newly-added fields,
+    /// so synthetic test fixtures that construct lines directly continue
+    /// to compile without naming every new field. Decodable synthesis still
+    /// works for raw JSONL parsing.
+    init(
+        type: String,
+        timestamp: Date? = nil,
+        uuid: String? = nil,
+        parentUuid: String? = nil,
+        isSidechain: Bool? = nil,
+        isMeta: Bool? = nil,
+        message: ClaudeMessage? = nil,
+        isCompactSummary: Bool? = nil,
+        summary: String? = nil,
+        subtype: String? = nil,
+        durationMs: Int? = nil,
+        messageCount: Int? = nil,
+        content: String? = nil,
+        leafUuid: String? = nil,
+        lastPrompt: String? = nil,
+        prNumber: Int? = nil,
+        prUrl: String? = nil,
+        prRepository: String? = nil,
+        agentName: String? = nil,
+        customTitle: String? = nil,
+        parentToolUseID: String? = nil,
+        toolUseID: String? = nil,
+        compactMetadata: ClaudeCompactMetadata? = nil
+    ) {
+        self.type = type
+        self.timestamp = timestamp
+        self.uuid = uuid
+        self.parentUuid = parentUuid
+        self.isSidechain = isSidechain
+        self.isMeta = isMeta
+        self.message = message
+        self.isCompactSummary = isCompactSummary
+        self.summary = summary
+        self.subtype = subtype
+        self.durationMs = durationMs
+        self.messageCount = messageCount
+        self.content = content
+        self.leafUuid = leafUuid
+        self.lastPrompt = lastPrompt
+        self.prNumber = prNumber
+        self.prUrl = prUrl
+        self.prRepository = prRepository
+        self.agentName = agentName
+        self.customTitle = customTitle
+        self.parentToolUseID = parentToolUseID
+        self.toolUseID = toolUseID
+        self.compactMetadata = compactMetadata
+    }
+
+    /// True when this line is the active-leaf marker emitted on prompt
+    /// submission and on every rewind. The latest such marker in file order
+    /// is the current active leaf.
+    var isLastPromptMarker: Bool {
+        type == "last-prompt"
+    }
+
+    /// True when this line is session-global metadata with no `parentUuid`
+    /// and no renderable body — it describes the whole session, not any
+    /// branch within it.
+    var isSessionOrphanMetadata: Bool {
+        switch type {
+        case "permission-mode",
+             "file-history-snapshot",
+             "agent-name",
+             "custom-title",
+             "queue-operation":
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+/// `system.subtype: compact_boundary` companion payload.
+struct ClaudeCompactMetadata: Decodable, Equatable {
+    let preTokens: Int?
+    let postTokens: Int?
+    let durationMs: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case preTokens
+        case postTokens
+        case durationMs
     }
 }
 

@@ -298,7 +298,7 @@ final class AgentInspectorPanel: Panel, ObservableObject {
                     turnAnchorStore.pairAIChunk(userChunkId: userId, aiChunkId: ai.id)
                     lastUnpairedUserId = nil
                 }
-            case .system, .compact:
+            case .system, .compact, .meta:
                 break
             }
         }

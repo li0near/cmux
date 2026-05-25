@@ -34,6 +34,13 @@ public struct AgentToolCall: Equatable, Sendable, Identifiable {
     /// matching `tool_result` entry in the JSONL, when both timestamps are
     /// known. Nil when the tool is still pending or timestamps are missing.
     public let durationMs: Int?
+    /// For `Task`/`Agent` tool calls: the chunks emitted by the spawned
+    /// sub-agent's sidechain transcript. nil for non-Task tools and for
+    /// Task tools whose sidechain hasn't streamed yet. Phase B renders
+    /// this as a `↳ Sub-agent transcript` link inside the tool's row,
+    /// opening a detail tab via
+    /// `AgentInspectorDetailContent.subagentTranscript`.
+    public let sidechainTranscript: [AgentChunk]?
 
     /// All optional fields default to nil so existing call sites that don't
     /// supply them continue to compile unchanged. Adapters that have the
@@ -52,7 +59,8 @@ public struct AgentToolCall: Equatable, Sendable, Identifiable {
         subagentType: String? = nil,
         teamMemberName: String? = nil,
         teamName: String? = nil,
-        durationMs: Int? = nil
+        durationMs: Int? = nil,
+        sidechainTranscript: [AgentChunk]? = nil
     ) {
         self.id = id
         self.name = name
@@ -64,5 +72,6 @@ public struct AgentToolCall: Equatable, Sendable, Identifiable {
         self.teamMemberName = teamMemberName
         self.teamName = teamName
         self.durationMs = durationMs
+        self.sidechainTranscript = sidechainTranscript
     }
 }

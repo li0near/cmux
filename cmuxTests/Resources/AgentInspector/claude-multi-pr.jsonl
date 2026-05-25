@@ -1,0 +1,6 @@
+{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"timestamp":"2026-05-25T15:00:00.000Z","message":{"role":"user","content":"Open a PR for the bug fix."}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","isSidechain":false,"timestamp":"2026-05-25T15:00:01.000Z","message":{"role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"PR opened."}]}}
+{"type":"pr-link","sessionId":"sess-pr","prNumber":42,"prUrl":"https://github.com/acme/repo/pull/42","prRepository":"acme/repo","timestamp":"2026-05-25T15:00:02.000Z"}
+{"type":"user","uuid":"u2","parentUuid":"a1","isSidechain":false,"timestamp":"2026-05-25T15:00:10.000Z","message":{"role":"user","content":"Now open one in the docs repo."}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","isSidechain":false,"timestamp":"2026-05-25T15:00:11.000Z","message":{"role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"Docs PR opened."}]}}
+{"type":"pr-link","sessionId":"sess-pr","prNumber":7,"prUrl":"https://github.com/acme/docs/pull/7","prRepository":"acme/docs","timestamp":"2026-05-25T15:00:12.000Z"}
