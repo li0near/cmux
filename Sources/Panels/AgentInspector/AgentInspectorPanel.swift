@@ -131,26 +131,35 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     /// everything for expand).
     @Published private(set) var lastBulkAction: InspectorBulkAction?
 
-    private var collapseClickCount = 0
-    private var expandClickCount = 0
+    /// Phase D iteration 2: global expansion state. Rows snap to this
+    /// on each `collapseAllTick` / `expandSnapTick` increment.
+    /// Initial value matches `AIChunkRow`'s default `aiExpanded = true`
+    /// so the first collapse-click visibly advances one step.
+    @Published private(set) var bulkExpansionState: InspectorBulkExpansionState = .topLevelExpanded
 
     /// Trigger a stepped collapse-all signal for row views.
     func collapseAll() {
-        let action: InspectorBulkAction = (collapseClickCount % 2 == 0)
-            ? .collapseSubItems
-            : .collapseEverything
-        collapseClickCount += 1
-        lastBulkAction = action
+        let next: InspectorBulkExpansionState
+        switch bulkExpansionState {
+        case .fullyExpanded: next = .topLevelExpanded
+        case .topLevelExpanded: next = .fullyCollapsed
+        case .fullyCollapsed: next = .fullyCollapsed
+        }
+        bulkExpansionState = next
+        lastBulkAction = (next == .topLevelExpanded ? .collapseSubItems : .collapseEverything)
         collapseAllTick &+= 1
     }
 
     /// Trigger a stepped expand-snap signal for row views.
     func expandSnap() {
-        let action: InspectorBulkAction = (expandClickCount % 2 == 0)
-            ? .expandTopLevel
-            : .expandEverything
-        expandClickCount += 1
-        lastBulkAction = action
+        let next: InspectorBulkExpansionState
+        switch bulkExpansionState {
+        case .fullyCollapsed: next = .topLevelExpanded
+        case .topLevelExpanded: next = .fullyExpanded
+        case .fullyExpanded: next = .fullyExpanded
+        }
+        bulkExpansionState = next
+        lastBulkAction = (next == .topLevelExpanded ? .expandTopLevel : .expandEverything)
         expandSnapTick &+= 1
     }
 

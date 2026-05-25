@@ -69,11 +69,52 @@ struct ClaudeChunkBuilder {
                 )
             }
         }
+        // Pre-pass: build chunk transcripts for each abandoned branch
+        // so BranchLink chunks can carry the full subtree (renders in
+        // the detail panel as a mini chunk list).
+        var branchChunksByRoot: [String: [AgentChunk]] = [:]
+        for branch in ctx.resolution.abandonedBranches {
+            let lines = rawLines.filter { line in
+                guard let uuid = line.uuid else { return false }
+                return branch.memberUUIDs.contains(uuid)
+            }
+            branchChunksByRoot[branch.branchRootUuid] = buildAbandonedBranchChunks(from: lines)
+        }
+        ctx.abandonedBranchChunksByRoot = branchChunksByRoot
+
+        // Emit orphan-abandoned BranchLinks at the very start of the
+        // output stream — they have no divergence point, so no later
+        // active line will trigger their emission.
+        for branch in ctx.resolution.abandonedBranches
+        where branch.divergencePointUuid == nil
+            && !ctx.emittedDivergencePoints.contains(branch.branchRootUuid) {
+            ctx.emittedDivergencePoints.insert(branch.branchRootUuid)
+            ctx.chunks.append(.meta(.branchLink(BranchLinkChunk(
+                id: branch.branchRootUuid,
+                rewindIndex: branch.rewindIndex,
+                totalRewinds: ctx.resolution.totalRewinds,
+                chunkCount: branch.chunkCount,
+                firstPromptPreview: branch.firstPromptPreview,
+                startTime: rawLines.first?.timestamp ?? .distantPast,
+                chunks: branchChunksByRoot[branch.branchRootUuid] ?? []
+            ))))
+        }
+
         for line in rawLines {
             dispatch(line, ctx: &ctx)
         }
         ctx.flushPendingAIChunk()
         return ctx.chunks
+    }
+
+    /// Recursively build chunks for an abandoned-branch transcript.
+    /// Treats the lines as a self-contained mini-stream (no further
+    /// branch-resolution applied — the branch is already a single
+    /// linear path from its root).
+    private func buildAbandonedBranchChunks(from lines: [ClaudeJSONLLine]) -> [AgentChunk] {
+        var sub = ClaudeChunkBuilder()
+        for line in lines { sub.ingest(line) }
+        return sub.snapshot()
     }
 
     /// Clears the buffer. Used when the underlying file rotates.
@@ -259,6 +300,10 @@ struct ClaudeChunkBuilder {
         /// Set of divergence-point UUIDs whose `BranchLink` chunks have
         /// already been emitted (idempotence guard).
         var emittedDivergencePoints: Set<String> = []
+        /// `branchRootUuid → fully-built abandoned-branch chunk list`.
+        /// Pre-built by `snapshot()`; used by `maybeEmitBranchLinks` to
+        /// stamp each BranchLinkChunk with its subtree's transcript.
+        var abandonedBranchChunksByRoot: [String: [AgentChunk]] = [:]
 
         mutating func flushPendingAIChunk() {
             guard let pending = pendingAIChunk else { return }
@@ -357,7 +402,8 @@ struct ClaudeChunkBuilder {
                     totalRewinds: resolution.totalRewinds,
                     chunkCount: branch.chunkCount,
                     firstPromptPreview: branch.firstPromptPreview,
-                    startTime: line.timestamp ?? .distantPast
+                    startTime: line.timestamp ?? .distantPast,
+                    chunks: abandonedBranchChunksByRoot[branch.branchRootUuid] ?? []
                 ))))
             }
         }

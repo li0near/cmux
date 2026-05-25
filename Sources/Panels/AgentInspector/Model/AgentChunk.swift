@@ -200,6 +200,11 @@ public struct BranchLinkChunk: Equatable, Sendable {
     public let chunkCount: Int
     public let firstPromptPreview: String?
     public let startTime: Date
+    /// Full chunk transcript of the abandoned subtree, built recursively
+    /// by `ClaudeChunkBuilder`. Surfaced by the detail panel so the user
+    /// can read the abandoned conversation in full instead of just a
+    /// single prompt preview.
+    public let chunks: [AgentChunk]
 
     public init(
         id: String,
@@ -207,7 +212,8 @@ public struct BranchLinkChunk: Equatable, Sendable {
         totalRewinds: Int,
         chunkCount: Int,
         firstPromptPreview: String?,
-        startTime: Date
+        startTime: Date,
+        chunks: [AgentChunk] = []
     ) {
         self.id = id
         self.rewindIndex = rewindIndex
@@ -215,6 +221,7 @@ public struct BranchLinkChunk: Equatable, Sendable {
         self.chunkCount = chunkCount
         self.firstPromptPreview = firstPromptPreview
         self.startTime = startTime
+        self.chunks = chunks
     }
 }
 

@@ -140,13 +140,15 @@ struct AgentInspectorPanelView: View {
                 .onAppear {
                     scrollForFilter(proxy: proxy)
                 }
-                .onChange(of: panel.visibleTurnFilter) { _ in
+                .onChange(of: panel.visibleTurnFilter) { newFilter in
                     scrollForFilter(proxy: proxy)
-                    // Auto-expand-snap fires only in snap mode; in free
-                    // scroll the user is browsing the entire transcript
-                    // and bulk-expanding history is exactly what we want
-                    // to avoid.
-                    if panel.syncMode == .snap, panel.expansionMode == .autoExpandSnap {
+                    // Auto-expand only on snap-mode + actual snapped-turn
+                    // filters. Free-scroll history (`.preAnchored`) and
+                    // the catch-all `.all` filter MUST NOT auto-expand —
+                    // expanding history "would be a nightmare."
+                    if panel.syncMode == .snap,
+                       panel.expansionMode == .autoExpandSnap,
+                       case .turns = newFilter {
                         panel.expandSnap()
                     }
                 }

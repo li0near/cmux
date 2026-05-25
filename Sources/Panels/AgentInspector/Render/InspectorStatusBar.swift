@@ -102,14 +102,14 @@ struct InspectorStatusBar: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundColor(color)
-                .frame(width: 22, height: 22)
+                .frame(width: 18, height: 18)
                 .background(Color.black.opacity(0.001))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(tooltip)
+        .hoverTooltip(tooltip)
     }
 
     // MARK: - Status glyph + text

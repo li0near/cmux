@@ -38,6 +38,10 @@ struct ClaudeAbandonedBranch: Equatable {
     /// 1-based ordinal in `abandonedBranches`. Stable for use in the
     /// "Rewind N of M" detail-tab title.
     let rewindIndex: Int
+    /// Every UUID in the abandoned subtree (including the root). The
+    /// builder uses this to filter raw lines into the per-branch
+    /// transcript shown in the detail panel.
+    let memberUUIDs: Set<String>
 }
 
 enum ClaudeBranchResolver {
@@ -125,7 +129,8 @@ enum ClaudeBranchResolver {
                 branchRootUuid: root,
                 chunkCount: members.count,
                 firstPromptPreview: preview,
-                rewindIndex: idx + 1
+                rewindIndex: idx + 1,
+                memberUUIDs: Set(members)
             ))
         }
 

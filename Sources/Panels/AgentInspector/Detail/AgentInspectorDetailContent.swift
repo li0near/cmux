@@ -19,6 +19,27 @@ struct AgentInspectorDetailContent: Equatable {
     let sourceChunkId: String
     /// Discriminator for styling (color of the title accent, glyph).
     let kind: Kind
+    /// Optional chunk transcript. When non-nil, the detail view renders
+    /// these chunks using the standard `ChunkRowView` instead of the
+    /// plain `body` text. Used for abandoned-branch and sub-agent
+    /// transcript surfaces.
+    let chunks: [AgentChunk]?
+
+    init(
+        title: String,
+        subtitle: String?,
+        body: String,
+        sourceChunkId: String,
+        kind: Kind,
+        chunks: [AgentChunk]? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.body = body
+        self.sourceChunkId = sourceChunkId
+        self.kind = kind
+        self.chunks = chunks
+    }
 
     enum Kind: Equatable {
         case userPrompt
@@ -123,10 +144,6 @@ extension AgentInspectorDetailContent {
             )
         case .abandonedBranch(let branchRootUuid):
             guard case .meta(.branchLink(let branch)) = chunk, branch.id == branchRootUuid else { return nil }
-            // Abandoned branches don't carry their inner chunk list on the
-            // BranchLink chunk itself — the renderer only knows summary stats.
-            // The detail panel surfaces the metadata; future work can pass
-            // the actual abandoned chunk list through if needed.
             let preview = branch.firstPromptPreview ?? "(no prompt preview)"
             return AgentInspectorDetailContent(
                 title: "Abandoned branch — rewind \(branch.rewindIndex) of \(branch.totalRewinds)",
@@ -136,24 +153,21 @@ extension AgentInspectorDetailContent {
                 kind: .abandonedBranch(
                     rewindIndex: branch.rewindIndex,
                     totalRewinds: branch.totalRewinds
-                )
+                ),
+                chunks: branch.chunks
             )
         case .subagentTranscript(let chunkId, let toolId):
             guard case .ai(let ai) = chunk,
                   ai.id == chunkId,
                   let tool = ai.toolCalls.first(where: { $0.id == toolId }),
                   let transcript = tool.sidechainTranscript else { return nil }
-            let summaryBody = transcript.compactMap { tx -> String? in
-                if case .ai(let a) = tx, !a.assistantText.isEmpty { return a.assistantText }
-                if case .user(let u) = tx, !u.text.isEmpty { return u.text }
-                return nil
-            }.joined(separator: "\n\n— —\n\n")
             return AgentInspectorDetailContent(
                 title: "Sub-agent transcript · \(tool.name)",
                 subtitle: "from \(chunkTimestamp) · \(transcript.count) chunks",
-                body: summaryBody.isEmpty ? "(empty sub-agent transcript)" : summaryBody,
+                body: "",
                 sourceChunkId: chunkId,
-                kind: .subagentTranscript(toolName: tool.name, subagentType: tool.subagentType)
+                kind: .subagentTranscript(toolName: tool.name, subagentType: tool.subagentType),
+                chunks: transcript
             )
         case .skillBody(let id):
             guard case .meta(.skillTitle(let skill)) = chunk, skill.id == id else { return nil }
