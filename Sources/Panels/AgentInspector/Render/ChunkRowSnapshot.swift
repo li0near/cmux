@@ -24,6 +24,10 @@ struct ChunkRowSnapshot: Equatable, Identifiable {
     let userPrimary: String
     let userFull: ExpandableContent
     let userCharCount: Int
+    /// Word count of the user prompt's full text. Surfaced in the
+    /// metadata pill ("N words") in place of `userCharCount` ("N
+    /// chars") since words read more naturally for prose.
+    let userWordCount: Int
 
     // AI-only
     /// Friendly label for the agent kind ("Claude", "Codex"). Defaults to
@@ -211,13 +215,17 @@ extension ChunkRowSnapshot {
 
     private static func makeUser(_ c: UserChunk, displayMode: DisplayMode) -> ChunkRowSnapshot {
         let primary = oneLine(c.text, maxChars: 80)
+        let words = c.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split { $0.isWhitespace || $0.isNewline }
+            .count
         return base(
             id: c.id,
             kind: .user,
             timestamp: c.startTime,
             userPrimary: primary,
             userFull: makeExpandable(c.text, caps: InspectorCaps.userPrompt, displayMode: displayMode),
-            userCharCount: c.text.count
+            userCharCount: c.text.count,
+            userWordCount: words
         )
     }
 
@@ -262,6 +270,7 @@ extension ChunkRowSnapshot {
             userPrimary: "",
             userFull: .empty,
             userCharCount: 0,
+            userWordCount: 0,
             aiHeaderLabel: agentKind.headerLabel,
             modelLabel: c.model,
             modelFriendly: c.model.flatMap(ClaudeModelNameMap.friendlyName(for:)),
@@ -487,6 +496,7 @@ extension ChunkRowSnapshot {
         userPrimary: String = "",
         userFull: ExpandableContent = .empty,
         userCharCount: Int = 0,
+        userWordCount: Int = 0,
         systemBody: ExpandableContent = .empty,
         compactSummary: String = "",
         meta: MetaSnapshot? = nil
@@ -498,6 +508,7 @@ extension ChunkRowSnapshot {
             userPrimary: userPrimary,
             userFull: userFull,
             userCharCount: userCharCount,
+            userWordCount: userWordCount,
             aiHeaderLabel: "",
             modelLabel: nil,
             modelFriendly: nil,

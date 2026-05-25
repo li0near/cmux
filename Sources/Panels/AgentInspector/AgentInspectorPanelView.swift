@@ -86,7 +86,6 @@ struct AgentInspectorPanelView: View {
         let streamingAIChunkId = panel.streamingAIChunkId
         let collapseTick = panel.collapseAllTick
         let expandTick = panel.expandSnapTick
-        let lastBulk = panel.lastBulkAction
 
         if snapshots.isEmpty {
             emptyTranscriptView
@@ -101,7 +100,6 @@ struct AgentInspectorPanelView: View {
                                 streamingAIChunkId: streamingAIChunkId,
                                 collapseAllTick: collapseTick,
                                 expandSnapTick: expandTick,
-                                lastBulkAction: lastBulk,
                                 onOpenDetail: { request in
                                     panel.openDetail(request: request)
                                 }

@@ -41,15 +41,13 @@ struct ChunkRowView: View, Equatable {
     /// snapshot's id, the AI row's header glyph pulses. Snapshot-policy
     /// safe — plain value type.
     let streamingAIChunkId: String?
-    /// Phase C tick — increments on every "Collapse all" click.
+    /// Phase D iter 3: monotonic ticks. On each increment, each row
+    /// infers its own current expansion stage from local @State and
+    /// advances one step in the matching direction. No global
+    /// "intended action" is needed — the direction is implicit in
+    /// which tick fired.
     let collapseAllTick: Int
-    /// Phase C tick — increments on every "Expand snap" click and
-    /// each filter transition while expansionMode == .autoExpandSnap.
     let expandSnapTick: Int
-    /// Phase D iteration: the bulk action paired with the most recent
-    /// tick increment. Rows interpret this to apply stepped collapse /
-    /// expand semantics (sub-items first, everything next).
-    let lastBulkAction: InspectorBulkAction?
     /// Stable closure reference. Ignored by `==` per the snapshot policy.
     let onOpenDetail: (InspectorDetailRequest) -> Void
 
@@ -59,7 +57,6 @@ struct ChunkRowView: View, Equatable {
             && lhs.streamingAIChunkId == rhs.streamingAIChunkId
             && lhs.collapseAllTick == rhs.collapseAllTick
             && lhs.expandSnapTick == rhs.expandSnapTick
-            && lhs.lastBulkAction == rhs.lastBulkAction
     }
 
     var body: some View {
@@ -70,7 +67,6 @@ struct ChunkRowView: View, Equatable {
                 palette: palette,
                 collapseAllTick: collapseAllTick,
                 expandSnapTick: expandSnapTick,
-                lastBulkAction: lastBulkAction,
                 onOpenDetail: onOpenDetail
             )
         case .ai:
@@ -80,7 +76,6 @@ struct ChunkRowView: View, Equatable {
                 isStreaming: streamingAIChunkId == snapshot.id,
                 collapseAllTick: collapseAllTick,
                 expandSnapTick: expandSnapTick,
-                lastBulkAction: lastBulkAction,
                 onOpenDetail: onOpenDetail
             )
         case .system:
@@ -89,7 +84,6 @@ struct ChunkRowView: View, Equatable {
                 palette: palette,
                 collapseAllTick: collapseAllTick,
                 expandSnapTick: expandSnapTick,
-                lastBulkAction: lastBulkAction,
                 onOpenDetail: onOpenDetail
             )
         case .compact:
@@ -101,7 +95,6 @@ struct ChunkRowView: View, Equatable {
                 palette: palette,
                 collapseAllTick: collapseAllTick,
                 expandSnapTick: expandSnapTick,
-                lastBulkAction: lastBulkAction,
                 onOpenDetail: onOpenDetail
             )
         }
@@ -115,7 +108,6 @@ private struct UserChunkRow: View {
     let palette: HudPaletteToken
     let collapseAllTick: Int
     let expandSnapTick: Int
-    let lastBulkAction: InspectorBulkAction?
     let onOpenDetail: (InspectorDetailRequest) -> Void
     @State private var expanded = false
 
@@ -140,7 +132,7 @@ private struct UserChunkRow: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 8)
-                    metadataPill("\(snapshot.userCharCount) chars", palette: palette)
+                    metadataPill("\(snapshot.userWordCount) words", palette: palette)
                     Text(formatTime(snapshot.timestamp))
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(palette.dim)
@@ -183,7 +175,6 @@ private struct AIChunkRow: View {
     let isStreaming: Bool
     let collapseAllTick: Int
     let expandSnapTick: Int
-    let lastBulkAction: InspectorBulkAction?
     let onOpenDetail: (InspectorDetailRequest) -> Void
     @State private var aiExpanded = true
     @State private var thinkingExpanded = false
@@ -227,35 +218,31 @@ private struct AIChunkRow: View {
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: collapseAllTick) { _ in
-            switch lastBulkAction {
-            case .collapseSubItems:
-                // First-step collapse: close inner sub-blocks but keep
-                // the AI chunk header open so the user retains context.
+            // Per-row stepped collapse: detect current visual stage and
+            // advance one step toward fully collapsed.
+            //   stage 3 (anything sub-open) → stage 2 (close sub-items, keep aiExpanded)
+            //   stage 2 (only aiExpanded)   → stage 1 (close aiExpanded)
+            //   stage 1 (closed)            → no-op
+            let anySubOpen = thinkingExpanded || toolExpansionOverrides.values.contains(true)
+            if anySubOpen {
                 thinkingExpanded = false
                 toolExpansionOverrides.removeAll()
-            case .collapseEverything, .none:
-                // Second-step (or unknown): full collapse.
+            } else if aiExpanded {
                 aiExpanded = false
-                thinkingExpanded = false
-                toolExpansionOverrides.removeAll()
-            case .expandTopLevel, .expandEverything:
-                break
             }
         }
         .onChange(of: expandSnapTick) { _ in
-            switch lastBulkAction {
-            case .expandTopLevel:
-                // First-step expand: open AI chunk headers only;
-                // thinking + tools stay collapsed.
+            // Per-row stepped expand: advance one step toward fully expanded.
+            //   stage 1 (closed)   → stage 2 (aiExpanded only)
+            //   stage 2            → stage 3 (open thinking + every tool)
+            //   stage 3            → no-op
+            if !aiExpanded {
                 aiExpanded = true
-            case .expandEverything, .none:
-                aiExpanded = true
+            } else {
                 if snapshot.thinking != nil { thinkingExpanded = true }
                 for tool in snapshot.toolCalls {
                     toolExpansionOverrides[tool.id] = true
                 }
-            case .collapseSubItems, .collapseEverything:
-                break
             }
         }
     }
@@ -529,9 +516,11 @@ private struct SystemChunkRow: View {
     let palette: HudPaletteToken
     let collapseAllTick: Int
     let expandSnapTick: Int
-    let lastBulkAction: InspectorBulkAction?
     let onOpenDetail: (InspectorDetailRequest) -> Void
-    @State private var expanded = true
+    /// Default folded — system rows are typically reference output
+    /// (turn duration, hook summaries, recap) the user opens
+    /// deliberately rather than reads inline.
+    @State private var expanded = false
 
     private var hasBody: Bool { !snapshot.systemBody.isEmpty }
 
@@ -628,7 +617,6 @@ private struct MetaChunkRow: View {
     let palette: HudPaletteToken
     let collapseAllTick: Int
     let expandSnapTick: Int
-    let lastBulkAction: InspectorBulkAction?
     let onOpenDetail: (InspectorDetailRequest) -> Void
     @State private var expanded = false
 

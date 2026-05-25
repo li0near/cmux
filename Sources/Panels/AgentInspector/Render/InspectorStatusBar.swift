@@ -29,14 +29,15 @@ struct InspectorStatusBar: View {
 
     /// Icon-pill row, left-to-right:
     ///   1. Scroll mode (label-pill, always visible).
-    ///   2. Rewinds visibility toggle (icon, always visible).
-    ///   3. Snap-expand mode toggle — only when locked onto a snap turn.
-    ///   4. Collapse all (action, always visible).
-    ///   5. Expand snap (action) — same gating as pill 3.
-    ///
-    /// Pills 3 and 5 hide when `panel.isShowingSnapTurn` is false —
-    /// outside an actual snap turn, "auto-expand snap turn" /
-    /// "expand snap" have no meaningful target.
+    ///   2. Rewinds visibility toggle (always visible).
+    ///   3. Snap-expand mode toggle — only when locked onto a snap turn
+    ///      (auto-expand semantics depend on a snap turn existing).
+    ///   4. Collapse all (always visible). Per-row stepped advance
+    ///      toward fully collapsed.
+    ///   5. Expand all (always visible). Per-row stepped advance
+    ///      toward fully expanded. Applies to currently-viewable
+    ///      content — snap turn in snap mode, all chunks in free
+    ///      scroll, history zone in `.preAnchored`.
     private var pillRow: some View {
         HStack(spacing: 6) {
             syncModePill
@@ -61,17 +62,15 @@ struct InspectorStatusBar: View {
             iconButton(
                 systemName: "rectangle.compress.vertical",
                 color: palette.dim,
-                tooltip: "Collapse: 1st click closes sub-items, 2nd closes everything",
+                tooltip: "Collapse one stage (sub-items first, then headers)",
                 action: { panel.collapseAll() }
             )
-            if panel.isShowingSnapTurn {
-                iconButton(
-                    systemName: "rectangle.expand.vertical",
-                    color: palette.dim,
-                    tooltip: "Expand snap: 1st click opens AI chunks, 2nd opens tools",
-                    action: { panel.expandSnap() }
-                )
-            }
+            iconButton(
+                systemName: "rectangle.expand.vertical",
+                color: palette.dim,
+                tooltip: "Expand one stage (headers first, then sub-items)",
+                action: { panel.expandSnap() }
+            )
         }
     }
 

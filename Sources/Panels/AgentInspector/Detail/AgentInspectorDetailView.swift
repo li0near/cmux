@@ -50,7 +50,6 @@ struct AgentInspectorDetailView: View {
                         streamingAIChunkId: nil,
                         collapseAllTick: 0,
                         expandSnapTick: 0,
-                        lastBulkAction: nil,
                         onOpenDetail: { _ in /* no nested detail */ }
                     )
                     .equatable()

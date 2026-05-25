@@ -114,54 +114,27 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     }
 
     /// Phase C: monotonically-increasing tick that row views observe to
-    /// reset their per-row expansion overrides to "collapsed". Each
-    /// "Collapse all" action increments by 1.
+    /// advance one step toward "fully collapsed". Each "Collapse all"
+    /// action increments by 1.
     @Published private(set) var collapseAllTick: Int = 0
 
-    /// Phase C: monotonically-increasing tick for one-shot "Expand snap"
-    /// actions. Row views observe and expand the chunks whose containing
-    /// turn matches the current `.turns(...)` filter; chunks outside
-    /// the snap stay collapsed.
+    /// Phase C: monotonically-increasing tick for one-shot "Expand"
+    /// actions. Each click advances rows one step toward "fully
+    /// expanded". Direction is implicit in which tick fires; rows
+    /// detect their own current stage and advance accordingly.
     @Published private(set) var expandSnapTick: Int = 0
 
-    /// Phase D iteration: which level of bulk-action was emitted on the
-    /// most recent tick. Rows interpret this to decide what depth of
-    /// content to collapse / expand. Each click cycles through two
-    /// levels (sub-items → everything for collapse; top-level →
-    /// everything for expand).
-    @Published private(set) var lastBulkAction: InspectorBulkAction?
+    /// Trigger one stepped collapse-all signal. Each row infers its own
+    /// current stage from local `@State` and advances toward stage 1
+    /// (fully collapsed). Multiple clicks step through stages.
+    func collapseAll() { collapseAllTick &+= 1 }
 
-    /// Phase D iteration 2: global expansion state. Rows snap to this
-    /// on each `collapseAllTick` / `expandSnapTick` increment.
-    /// Initial value matches `AIChunkRow`'s default `aiExpanded = true`
-    /// so the first collapse-click visibly advances one step.
-    @Published private(set) var bulkExpansionState: InspectorBulkExpansionState = .topLevelExpanded
-
-    /// Trigger a stepped collapse-all signal for row views.
-    func collapseAll() {
-        let next: InspectorBulkExpansionState
-        switch bulkExpansionState {
-        case .fullyExpanded: next = .topLevelExpanded
-        case .topLevelExpanded: next = .fullyCollapsed
-        case .fullyCollapsed: next = .fullyCollapsed
-        }
-        bulkExpansionState = next
-        lastBulkAction = (next == .topLevelExpanded ? .collapseSubItems : .collapseEverything)
-        collapseAllTick &+= 1
-    }
-
-    /// Trigger a stepped expand-snap signal for row views.
-    func expandSnap() {
-        let next: InspectorBulkExpansionState
-        switch bulkExpansionState {
-        case .fullyCollapsed: next = .topLevelExpanded
-        case .topLevelExpanded: next = .fullyExpanded
-        case .fullyExpanded: next = .fullyExpanded
-        }
-        bulkExpansionState = next
-        lastBulkAction = (next == .topLevelExpanded ? .expandTopLevel : .expandEverything)
-        expandSnapTick &+= 1
-    }
+    /// Trigger one stepped expand-all signal. Each row advances one
+    /// step toward stage 3 (fully expanded). The action label is
+    /// "Expand snap" only when the inspector is locked onto a snap
+    /// turn — otherwise it expands every currently-visible chunk
+    /// (free-scroll, `.preAnchored` history, or `.all`).
+    func expandSnap() { expandSnapTick &+= 1 }
 
     /// Turn anchors keyed by user-chunk id. Populated by exact
     /// `claude_anchor` socket events for live prompts (when the
