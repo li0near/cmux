@@ -32,7 +32,7 @@ struct AgentInspectorPanelView: View {
         switch panel.mode {
         case .live:
             VStack(spacing: 0) {
-                statusBar
+                InspectorStatusBar(panel: panel, appearance: appearance)
                 Divider()
                     .background(Color(nsColor: appearance.foregroundColor).opacity(0.15))
                 transcriptList
@@ -46,87 +46,7 @@ struct AgentInspectorPanelView: View {
         }
     }
 
-    // MARK: - Status bar
-
-    private var statusBar: some View {
-        HStack(spacing: 8) {
-            Text(statusGlyph)
-                .foregroundColor(statusGlyphColor)
-            Text(statusText)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(Color(nsColor: appearance.foregroundColor))
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 8)
-            syncModePill
-            Text("\(panel.stream.lineCount) lines")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Color(nsColor: appearance.foregroundColor).opacity(0.55))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-    }
-
-    /// Two-state mode pill. `free` = render the entire transcript;
-    /// `snap` = filter to chunks belonging to the turn(s) currently
-    /// visible in the paired terminal viewport (with implicit live tail
-    /// at the bottom).
-    private var syncModePill: some View {
-        Button(action: { panel.syncMode = nextSyncMode(after: panel.syncMode) }) {
-            HStack(spacing: 4) {
-                Text("scroll:")
-                    .foregroundColor(Color(nsColor: appearance.foregroundColor).opacity(0.55))
-                Text(panel.syncMode.label)
-                    .foregroundColor(syncModeAccent)
-            }
-            .font(.system(size: 11, design: .monospaced))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(syncModeAccent.opacity(0.45), lineWidth: 0.5)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var syncModeAccent: Color {
-        let palette = HudPalette(appearance: appearance)
-        switch panel.syncMode {
-        case .off: return palette.dim
-        case .snap: return palette.green
-        }
-    }
-
-    private func nextSyncMode(after mode: InspectorSyncMode) -> InspectorSyncMode {
-        switch mode {
-        case .off: return .snap
-        case .snap: return .off
-        }
-    }
-
-    private var statusGlyph: String {
-        panel.resolvedSession == nil ? HudGlyph.activeDot : HudGlyph.runningCircle
-    }
-
-    private var statusGlyphColor: Color {
-        let palette = HudPalette(appearance: appearance)
-        return panel.resolvedSession == nil ? palette.dim : palette.yellow
-    }
-
-    private var statusText: String {
-        if let session = panel.resolvedSession {
-            let prefix = String(session.sessionId.prefix(8))
-            return String(
-                localized: "agentInspector.status.attached",
-                defaultValue: "attached \(session.agentKind.rawValue) \(prefix) — \(session.cwd ?? "")"
-            )
-        }
-        return String(
-            localized: "agentInspector.status.detached",
-            defaultValue: "no agent attached — focus a terminal running claude"
-        )
-    }
+    // MARK: - Transcript list
 
     // MARK: - Transcript list
 

@@ -91,6 +91,45 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     /// `endTime` is more than `streamingFreshnessWindow` in the past.
     @Published private(set) var streamingAIChunkId: String?
 
+    /// Phase C: rewound-branch visibility toggle. Persisted via
+    /// UserDefaults (key `agentInspector.rewindVisibility`).
+    @Published var rewindVisibility: InspectorRewindVisibility = .link {
+        didSet {
+            UserDefaults.standard.set(
+                rewindVisibility.rawValue,
+                forKey: "agentInspector.rewindVisibility"
+            )
+        }
+    }
+
+    /// Phase C: per-turn auto-expand toggle. Persisted via UserDefaults
+    /// (key `agentInspector.expansionMode`).
+    @Published var expansionMode: InspectorExpansionMode = .allCollapsed {
+        didSet {
+            UserDefaults.standard.set(
+                expansionMode.rawValue,
+                forKey: "agentInspector.expansionMode"
+            )
+        }
+    }
+
+    /// Phase C: monotonically-increasing tick that row views observe to
+    /// reset their per-row expansion overrides to "collapsed". Each
+    /// "Collapse all" action increments by 1.
+    @Published private(set) var collapseAllTick: Int = 0
+
+    /// Phase C: monotonically-increasing tick for one-shot "Expand snap"
+    /// actions. Row views observe and expand the chunks whose containing
+    /// turn matches the current `.turns(...)` filter; chunks outside
+    /// the snap stay collapsed.
+    @Published private(set) var expandSnapTick: Int = 0
+
+    /// Trigger a one-shot collapse-all signal for row views.
+    func collapseAll() { collapseAllTick &+= 1 }
+
+    /// Trigger a one-shot expand-snap signal for row views.
+    func expandSnap() { expandSnapTick &+= 1 }
+
     /// Turn anchors keyed by user-chunk id. Populated by exact
     /// `claude_anchor` socket events for live prompts (when the
     /// inspector + cmux are both running) — never by approximation.
@@ -136,6 +175,17 @@ final class AgentInspectorPanel: Panel, ObservableObject {
         self.workspace = workspace
         self.workspaceId = workspace.id
         self.mode = .live
+
+        // Phase C: restore persisted toggle values before any property
+        // observers fire (first assignment in init bypasses didSet).
+        if let raw = UserDefaults.standard.string(forKey: "agentInspector.rewindVisibility"),
+           let v = InspectorRewindVisibility(rawValue: raw) {
+            self.rewindVisibility = v
+        }
+        if let raw = UserDefaults.standard.string(forKey: "agentInspector.expansionMode"),
+           let v = InspectorExpansionMode(rawValue: raw) {
+            self.expansionMode = v
+        }
 
         let observer = FocusedSurfaceObserver(workspace: workspace)
         focusedSurfaceObserver = observer
