@@ -235,6 +235,72 @@ final class VisibleTurnFilterTests: XCTestCase {
         XCTAssertEqual(result, .turns(["u3"]))
     }
 
+    // MARK: - Latest-turn stay band (wider than at-bottom tolerance)
+
+    func testUnanchoredStaysOnLatestWithinTwoViewportHeightsOfBottom() {
+        // No anchors. total=1000, len=100. bandRows = 2*len = 200,
+        // latestPromptRow ≈ total - bandRows = 800.
+        // Viewport offset=820, end=920 — 80 rows shy of `total`, well
+        // outside the historic at-bottom tolerance (3 rows). Under the
+        // old at-bottom-only check this would flip to .preAnchored;
+        // the wider stay band keeps it on .turns([u3]) so a small
+        // scroll-up doesn't trigger the LazyVStack content-set swap.
+        let chunks = [
+            userChunk("u1"),
+            userChunk("u2"),
+            userChunk("u3")
+        ]
+        let result = computeVisibleTurnFilter(
+            scrollbar: VisibleTurnScrollSnapshot(total: 1000, offset: 820, len: 100),
+            chunks: chunks,
+            anchors: []
+        )
+        XCTAssertEqual(result, .turns(["u3"]))
+    }
+
+    func testUnanchoredExpandsToPreAnchoredAboveStayBand() {
+        // Same shape as above but viewport scrolled well above the
+        // stay band: offset=500 → top is at row 500, bandRows=200,
+        // latestPromptRow=800 — 500+3 < 800 → expand.
+        // No anchors → fall through to .preAnchored.
+        let chunks = [
+            userChunk("u1"),
+            userChunk("u2"),
+            userChunk("u3")
+        ]
+        let result = computeVisibleTurnFilter(
+            scrollbar: VisibleTurnScrollSnapshot(total: 1000, offset: 500, len: 100),
+            chunks: chunks,
+            anchors: []
+        )
+        XCTAssertEqual(result, .preAnchored)
+    }
+
+    func testAnchoredLatestStaysViaStayBandPath() {
+        // Latest user chunk (u2) has an anchor at row 600.
+        // latestPromptRow = 600 (exact, anchor totalAtCapture=0).
+        // Viewport offset=650, end=750 — u2's anchor row 600 is NOT
+        // inside [650, 750], so the "anchored fully-visible" path
+        // does not match. The stay-band check (650+3 ≥ 600) returns
+        // .turns([u2]) before falling through to "anchored before".
+        let chunks = [
+            userChunk("u1"),
+            aiChunk("a1"),
+            userChunk("u2"),
+            aiChunk("a2")
+        ]
+        let anchors = [
+            anchor("u1", row: 100, ai: "a1"),
+            anchor("u2", row: 600, ai: "a2")
+        ]
+        let result = computeVisibleTurnFilter(
+            scrollbar: VisibleTurnScrollSnapshot(total: 1000, offset: 650, len: 100),
+            chunks: chunks,
+            anchors: anchors
+        )
+        XCTAssertEqual(result, .turns(["u2"]))
+    }
+
     // MARK: - No-scrollbar cold attach
 
     func testNilScrollbarWithChunksReturnsLatestTurn() {
@@ -283,5 +349,91 @@ final class VisibleTurnFilterTests: XCTestCase {
             anchors: anchors
         )
         XCTAssertEqual(result, .turns(["u1"]))
+    }
+
+    // MARK: - inspectorScrollTarget
+
+    private static let testChunkListId = "__test_list__"
+
+    func testScrollTargetForTurnsReturnsContainerId() {
+        let chunks = [userChunk("u1"), aiChunk("a1"), userChunk("u2"), aiChunk("a2")]
+        let target = inspectorScrollTarget(
+            chunks: chunks,
+            filter: .turns(["u2"]),
+            anchoredUserIds: [],
+            chunkListId: Self.testChunkListId
+        )
+        XCTAssertEqual(target, Self.testChunkListId)
+    }
+
+    func testScrollTargetForAllReturnsContainerId() {
+        let chunks = [userChunk("u1"), aiChunk("a1")]
+        let target = inspectorScrollTarget(
+            chunks: chunks,
+            filter: .all,
+            anchoredUserIds: [],
+            chunkListId: Self.testChunkListId
+        )
+        XCTAssertEqual(target, Self.testChunkListId)
+    }
+
+    func testScrollTargetForPreAnchoredUnanchoredLatestReturnsLastBeforeLatestUser() {
+        // Resumed session: nobody is anchored. .preAnchored renders all
+        // chunks. Target should be the chunk just before the latest user
+        // prompt so the viewport bottom lands on pre-last-turn content.
+        let chunks = [
+            userChunk("u1"), aiChunk("a1"),
+            userChunk("u2"), aiChunk("a2"),
+            userChunk("u3"), aiChunk("a3")
+        ]
+        let target = inspectorScrollTarget(
+            chunks: chunks,
+            filter: .preAnchored,
+            anchoredUserIds: [],
+            chunkListId: Self.testChunkListId
+        )
+        XCTAssertEqual(target, "a2")
+    }
+
+    func testScrollTargetForPreAnchoredAnchoredLatestReturnsContainerId() {
+        // Latest user (u2) is anchored. .preAnchored excludes u2's
+        // chunks from the rendered set; the rendered set's natural
+        // bottom IS the pre-last-turn boundary, so the container id
+        // suffices.
+        let chunks = [
+            userChunk("u1"), aiChunk("a1"),
+            userChunk("u2"), aiChunk("a2")
+        ]
+        let target = inspectorScrollTarget(
+            chunks: chunks,
+            filter: .preAnchored,
+            anchoredUserIds: ["u2"],
+            chunkListId: Self.testChunkListId
+        )
+        XCTAssertEqual(target, Self.testChunkListId)
+    }
+
+    func testScrollTargetForPreAnchoredSingleUserReturnsContainerId() {
+        // Only one user prompt and nothing before it — there is no
+        // "chunk before the latest user" to land on. Fall back to
+        // the container id (LazyVStack bottom).
+        let chunks = [userChunk("u1"), aiChunk("a1")]
+        let target = inspectorScrollTarget(
+            chunks: chunks,
+            filter: .preAnchored,
+            anchoredUserIds: [],
+            chunkListId: Self.testChunkListId
+        )
+        XCTAssertEqual(target, Self.testChunkListId)
+    }
+
+    func testScrollTargetForPreAnchoredEmptyChunksReturnsContainerId() {
+        let target = inspectorScrollTarget(
+            chunks: [],
+            filter: .preAnchored,
+            anchoredUserIds: [],
+            chunkListId: Self.testChunkListId
+        )
+        XCTAssertEqual(target, Self.testChunkListId)
     }
 }

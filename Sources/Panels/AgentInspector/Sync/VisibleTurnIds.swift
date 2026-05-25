@@ -60,10 +60,15 @@ private let atBottomToleranceRows: UInt64 = 3
 ///    Ghostty's first scrollbar tick): treat as at-bottom — return
 ///    the latest user chunk's turn so the inspector shows live tail
 ///    instead of an empty placeholder.
-/// 3. **At-bottom snap** (within `atBottomToleranceRows` of `total`)
-///    → `.turns([lastUserChunkId])`. The user is explicitly looking
-///    at the latest content; show that turn whether or not it's
-///    anchored.
+/// 3. **Latest-turn stay band**: viewport top has not moved above the
+///    latest user prompt's row → `.turns([lastUserChunkId])`. The
+///    band is anchored exactly when a `claude_anchor` record exists
+///    for the latest user chunk; otherwise approximated as
+///    `2 * len` rows from the bottom of scrollback. This widens the
+///    previous narrow at-bottom check so common scroll gestures
+///    don't flap the filter into `.preAnchored` and back, which
+///    forces a dramatic LazyVStack content-set swap and a visible
+///    flash.
 /// 4. **Anchored fully-visible**: every anchor whose effective row
 ///    sits within `[viewportTop, viewportEnd]` → `.turns(matched)`.
 /// 5. **Anchored "before"**: largest anchor with effective row ≤
@@ -86,23 +91,50 @@ func computeVisibleTurnFilter(
 ) -> VisibleTurnFilter {
     guard !chunks.isEmpty else { return .turns([]) }
 
+    let latestUserId = chunks.lastUserChunkId ?? chunks.last!.id
+
     // Cold-attach guard: no scrollbar tick has been published for
     // this surface yet. Treat as at-bottom so the inspector shows
     // the live tail rather than an empty pane.
     guard let scrollbar else {
-        return .turns([chunks.lastUserChunkId ?? chunks.last!.id])
+        return .turns([latestUserId])
     }
 
-    let viewportEnd = scrollbar.offset &+ scrollbar.len
-    let isAtBottom = scrollbar.total == 0
-        || viewportEnd &+ atBottomToleranceRows >= scrollbar.total
-    if isAtBottom {
-        return .turns([chunks.lastUserChunkId ?? chunks.last!.id])
+    // "Stay on latest turn" zone. The viewport remains on
+    // `.turns([latestUserId])` while its top edge has not moved above
+    // the latest user prompt's row in scrollback. Two estimation modes:
+    //
+    //   - Latest user chunk has an anchor: use the scaled anchor row
+    //     exactly. This is the live-prompt path.
+    //   - No anchor (resumed / pre-inspector latest turn): approximate
+    //     the latest prompt's row as `2 * len` rows from the bottom of
+    //     scrollback — i.e., assume the latest turn occupies up to two
+    //     viewport-heights of scrollback. Gives a meaningful buffer
+    //     past the narrow at-bottom tolerance before transitioning
+    //     into the history zone.
+    //
+    // Without this widened band, exiting at-bottom by a single row
+    // immediately swaps the rendered chunk set from `.turns([latest])`
+    // (small) to `.preAnchored` (large), producing a visible content
+    // flash even when the viewport's actually-visible chunks barely
+    // change across the boundary.
+    let latestPromptRow: UInt64 = {
+        if let anchor = anchors.last(where: { $0.userChunkId == latestUserId }) {
+            return scaledRow(anchor, currentTotal: scrollbar.total)
+        }
+        let bandRows = scrollbar.len &* 2
+        return scrollbar.total > bandRows ? scrollbar.total - bandRows : 0
+    }()
+
+    let isInLatestStayBand = scrollbar.total == 0
+        || scrollbar.offset &+ atBottomToleranceRows >= latestPromptRow
+    if isInLatestStayBand {
+        return .turns([latestUserId])
     }
 
     if !anchors.isEmpty {
         let viewportTop = scrollbar.offset
-        let viewportBot = viewportEnd
+        let viewportBot = scrollbar.offset &+ scrollbar.len
         let scaled: [(anchor: TurnAnchor, row: UInt64)] = anchors.map {
             (anchor: $0, row: scaledRow($0, currentTotal: scrollbar.total))
         }
@@ -187,6 +219,56 @@ func chunksForFilter(
             // "unanchored" — include them in the pre-anchored zone.
             true
         }
+    }
+}
+
+/// Decide the chunk-id the inspector should scroll to (with
+/// `anchor=.bottom`) on a filter transition.
+///
+/// - `.all` / `.turns(_)` → the LazyVStack container's own id (its
+///   bottom edge = bottom of the rendered set).
+/// - `.preAnchored` with the latest user chunk still rendered (i.e.,
+///   the latest user is unanchored): the chunk immediately preceding
+///   the latest user prompt. This puts pre-last-turn content at the
+///   bottom of the inspector — the user lands on history, the
+///   latest turn is scrollable down, older history scrollable up.
+///   Without this, scrolling to `chunkListId` lands on the latest
+///   turn (since `.preAnchored` includes it), which is the same
+///   content the user just scrolled away from in the terminal.
+/// - `.preAnchored` with the latest user chunk excluded (latest is
+///   anchored): the rendered set's natural bottom IS already the
+///   pre-last-turn boundary, so the container id suffices.
+///
+/// Targeting a specific chunk-id (rather than the container id) is
+/// also more deterministic in the presence of LazyVStack lazy row
+/// materialization: scrolling to `chunkListId` with `anchor=.bottom`
+/// lands at an *estimated* container bottom whose offset can vary
+/// across calls; scrolling to a specific chunk forces materialization
+/// of that exact row.
+func inspectorScrollTarget(
+    chunks: [AgentChunk],
+    filter: VisibleTurnFilter,
+    anchoredUserIds: Set<String>,
+    chunkListId: String
+) -> String {
+    switch filter {
+    case .all, .turns:
+        return chunkListId
+    case .preAnchored:
+        guard let latestUserId = chunks.lastUserChunkId else {
+            return chunkListId
+        }
+        guard !anchoredUserIds.contains(latestUserId) else {
+            return chunkListId
+        }
+        var lastBefore: String?
+        for chunk in chunks {
+            if case .user(let u) = chunk, u.id == latestUserId {
+                return lastBefore ?? chunkListId
+            }
+            lastBefore = chunk.id
+        }
+        return chunkListId
     }
 }
 

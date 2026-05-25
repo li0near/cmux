@@ -12,16 +12,6 @@ import AppKit
 /// - All transformations (chunk → snapshot) happen on the main actor here,
 ///   in a `let` projection — never inside any view's `body` (CLAUDE.md
 ///   "No state mutation inside view-body computations.").
-/// Reference-type holder for cancellable scroll work. `@State` on a
-/// class persists across view re-renders without re-publishing on
-/// every mutation (we mutate the stored property, not the reference
-/// itself). Cancelling the previous work item before scheduling a
-/// new one prevents stacked deferred scrolls from racing each other
-/// during rapid filter transitions.
-private final class InspectorScrollCoordinator {
-    var pendingWork: DispatchWorkItem?
-}
-
 struct AgentInspectorPanelView: View {
     @ObservedObject var panel: AgentInspectorPanel
     let isFocused: Bool
@@ -37,8 +27,6 @@ struct AgentInspectorPanelView: View {
     /// scroll manually inside the LazyVStack, with no sentinel view
     /// added to the layout.
     private static let chunkListId = "__cmux_inspector_chunk_list__"
-
-    @State private var scrollCoordinator = InspectorScrollCoordinator()
 
     var body: some View {
         switch panel.mode {
@@ -200,31 +188,34 @@ struct AgentInspectorPanelView: View {
                 // content heights). User scrolls via wheel / trackpad
                 // — same model as the terminal pane.
                 .scrollIndicators(.never)
-                // On ANY filter transition, scroll to the bottom of
-                // the displayed chunk list. Preserving the previous
-                // scroll position across filter changes is hard
-                // (LazyVStack content shape changes when the chunk
-                // list changes), and the user explicitly prefers
-                // landing at the bottom over landing at the top:
+                // On filter transitions and session change, route scroll
+                // through `scrollForFilter` so the landing position
+                // reflects the *intent* of each filter regime:
                 //
-                //   - `.turns(latestTurnId)` — log-tail follow.
-                //   - `.turns(olderTurnId)` — bottom of that turn's
-                //     chunks (user just navigated there; show the
-                //     most recent content of the turn).
-                //   - `.preAnchored` — bottom of the unanchored
-                //     history (mirrors Claude's resume positioning).
+                //   - `.turns([latestId])` (at-bottom snap) — bottom of
+                //     the rendered chunk set (latest turn at bottom).
+                //   - `.turns([olderTurnId])` — bottom of that turn.
+                //   - `.preAnchored` (unanchored latest, expand to
+                //     history) — the chunk just before the latest user
+                //     prompt, anchored to the viewport bottom. Lands on
+                //     pre-last-turn content; the latest turn is
+                //     scrollable down, older history scrollable up.
+                //
+                // For live-tail line landings (`stream.lineCount`),
+                // always scroll to the LazyVStack bottom — that's the
+                // log-tail follow behavior.
                 .onAppear {
-                    scrollToBottom(proxy: proxy, snapshots: snapshots)
+                    scrollForFilter(proxy: proxy)
                 }
                 .onChange(of: panel.visibleTurnFilter) { _ in
-                    scrollToBottom(proxy: proxy, snapshots: snapshots)
+                    scrollForFilter(proxy: proxy)
                 }
                 // Belt-and-suspenders for tab-switch: even if the
                 // ScrollView's session-keyed identity didn't flip
                 // (rare race), an explicit handler on session change
                 // forces the bottom snap.
                 .onChange(of: panel.resolvedSession?.sessionId) { _ in
-                    scrollToBottom(proxy: proxy, snapshots: snapshots)
+                    scrollForFilter(proxy: proxy)
                 }
                 // Log-tail behavior: when a new JSONL line lands AND
                 // the filter is currently rendering the live tail,
@@ -261,6 +252,33 @@ struct AgentInspectorPanelView: View {
         return displayedLastId == streamLastId
     }
 
+    /// Scroll the inspector based on the current filter regime. The
+    /// target chunk-id is computed by `inspectorScrollTarget(...)`:
+    /// `.turns(_)` lands at the LazyVStack's container bottom; the
+    /// unanchored `.preAnchored` case lands on the chunk preceding
+    /// the latest user prompt so the user sees pre-last-turn content
+    /// at the bottom of the inspector instead of the same latest-turn
+    /// chunks they were just at-bottom on.
+    ///
+    /// Reads `panel.stream.chunks`, `panel.visibleTurnFilter`, and
+    /// `panel.anchoredUserIds` directly inside the closure to avoid
+    /// closure-staleness on captured snapshots.
+    private func scrollForFilter(proxy: ScrollViewProxy) {
+        let chunks = panel.stream.chunks
+        guard !chunks.isEmpty else { return }
+        let target = inspectorScrollTarget(
+            chunks: chunks,
+            filter: panel.visibleTurnFilter,
+            anchoredUserIds: panel.anchoredUserIds,
+            chunkListId: Self.chunkListId
+        )
+        var tx = Transaction()
+        tx.disablesAnimations = true
+        withTransaction(tx) {
+            proxy.scrollTo(target, anchor: .bottom)
+        }
+    }
+
     /// Scroll the inspector to the bottom of the LazyVStack containing
     /// the chunk rows. Aligning the LazyVStack's own bottom edge with
     /// the viewport bottom lands at exactly the spot the user can
@@ -268,34 +286,21 @@ struct AgentInspectorPanelView: View {
     /// the trailing Divider — without adding a sentinel view to the
     /// layout.
     ///
-    /// **Deferred to the next main runloop** because filter
-    /// transitions and stream updates rebuild the LazyVStack's
-    /// content set; calling `scrollTo` synchronously would target a
-    /// partially-materialized tree and land at arbitrary offsets.
-    /// The async hop lets SwiftUI commit the new layout first.
-    ///
-    /// **Cancellable** via `InspectorScrollCoordinator`: a single
-    /// user gesture can produce several filter transitions in rapid
-    /// succession. Without cancellation, all of them would dispatch
-    /// scroll-to-bottom work items that execute in order, briefly
-    /// flashing the LazyVStack to intermediate positions before
-    /// settling. Cancelling the previous work item before
-    /// scheduling a new one keeps only the trailing scroll.
+    /// Used by the live-tail follow path (`stream.lineCount` change):
+    /// while the filter is rendering the latest turn at the bottom,
+    /// new chunks landing should keep the user pinned at the tail.
+    /// Filter transitions go through `scrollForFilter(...)` instead so
+    /// the landing position depends on the filter regime.
     private func scrollToBottom(
         proxy: ScrollViewProxy,
         snapshots: [ChunkRowSnapshot]
     ) {
         guard !snapshots.isEmpty else { return }
-        scrollCoordinator.pendingWork?.cancel()
-        let work = DispatchWorkItem {
-            var tx = Transaction()
-            tx.disablesAnimations = true
-            withTransaction(tx) {
-                proxy.scrollTo(Self.chunkListId, anchor: .bottom)
-            }
+        var tx = Transaction()
+        tx.disablesAnimations = true
+        withTransaction(tx) {
+            proxy.scrollTo(Self.chunkListId, anchor: .bottom)
         }
-        scrollCoordinator.pendingWork = work
-        DispatchQueue.main.async(execute: work)
     }
 
     private var emptyTranscriptView: some View {
