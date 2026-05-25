@@ -171,14 +171,6 @@ final class FocusedSurfaceObserver: ObservableObject {
             surfaceId: panelUUID.uuidString,
             cwdHint: cwdHint
         )
-#if DEBUG
-        cmuxDebugLog(
-            "agentInspector.recompute " +
-            "resolved=\(resolved.map { "\($0.agentKind.rawValue):\($0.sessionId.prefix(8))" } ?? "<nil>") " +
-            "panelId=\(panelUUID.uuidString.prefix(5)) " +
-            "cwd=\(cwdHint ?? "<nil>")"
-        )
-#endif
         updateIfChanged(resolved)
     }
 

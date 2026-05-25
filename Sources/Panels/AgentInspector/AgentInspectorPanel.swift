@@ -316,11 +316,6 @@ final class AgentInspectorPanel: Panel, ObservableObject {
                 totalAtCapture: pairing.payload.totalAtCapture,
                 at: pairing.payload.capturedAt
             )
-            #if DEBUG
-            cmuxDebugLog(
-                "agentInspector.liveAnchor user=\(pairing.userChunkId.prefix(8)) turn=\(pairing.payload.turnId.prefix(8)) row=\(pairing.payload.terminalRowAtSubmit) total=\(pairing.payload.totalAtCapture)"
-            )
-            #endif
         }
         pendingClaudeAnchors = result.remainingQueue
     }
@@ -363,11 +358,6 @@ final class AgentInspectorPanel: Panel, ObservableObject {
         guard let payload = note.claudeAnchorPayload else { return }
         guard let resolved = resolvedSession,
               resolved.sessionId == payload.sessionId else {
-            #if DEBUG
-            cmuxDebugLog(
-                "agentInspector.liveAnchor.miss reason=session_mismatch resolved=\(resolvedSession?.sessionId.prefix(8) ?? "nil") incoming=\(payload.sessionId.prefix(8))"
-            )
-            #endif
             return
         }
         pendingClaudeAnchors.append(payload)

@@ -41,6 +41,14 @@ struct ChunkRowView: View, Equatable {
     /// snapshot's id, the AI row's header glyph pulses. Snapshot-policy
     /// safe — plain value type.
     let streamingAIChunkId: String?
+    /// Phase D: monotonically-increasing tick that triggers a per-row
+    /// reset of expansion state to collapsed. Each "Collapse all" panel
+    /// action increments this tick.
+    let collapseAllTick: Int
+    /// Phase D: monotonically-increasing tick that triggers a per-row
+    /// expansion to expanded. "Expand snap" panel action increments
+    /// directly; auto-expand-snap mode increments on filter transitions.
+    let expandSnapTick: Int
     /// Stable closure reference. Ignored by `==` per the snapshot policy.
     let onOpenDetail: (InspectorDetailRequest) -> Void
 
@@ -48,21 +56,37 @@ struct ChunkRowView: View, Equatable {
         lhs.snapshot == rhs.snapshot
             && lhs.palette == rhs.palette
             && lhs.streamingAIChunkId == rhs.streamingAIChunkId
+            && lhs.collapseAllTick == rhs.collapseAllTick
+            && lhs.expandSnapTick == rhs.expandSnapTick
     }
 
     var body: some View {
         switch snapshot.kind {
         case .user:
-            UserChunkRow(snapshot: snapshot, palette: palette, onOpenDetail: onOpenDetail)
+            UserChunkRow(
+                snapshot: snapshot,
+                palette: palette,
+                collapseAllTick: collapseAllTick,
+                expandSnapTick: expandSnapTick,
+                onOpenDetail: onOpenDetail
+            )
         case .ai:
             AIChunkRow(
                 snapshot: snapshot,
                 palette: palette,
                 isStreaming: streamingAIChunkId == snapshot.id,
+                collapseAllTick: collapseAllTick,
+                expandSnapTick: expandSnapTick,
                 onOpenDetail: onOpenDetail
             )
         case .system:
-            SystemChunkRow(snapshot: snapshot, palette: palette, onOpenDetail: onOpenDetail)
+            SystemChunkRow(
+                snapshot: snapshot,
+                palette: palette,
+                collapseAllTick: collapseAllTick,
+                expandSnapTick: expandSnapTick,
+                onOpenDetail: onOpenDetail
+            )
         case .compact:
             CompactChunkRow(snapshot: snapshot, palette: palette)
         case .meta(let metaKind):
@@ -70,6 +94,8 @@ struct ChunkRowView: View, Equatable {
                 snapshot: snapshot,
                 metaKind: metaKind,
                 palette: palette,
+                collapseAllTick: collapseAllTick,
+                expandSnapTick: expandSnapTick,
                 onOpenDetail: onOpenDetail
             )
         }
@@ -81,6 +107,8 @@ struct ChunkRowView: View, Equatable {
 private struct UserChunkRow: View {
     let snapshot: ChunkRowSnapshot
     let palette: HudPaletteToken
+    let collapseAllTick: Int
+    let expandSnapTick: Int
     let onOpenDetail: (InspectorDetailRequest) -> Void
     @State private var expanded = false
 
@@ -133,6 +161,8 @@ private struct UserChunkRow: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: collapseAllTick) { _ in expanded = false }
+        .onChange(of: expandSnapTick) { _ in if hasMore { expanded = true } }
     }
 }
 
@@ -144,6 +174,8 @@ private struct AIChunkRow: View {
     /// Drives the pulse animation on the header glyph while the trailing
     /// AI chunk is still being written.
     let isStreaming: Bool
+    let collapseAllTick: Int
+    let expandSnapTick: Int
     let onOpenDetail: (InspectorDetailRequest) -> Void
     @State private var aiExpanded = true
     @State private var thinkingExpanded = false
@@ -186,6 +218,18 @@ private struct AIChunkRow: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: collapseAllTick) { _ in
+            aiExpanded = false
+            thinkingExpanded = false
+            toolExpansionOverrides.removeAll()
+        }
+        .onChange(of: expandSnapTick) { _ in
+            aiExpanded = true
+            if snapshot.thinking != nil { thinkingExpanded = true }
+            for tool in snapshot.toolCalls {
+                toolExpansionOverrides[tool.id] = true
+            }
+        }
     }
 
     /// Phase B: assistant final text body opens in a detail tab. Always-link
@@ -455,6 +499,8 @@ private struct AIChunkRow: View {
 private struct SystemChunkRow: View {
     let snapshot: ChunkRowSnapshot
     let palette: HudPaletteToken
+    let collapseAllTick: Int
+    let expandSnapTick: Int
     let onOpenDetail: (InspectorDetailRequest) -> Void
     @State private var expanded = true
 
@@ -499,6 +545,8 @@ private struct SystemChunkRow: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: collapseAllTick) { _ in expanded = false }
+        .onChange(of: expandSnapTick) { _ in if hasBody { expanded = true } }
     }
 }
 
@@ -549,6 +597,8 @@ private struct MetaChunkRow: View {
     let snapshot: ChunkRowSnapshot
     let metaKind: ChunkRowSnapshot.MetaKind
     let palette: HudPaletteToken
+    let collapseAllTick: Int
+    let expandSnapTick: Int
     let onOpenDetail: (InspectorDetailRequest) -> Void
     @State private var expanded = false
 
@@ -563,6 +613,12 @@ private struct MetaChunkRow: View {
         .padding(.horizontal, 12)
         .padding(.leading, isBranchStyle ? 14 : 0)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: collapseAllTick) { _ in expanded = false }
+        .onChange(of: expandSnapTick) { _ in
+            if let meta = snapshot.meta, !meta.body.isEmpty {
+                expanded = true
+            }
+        }
     }
 
     private var header: some View {

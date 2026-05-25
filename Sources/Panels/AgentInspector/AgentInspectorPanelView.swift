@@ -60,7 +60,7 @@ struct AgentInspectorPanelView: View {
             }
         }()
         let allChunks = panel.stream.chunks
-        let visibleChunks: [AgentChunk] = {
+        let postFilterChunks: [AgentChunk] = {
             switch panel.syncMode {
             case .off:
                 return allChunks
@@ -72,11 +72,20 @@ struct AgentInspectorPanelView: View {
                 )
             }
         }()
+        // Phase D.1: drop BranchLink rows when the user has hidden them.
+        let visibleChunks: [AgentChunk] = panel.rewindVisibility == .hide
+            ? postFilterChunks.filter {
+                if case .meta(.branchLink) = $0 { return false }
+                return true
+            }
+            : postFilterChunks
         let snapshots = visibleChunks.map {
             ChunkRowSnapshot.from($0, agentKind: agentKind)
         }
         let palette = HudPaletteToken.from(HudPalette(appearance: appearance))
         let streamingAIChunkId = panel.streamingAIChunkId
+        let collapseTick = panel.collapseAllTick
+        let expandTick = panel.expandSnapTick
 
         if snapshots.isEmpty {
             emptyTranscriptView
@@ -89,6 +98,8 @@ struct AgentInspectorPanelView: View {
                                 snapshot: snapshot,
                                 palette: palette,
                                 streamingAIChunkId: streamingAIChunkId,
+                                collapseAllTick: collapseTick,
+                                expandSnapTick: expandTick,
                                 onOpenDetail: { request in
                                     panel.openDetail(request: request)
                                 }
@@ -129,6 +140,12 @@ struct AgentInspectorPanelView: View {
                 }
                 .onChange(of: panel.visibleTurnFilter) { _ in
                     scrollForFilter(proxy: proxy)
+                    // Phase D: when auto-expand-snap is on, fire the
+                    // expand-snap tick on every filter transition so
+                    // newly-visible snap turn chunks open by default.
+                    if panel.expansionMode == .autoExpandSnap {
+                        panel.expandSnap()
+                    }
                 }
                 // Belt-and-suspenders for tab-switch: even if the
                 // ScrollView's session-keyed identity didn't flip
