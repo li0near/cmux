@@ -124,11 +124,35 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     /// the snap stay collapsed.
     @Published private(set) var expandSnapTick: Int = 0
 
-    /// Trigger a one-shot collapse-all signal for row views.
-    func collapseAll() { collapseAllTick &+= 1 }
+    /// Phase D iteration: which level of bulk-action was emitted on the
+    /// most recent tick. Rows interpret this to decide what depth of
+    /// content to collapse / expand. Each click cycles through two
+    /// levels (sub-items → everything for collapse; top-level →
+    /// everything for expand).
+    @Published private(set) var lastBulkAction: InspectorBulkAction?
 
-    /// Trigger a one-shot expand-snap signal for row views.
-    func expandSnap() { expandSnapTick &+= 1 }
+    private var collapseClickCount = 0
+    private var expandClickCount = 0
+
+    /// Trigger a stepped collapse-all signal for row views.
+    func collapseAll() {
+        let action: InspectorBulkAction = (collapseClickCount % 2 == 0)
+            ? .collapseSubItems
+            : .collapseEverything
+        collapseClickCount += 1
+        lastBulkAction = action
+        collapseAllTick &+= 1
+    }
+
+    /// Trigger a stepped expand-snap signal for row views.
+    func expandSnap() {
+        let action: InspectorBulkAction = (expandClickCount % 2 == 0)
+            ? .expandTopLevel
+            : .expandEverything
+        expandClickCount += 1
+        lastBulkAction = action
+        expandSnapTick &+= 1
+    }
 
     /// Turn anchors keyed by user-chunk id. Populated by exact
     /// `claude_anchor` socket events for live prompts (when the

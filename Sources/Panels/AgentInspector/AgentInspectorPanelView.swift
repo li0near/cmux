@@ -86,6 +86,7 @@ struct AgentInspectorPanelView: View {
         let streamingAIChunkId = panel.streamingAIChunkId
         let collapseTick = panel.collapseAllTick
         let expandTick = panel.expandSnapTick
+        let lastBulk = panel.lastBulkAction
 
         if snapshots.isEmpty {
             emptyTranscriptView
@@ -100,6 +101,7 @@ struct AgentInspectorPanelView: View {
                                 streamingAIChunkId: streamingAIChunkId,
                                 collapseAllTick: collapseTick,
                                 expandSnapTick: expandTick,
+                                lastBulkAction: lastBulk,
                                 onOpenDetail: { request in
                                     panel.openDetail(request: request)
                                 }
@@ -140,12 +142,21 @@ struct AgentInspectorPanelView: View {
                 }
                 .onChange(of: panel.visibleTurnFilter) { _ in
                     scrollForFilter(proxy: proxy)
-                    // Phase D: when auto-expand-snap is on, fire the
-                    // expand-snap tick on every filter transition so
-                    // newly-visible snap turn chunks open by default.
-                    if panel.expansionMode == .autoExpandSnap {
+                    // Auto-expand-snap fires only in snap mode; in free
+                    // scroll the user is browsing the entire transcript
+                    // and bulk-expanding history is exactly what we want
+                    // to avoid.
+                    if panel.syncMode == .snap, panel.expansionMode == .autoExpandSnap {
                         panel.expandSnap()
                     }
+                }
+                // Phase D iter: after a bulk collapse, the rows above
+                // the user's previous scroll position vanish, leaving
+                // them looking at white space below the new (shorter)
+                // content. Re-run the filter-aware scroll target so
+                // they land at the bottom of the freshly-compacted list.
+                .onChange(of: panel.collapseAllTick) { _ in
+                    scrollForFilter(proxy: proxy)
                 }
                 // Belt-and-suspenders for tab-switch: even if the
                 // ScrollView's session-keyed identity didn't flip

@@ -314,11 +314,11 @@ final class ClaudeChunkBuilderTests: XCTestCase {
         // Categories we expect to see (one each).
         var sawSlashCmdInput = 0
         var sawSlashCmdOutput = 0
-        var sawLocalCommandCaveat = 0
         var sawSystemReminder = 0
         var sawContextUsage = 0
-        var sawContinueResume = 0
         var sawSkillTitle = 0
+        var sawContinueResume = 0
+        var sawLocalCommandCaveat = 0
         for chunk in chunks {
             guard case .meta(let m) = chunk else { continue }
             switch m {
@@ -335,10 +335,12 @@ final class ClaudeChunkBuilderTests: XCTestCase {
         // Two slashCmdInput entries: built-in /model and skill /browse-url.
         XCTAssertEqual(sawSlashCmdInput, 2)
         XCTAssertEqual(sawSlashCmdOutput, 1)
-        XCTAssertEqual(sawLocalCommandCaveat, 1)
         XCTAssertEqual(sawSystemReminder, 1)
         XCTAssertEqual(sawContextUsage, 1)
-        XCTAssertEqual(sawContinueResume, 1)
         XCTAssertEqual(sawSkillTitle, 1)
+        // Resume markers and command-caveat wrappers are policy-skipped:
+        // they carry no user-actionable content.
+        XCTAssertEqual(sawContinueResume, 0)
+        XCTAssertEqual(sawLocalCommandCaveat, 0)
     }
 }

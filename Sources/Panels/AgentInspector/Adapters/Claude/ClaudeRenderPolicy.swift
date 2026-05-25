@@ -177,11 +177,16 @@ enum ClaudeRenderPolicy {
         switch ClaudeContentDetector.classify(raw) {
         case .slashCommandInput:    return .renderSpecial(.slashCmdInput)
         case .slashCommandOutput:   return .renderSpecial(.slashCmdOutput)
-        case .localCommandCaveat:   return .renderSpecial(.localCommandCaveat)
         case .systemReminder:       return .renderSpecial(.systemReminder)
         case .skillInvocation:      return .renderSpecial(.skillTitle)
         case .contextUsage:         return .renderSpecial(.contextUsage)
-        case .continueResume:       return .renderSpecial(.continueResume)
+        // Resume markers and command-caveat wrappers carry no
+        // user-actionable content; the `Continue from where you left
+        // off.` string is auto-injected on session resume and the
+        // `<local-command-caveat>` block always wraps a stdout that's
+        // already surfaced as `slashCmdOutput`. Drop both.
+        case .continueResume:       return .skip
+        case .localCommandCaveat:   return .skip
         case .unknown:              return .renderSpecial(.unknownMeta)
         }
     }

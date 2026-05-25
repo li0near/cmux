@@ -84,6 +84,7 @@
 		725746692D9647948561044D /* AppDelegateBareSpaceShortcutRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17FCD4CC61D54A2F8F2F463D /* AppDelegateBareSpaceShortcutRoutingTests.swift */; };
 		734F49D37E543DD01C2F4FEF /* NotificationAndMenuBarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2C075029771815DD5DA1332 /* NotificationAndMenuBarTests.swift */; };
 		752C1E36BF3DF76DBE3A9FCD /* ChunkRowSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F087AEFD116809C7ED512CD /* ChunkRowSnapshot.swift */; };
+		BC00C0000000000000000001 /* InspectorBulkAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC00B0000000000000000001 /* InspectorBulkAction.swift */; };
 		BC00A0000000000000000001 /* InspectorRewindVisibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0090000000000000000001 /* InspectorRewindVisibility.swift */; };
 		BC00A0000000000000000002 /* InspectorExpansionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0090000000000000000002 /* InspectorExpansionMode.swift */; };
 		BC00A0000000000000000003 /* InspectorStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0090000000000000000003 /* InspectorStatusBar.swift */; };
@@ -718,6 +719,7 @@
 		BC0010000000000000000003 /* ClaudeBranchResolver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeBranchResolver.swift; path = Panels/AgentInspector/Adapters/Claude/ClaudeBranchResolver.swift; sourceTree = "<group>"; };
 		BC0010000000000000000004 /* ClaudeRenderPolicy.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClaudeRenderPolicy.swift; path = Panels/AgentInspector/Adapters/Claude/ClaudeRenderPolicy.swift; sourceTree = "<group>"; };
 		9F087AEFD116809C7ED512CD /* ChunkRowSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChunkRowSnapshot.swift; path = Panels/AgentInspector/Render/ChunkRowSnapshot.swift; sourceTree = "<group>"; };
+		BC00B0000000000000000001 /* InspectorBulkAction.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InspectorBulkAction.swift; path = Panels/AgentInspector/Sync/InspectorBulkAction.swift; sourceTree = "<group>"; };
 		BC0090000000000000000001 /* InspectorRewindVisibility.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InspectorRewindVisibility.swift; path = Panels/AgentInspector/Sync/InspectorRewindVisibility.swift; sourceTree = "<group>"; };
 		BC0090000000000000000002 /* InspectorExpansionMode.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InspectorExpansionMode.swift; path = Panels/AgentInspector/Sync/InspectorExpansionMode.swift; sourceTree = "<group>"; };
 		BC0090000000000000000003 /* InspectorStatusBar.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InspectorStatusBar.swift; path = Panels/AgentInspector/Render/InspectorStatusBar.swift; sourceTree = "<group>"; };
@@ -1601,6 +1603,7 @@
 				9D17A1852406E5B92E7B6404 /* FocusedSurfaceObserver.swift */,
 				8DE8C4739B81F5ECFC26786F /* HudPalette.swift */,
 				9F087AEFD116809C7ED512CD /* ChunkRowSnapshot.swift */,
+				BC00B0000000000000000001 /* InspectorBulkAction.swift */,
 				BC0090000000000000000001 /* InspectorRewindVisibility.swift */,
 				BC0090000000000000000002 /* InspectorExpansionMode.swift */,
 				BC0090000000000000000003 /* InspectorStatusBar.swift */,
@@ -2434,6 +2437,7 @@
 				838D8A7D4FDE3C3CA11A0C47 /* FocusedSurfaceObserver.swift in Sources */,
 				6D74A13F2CD8E50F5E279459 /* HudPalette.swift in Sources */,
 				752C1E36BF3DF76DBE3A9FCD /* ChunkRowSnapshot.swift in Sources */,
+				BC00C0000000000000000001 /* InspectorBulkAction.swift in Sources */,
 				BC00A0000000000000000001 /* InspectorRewindVisibility.swift in Sources */,
 				BC00A0000000000000000002 /* InspectorExpansionMode.swift in Sources */,
 				BC00A0000000000000000003 /* InspectorStatusBar.swift in Sources */,

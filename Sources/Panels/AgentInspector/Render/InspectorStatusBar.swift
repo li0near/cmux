@@ -20,9 +20,6 @@ struct InspectorStatusBar: View {
                 .truncationMode(.middle)
             Spacer(minLength: 8)
             pillRow
-            Text("\(panel.stream.lineCount) lines")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(Color(nsColor: appearance.foregroundColor).opacity(0.55))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -31,11 +28,15 @@ struct InspectorStatusBar: View {
     // MARK: - Pill row
 
     /// Icon-pill row, left-to-right:
-    ///   1. Scroll mode (label-pill).
-    ///   2. Rewinds visibility toggle (icon).
-    ///   3. Snap-expand mode toggle (icon).
-    ///   4. Collapse all (icon action).
-    ///   5. Expand snap (icon action).
+    ///   1. Scroll mode (label-pill, always visible).
+    ///   2. Rewinds visibility toggle (icon, always visible).
+    ///   3. Snap-expand mode toggle — only relevant in snap mode.
+    ///   4. Collapse all (action, always visible).
+    ///   5. Expand snap (action) — only relevant in snap mode.
+    ///
+    /// Pills 3 and 5 are hidden when sync is `.off` because expansion
+    /// rules anchored to the snap turn don't apply when every chunk
+    /// renders.
     private var pillRow: some View {
         HStack(spacing: 6) {
             syncModePill
@@ -47,26 +48,30 @@ struct InspectorStatusBar: View {
                     : "Hide rewound branch links",
                 action: { panel.rewindVisibility = panel.rewindVisibility.cycled() }
             )
-            iconButton(
-                systemName: "arrow.up.left.and.arrow.down.right",
-                color: panel.expansionMode == .autoExpandSnap ? palette.cyan : palette.dim,
-                tooltip: panel.expansionMode == .autoExpandSnap
-                    ? "Auto-expand snap turn: on"
-                    : "Auto-expand snap turn: off",
-                action: { panel.expansionMode = panel.expansionMode.cycled() }
-            )
+            if panel.syncMode == .snap {
+                iconButton(
+                    systemName: "arrow.up.left.and.arrow.down.right",
+                    color: panel.expansionMode == .autoExpandSnap ? palette.cyan : palette.dim,
+                    tooltip: panel.expansionMode == .autoExpandSnap
+                        ? "Auto-expand snap turn: on"
+                        : "Auto-expand snap turn: off",
+                    action: { panel.expansionMode = panel.expansionMode.cycled() }
+                )
+            }
             iconButton(
                 systemName: "rectangle.compress.vertical",
                 color: palette.dim,
-                tooltip: "Collapse every chunk",
+                tooltip: "Collapse: 1st click closes sub-items, 2nd closes everything",
                 action: { panel.collapseAll() }
             )
-            iconButton(
-                systemName: "rectangle.expand.vertical",
-                color: palette.dim,
-                tooltip: "Expand chunks of the current snap turn",
-                action: { panel.expandSnap() }
-            )
+            if panel.syncMode == .snap {
+                iconButton(
+                    systemName: "rectangle.expand.vertical",
+                    color: palette.dim,
+                    tooltip: "Expand snap: 1st click opens AI chunks, 2nd opens tools",
+                    action: { panel.expandSnap() }
+                )
+            }
         }
     }
 
@@ -97,9 +102,10 @@ struct InspectorStatusBar: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .foregroundColor(color)
-                .frame(width: 18, height: 18)
+                .frame(width: 22, height: 22)
+                .background(Color.black.opacity(0.001))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
