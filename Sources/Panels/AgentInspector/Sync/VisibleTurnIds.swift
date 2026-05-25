@@ -317,6 +317,14 @@ func pairClaudeAnchorsToUserChunks(
     queue: [ClaudeAnchorPayload],
     isAnchored: (String) -> Bool
 ) -> (pairings: [ClaudeAnchorPairing], remainingQueue: [ClaudeAnchorPayload]) {
+    // FIFO contract: per-session `claude_anchor` socket events arrive
+    // in submit order because `prompt-submit` claude-hook fires
+    // synchronously per prompt and the socket router serializes
+    // commands per-surface. The Nth queued payload corresponds to the
+    // Nth not-yet-anchored user chunk in the stream (in chunk order).
+    // If you change the hook firing order or add concurrent submits
+    // per session, this assumption breaks — switch to keying anchors
+    // by user-chunk id at that point.
     var queue = queue
     var pairings: [ClaudeAnchorPairing] = []
     for chunk in chunks {

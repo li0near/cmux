@@ -109,13 +109,12 @@ private struct UserChunkRow: View {
     private var hasMore: Bool {
         // Allow expansion when:
         //  - the prompt has multiple lines, OR
-        //  - the data-side `oneLine` truncated the first line (data
-        //    char count exceeds the displayed primary), OR
-        //  - the displayed primary is long enough that SwiftUI's
-        //    `lineLimit(1)` likely truncates visually with "…".
+        //  - the displayed primary ends in `…` — `oneLine()` adds the
+        //    ellipsis if and only if it data-side truncated the first
+        //    line. The chevron decision is now unambiguous and matches
+        //    what the user literally sees in `userPrimary`.
         snapshot.userFull.totalLines > 1
-            || snapshot.userCharCount > snapshot.userPrimary.count
-            || snapshot.userPrimary.count > 30
+            || snapshot.userPrimary.hasSuffix("…")
     }
 
     private var expanded: Bool { snapshot.chunkBodyOpen }
@@ -198,7 +197,8 @@ private struct AIChunkRow: View {
                 if let thinking = snapshot.thinking {
                     thinkingSection(thinking)
                 }
-                if let assistantText = snapshot.assistantTextOverflow {
+                if let assistantText = snapshot.assistantTextOverflow,
+                   snapshot.assistantTextWordCount > 0 {
                     assistantTextLink(assistantText)
                 }
                 if !snapshot.toolCalls.isEmpty {

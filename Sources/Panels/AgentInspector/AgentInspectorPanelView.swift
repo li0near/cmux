@@ -204,7 +204,13 @@ struct AgentInspectorPanelView: View {
                 // pre-anchored history) are not auto-scrolled —
                 // the user is browsing those deliberately.
                 .onChange(of: panel.stream.lineCount) { _ in
-                    guard isFollowingLiveTail(snapshots: snapshots) else { return }
+                    // Skip auto-scroll while reading history in
+                    // `.preAnchored` — the user is intentionally
+                    // browsing pre-anchor turns and shouldn't be
+                    // jumped to the latest by an unrelated stream
+                    // tick.
+                    if case .preAnchored = panel.visibleTurnFilter { return }
+                    guard isFollowingLiveTail() else { return }
                     scrollToBottom(proxy: proxy, snapshots: snapshots)
                 }
             }
@@ -213,15 +219,35 @@ struct AgentInspectorPanelView: View {
 
     /// True when the inspector is currently rendering the live tail —
     /// i.e. the last chunk in the displayed snapshot list is also the
-    /// last user chunk (or last chunk overall) of the full stream. In
-    /// this state, new chunks landing at the bottom should auto-scroll
-    /// the inspector. Older anchored turns and pre-anchored free-scroll
-    /// zones are not auto-scrolled.
-    private func isFollowingLiveTail(snapshots: [ChunkRowSnapshot]) -> Bool {
-        guard let displayedLastId = snapshots.last?.id else { return false }
+    /// last chunk of the full stream. Reads `panel.stream.chunks` AND
+    /// the filtered visible chunks live to avoid closure-staleness on
+    /// rapid stream updates (the captured `snapshots` argument from
+    /// the body could be one tick behind by the time `.onChange` of
+    /// `stream.lineCount` fires).
+    private func isFollowingLiveTail() -> Bool {
         let allChunks = panel.stream.chunks
         guard let streamLastId = allChunks.last?.id else { return false }
-        return displayedLastId == streamLastId
+        // Re-derive the visible chunk set the same way the body does
+        // so we compare against the actually-rendered tail.
+        let postFilter: [AgentChunk]
+        switch panel.syncMode {
+        case .off:
+            postFilter = allChunks
+        case .snap:
+            postFilter = chunksForFilter(
+                chunks: allChunks,
+                filter: panel.visibleTurnFilter,
+                anchoredUserIds: panel.anchoredUserIds
+            )
+        }
+        let visible: [AgentChunk] = panel.rewindVisibility == .hide
+            ? postFilter.filter {
+                if case .meta(.branchLink) = $0 { return false }
+                return true
+            }
+            : postFilter
+        guard let visibleLastId = visible.last?.id else { return false }
+        return visibleLastId == streamLastId
     }
 
     /// Scroll the inspector based on the current filter regime. The

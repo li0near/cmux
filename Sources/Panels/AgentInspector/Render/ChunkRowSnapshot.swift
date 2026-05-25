@@ -264,9 +264,8 @@ extension ChunkRowSnapshot {
         expansion: ExpansionResolver
     ) -> ChunkRowSnapshot {
         let primary = oneLine(c.text, maxChars: 80)
-        let words = c.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            .split { $0.isWhitespace || $0.isNewline }
-            .count
+        let trimmed = c.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = trimmed.split { $0.isWhitespace || $0.isNewline }.count
         return base(
             id: c.id,
             kind: .user,
@@ -274,7 +273,11 @@ extension ChunkRowSnapshot {
             chunkBodyOpen: expansion.chunkBodyOpen(c.id),
             userPrimary: primary,
             userFull: makeExpandable(c.text, caps: InspectorCaps.userPrompt, displayMode: displayMode),
-            userCharCount: c.text.count,
+            // Compare like-for-like with `userPrimary` (which is also
+            // trimmed by `oneLine`). Using `c.text.count` directly here
+            // produced false-positive `hasMore` results on
+            // whitespace-only diffs.
+            userCharCount: trimmed.count,
             userWordCount: words
         )
     }
