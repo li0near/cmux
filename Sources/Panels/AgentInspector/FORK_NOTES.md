@@ -171,9 +171,14 @@ Pre-existing `Resources/shell-integration/cmux-zsh-integration.zsh` is untouched
 
 The inspector has shipped Phase A–D of comprehensive Claude JSONL render
 correctness plus a post-D cascade refactor closing the
-intermittent blank-screen / inversion class. All work lives on
-`agent-inspector`. **Tests:** 115 passing in the AgentInspector
-subset.
+intermittent blank-screen / inversion class. The branch is
+synced with `upstream/main` (last merge: 76 upstream commits,
+`vendor/bonsplit` bumped to `ddb21d5` for the new
+`onTabCloseRequest` signature). All work lives on
+`agent-inspector`. **Tests:** 141 passing in the AgentInspector
+subset (115 pre-refactor + 18 `AgentInspectorBulkExpansionTests`
+outcome / overrides invariants + 8 `ExpansionResolver` integration
+cases).
 
 ### What's shipped
 
