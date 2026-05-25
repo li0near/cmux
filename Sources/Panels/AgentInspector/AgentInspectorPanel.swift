@@ -115,11 +115,15 @@ final class AgentInspectorPanel: Panel, ObservableObject {
 
     /// Phase D iter 4: panel-level global expansion state. Bulk
     /// "Collapse all" / "Expand all" actions advance this one step
-    /// per click. Rows (visible AND not-yet-materialized in the
-    /// LazyVStack) read `bulkState.stage` as their initial expansion
-    /// state, and observe `bulkState` (an `Equatable` struct that
-    /// includes a per-click tick) to re-sync after manual
-    /// interactions.
+    /// per click. Combined with `expansionOverrides`, this is the
+    /// **single source of truth** for every row's bulk-managed
+    /// expansion — rows hold no `@State` for it. The panel view
+    /// resolves `(bulkState.stage, expansionOverrides)` into per-id
+    /// booleans, bakes them into `ChunkRowSnapshot`, and rows just
+    /// render the snapshot. One publish here → one synchronous body
+    /// pass in the panel view → all rows update with new heights in
+    /// the same frame. No `.onChange` cascade, no off-screen lag, no
+    /// LazyVStack height estimation race against `proxy.scrollTo`.
     ///
     /// State machine (each click advances exactly one step):
     ///
@@ -127,47 +131,38 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     ///   Expand   all click: fullyCollapsed → topLevelExpanded → fullyExpanded → fullyExpanded
     ///
     /// Initial value is `.topLevelExpanded` to match the design
-    /// default (AI chunk header open, sub-items closed). Lazy-loaded
-    /// rows that scroll into view *after* a bulk action pick up the
-    /// then-current stage as their initial state — bulk actions
-    /// therefore affect every chunk in the rendered set, not just
-    /// chunks visible in the viewport when the click fired.
-    ///
-    /// **Atomic single-`@Published` design**: stage and tick live in
-    /// one struct so SwiftUI observers cannot see a mixed (new-tick,
-    /// old-stage) snapshot. The earlier dual-`@Published` design hit
-    /// an inversion regression on rapid clicks where the row's
-    /// `.onChange(of: bulkActionTick)` could fire while
-    /// `bulkExpansionStage` was still observed at the previous value.
+    /// default (AI chunk header open, sub-items closed).
     @Published private(set) var bulkState: BulkExpansionState = BulkExpansionState(
         stage: .topLevelExpanded,
         tick: 0,
         lastDirection: nil
     )
 
+    /// Per-id manual expansion overrides. Written by row `Button`
+    /// taps via `toggleExpansion(_:)`; cleared on every non-no-op
+    /// bulk action. When non-empty, the next bulk click in either
+    /// direction snaps rows back to the current `bulkState.stage`
+    /// instead of advancing — matches the user's mental model that
+    /// "first collapse undoes my manual fiddling, then advance."
+    @Published private(set) var expansionOverrides: ExpansionOverrides = ExpansionOverrides()
+
     /// Trigger a stepped collapse-all signal for row views.
     ///
     /// Behavior:
-    /// - At `fullyCollapsed` with no opposite-direction overrides:
-    ///   true no-op (no tick, no publish, no scroll reset). Avoids
-    ///   the "blank screen jump" when the user clicks the button at
-    ///   the terminal stage.
-    /// - When the user has manually expanded any sub-item since the
-    ///   last bulk action: snap rows back to the current panel stage
-    ///   (re-apply, don't advance). Resets the override flags.
-    ///   Matches the user's mental model: "first collapse undoes my
-    ///   manual expansion, then the next collapse advances stages."
-    /// - Otherwise: advance one stage downward and reset both flags.
+    /// - At `fullyCollapsed` with no overrides: true no-op (no tick,
+    ///   no publish, no scroll reset). Avoids the "blank screen jump"
+    ///   when the user clicks the button at the terminal stage.
+    /// - When `expansionOverrides` is non-empty: snap rows back to
+    ///   the current panel stage by clearing the overrides. Don't
+    ///   advance `bulkState.stage`. Tick still bumps so the publish
+    ///   reaches observers.
+    /// - Otherwise: advance one stage downward.
     func collapseAll() {
-        if bulkState.stage == .fullyCollapsed && !manualExpandsSinceBulk {
-            #if DEBUG
-            cmuxDebugLog("agentInspector.collapseAll noop at fullyCollapsed")
-            #endif
+        if bulkState.stage == .fullyCollapsed && expansionOverrides.isEmpty {
             return
         }
         let nextStage: BulkExpansionStage
-        let snapBack = manualExpandsSinceBulk
-        if snapBack {
+        if !expansionOverrides.isEmpty {
             nextStage = bulkState.stage
         } else {
             switch bulkState.stage {
@@ -176,33 +171,23 @@ final class AgentInspectorPanel: Panel, ObservableObject {
             case .fullyCollapsed: return
             }
         }
-        manualExpandsSinceBulk = false
-        manualCollapsesSinceBulk = false
-        let newState = BulkExpansionState(
+        expansionOverrides.clear()
+        bulkState = BulkExpansionState(
             stage: nextStage,
             tick: bulkState.tick &+ 1,
             lastDirection: .collapse
         )
-        #if DEBUG
-        cmuxDebugLog("agentInspector.collapseAll snapBack=\(snapBack) prev=\(bulkState.stage.rawValue)/\(bulkState.tick) next=\(newState.stage.rawValue)/\(newState.tick)")
-        #endif
-        bulkState = newState
     }
 
     /// Trigger a stepped expand-all signal for row views. Mirror of
     /// `collapseAll()` — see that comment for the snap-back-first
-    /// semantics. No-op at `fullyExpanded` with no opposite-direction
-    /// overrides.
+    /// semantics. No-op at `fullyExpanded` with no overrides.
     func expandSnap() {
-        if bulkState.stage == .fullyExpanded && !manualCollapsesSinceBulk {
-            #if DEBUG
-            cmuxDebugLog("agentInspector.expandSnap noop at fullyExpanded")
-            #endif
+        if bulkState.stage == .fullyExpanded && expansionOverrides.isEmpty {
             return
         }
         let nextStage: BulkExpansionStage
-        let snapBack = manualCollapsesSinceBulk
-        if snapBack {
+        if !expansionOverrides.isEmpty {
             nextStage = bulkState.stage
         } else {
             switch bulkState.stage {
@@ -211,44 +196,50 @@ final class AgentInspectorPanel: Panel, ObservableObject {
             case .fullyExpanded: return
             }
         }
-        manualExpandsSinceBulk = false
-        manualCollapsesSinceBulk = false
-        let newState = BulkExpansionState(
+        expansionOverrides.clear()
+        bulkState = BulkExpansionState(
             stage: nextStage,
             tick: bulkState.tick &+ 1,
             lastDirection: .expand
         )
-        #if DEBUG
-        cmuxDebugLog("agentInspector.expandSnap snapBack=\(snapBack) prev=\(bulkState.stage.rawValue)/\(bulkState.tick) next=\(newState.stage.rawValue)/\(newState.tick)")
-        #endif
-        bulkState = newState
     }
 
-    /// Direction tag for manual row-level expansion toggles. Used by
-    /// rows to inform the panel that the user fiddled, so the next
-    /// bulk click can honor the snap-back-first rule.
-    enum ManualOverrideDirection {
-        case expand
-        case collapse
+    /// Identifies the per-row knob the user toggled. The panel
+    /// computes the resolved current value (from `expansionOverrides`
+    /// + `bulkState.stage`) and writes the flipped value back to the
+    /// override dict. Rows never compute the toggle direction.
+    enum ExpansionToggle {
+        case aiHeader(chunkId: String)
+        case thinking(chunkId: String)
+        case tool(toolId: String)
+        case chunkBody(chunkId: String)
     }
 
-    /// Called from row Button actions when the user manually toggles
-    /// an expansion. Sets a one-shot flag that is consulted (and
-    /// cleared) by the next bulk action.
-    func noteManualOverride(_ direction: ManualOverrideDirection) {
-        switch direction {
-        case .expand: manualExpandsSinceBulk = true
-        case .collapse: manualCollapsesSinceBulk = true
+    /// Apply a manual expansion toggle. Reads the current resolved
+    /// value, flips it, writes to `expansionOverrides`. The next bulk
+    /// action will see `!expansionOverrides.isEmpty` and snap-back
+    /// instead of advancing.
+    func toggleExpansion(_ toggle: ExpansionToggle) {
+        let key: String
+        let defaultValue: Bool
+        let stage = bulkState.stage
+        switch toggle {
+        case .aiHeader(let id):
+            key = "ai:\(id)"
+            defaultValue = stage != .fullyCollapsed
+        case .thinking(let id):
+            key = "thinking:\(id)"
+            defaultValue = stage == .fullyExpanded
+        case .tool(let id):
+            key = "tool:\(id)"
+            defaultValue = stage == .fullyExpanded
+        case .chunkBody(let id):
+            key = "chunk:\(id)"
+            defaultValue = stage == .fullyExpanded
         }
+        let current = expansionOverrides.value(forKey: key, default: defaultValue)
+        expansionOverrides.set(key: key, value: !current)
     }
-
-    /// Set when the user manually expands a sub-item between bulk
-    /// actions. Read & cleared inside `collapseAll()`.
-    private var manualExpandsSinceBulk: Bool = false
-
-    /// Set when the user manually collapses a sub-item between bulk
-    /// actions. Read & cleared inside `expandSnap()`.
-    private var manualCollapsesSinceBulk: Bool = false
 
     enum BulkExpansionStage: String, Equatable {
         case fullyCollapsed
@@ -276,6 +267,28 @@ final class AgentInspectorPanel: Panel, ObservableObject {
         enum Direction: Equatable {
             case collapse
             case expand
+        }
+    }
+
+    /// Per-id manual expansion overrides. Keyed by a string that
+    /// includes a `kind:` prefix so AI / thinking / tool / chunkBody
+    /// don't collide. Non-empty ⇒ next bulk action snaps rows back
+    /// to `bulkState.stage` instead of advancing.
+    struct ExpansionOverrides: Equatable {
+        private(set) var values: [String: Bool] = [:]
+
+        var isEmpty: Bool { values.isEmpty }
+
+        func value(forKey key: String, default defaultValue: Bool) -> Bool {
+            values[key] ?? defaultValue
+        }
+
+        mutating func set(key: String, value: Bool) {
+            values[key] = value
+        }
+
+        mutating func clear() {
+            values.removeAll(keepingCapacity: false)
         }
     }
 

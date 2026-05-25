@@ -20,6 +20,16 @@ struct ChunkRowSnapshot: Equatable, Identifiable {
     let kind: Kind
     let timestamp: Date
 
+    // Resolved expansion state, baked in by the panel view from
+    // `panel.bulkState.stage` + `panel.expansionOverrides`. Replaces
+    // per-row `@State` for bulk-managed expansion so all rows update
+    // synchronously in one body pass when bulk state changes — no
+    // `.onChange` cascade, no off-screen lag, no LazyVStack height
+    // estimation race against `proxy.scrollTo`.
+    let chunkBodyOpen: Bool
+    let aiHeaderOpen: Bool
+    let thinkingOpen: Bool
+
     // User-only
     let userPrimary: String
     let userFull: ExpandableContent
@@ -157,6 +167,10 @@ struct ChunkRowSnapshot: Equatable, Identifiable {
         /// sub-agent. Renderer uses this to surface the
         /// `↳ Sub-agent transcript` link inside the tool row.
         let sidechainChunkCount: Int?
+        /// Resolved expansion state, baked in by the panel view from
+        /// `panel.expansionOverrides` + `panel.bulkState.stage`. Replaces
+        /// the per-row `toolExpansionOverrides` `@State` dict.
+        let expanded: Bool
 
         /// Mirrors claude-devtools' three-state status dot vocabulary
         /// (`BaseItem.tsx:53-60`): pending = yellow, ok = green, error = red.
@@ -177,24 +191,55 @@ struct ChunkRowSnapshot: Equatable, Identifiable {
 }
 
 extension ChunkRowSnapshot {
+    /// Resolves per-row expansion state from the panel's bulk stage +
+    /// override dict. Constructed once per body pass in the panel view,
+    /// passed through `from(...)` so the panel view's body and every
+    /// downstream snapshot are coherent in a single render pass.
+    struct ExpansionResolver {
+        var chunkBodyOpen: (_ chunkId: String) -> Bool
+        var aiHeaderOpen: (_ chunkId: String) -> Bool
+        var thinkingOpen: (_ chunkId: String) -> Bool
+        var toolExpanded: (_ toolId: String) -> Bool
+
+        /// Default panel mode at app start (`.topLevelExpanded`):
+        /// AI headers open, sub-items closed, user/system/meta bodies
+        /// closed.
+        static let topLevelDefault = ExpansionResolver(
+            chunkBodyOpen: { _ in false },
+            aiHeaderOpen: { _ in true },
+            thinkingOpen: { _ in false },
+            toolExpanded: { _ in false }
+        )
+
+        /// Detail view mode — every section open, used by
+        /// `AgentInspectorDetailView` and any other static rendering.
+        static let allExpanded = ExpansionResolver(
+            chunkBodyOpen: { _ in true },
+            aiHeaderOpen: { _ in true },
+            thinkingOpen: { _ in true },
+            toolExpanded: { _ in true }
+        )
+    }
+
     /// Build a row snapshot from one `AgentChunk`. Caps and summarisation
     /// happen here, not in the row view, so the renderer only reads fields.
     static func from(
         _ chunk: AgentChunk,
         agentKind: AgentKindLabel = .unknown,
-        displayMode: DisplayMode = .compact
+        displayMode: DisplayMode = .compact,
+        expansion: ExpansionResolver = .topLevelDefault
     ) -> ChunkRowSnapshot {
         switch chunk {
         case .user(let c):
-            return makeUser(c, displayMode: displayMode)
+            return makeUser(c, displayMode: displayMode, expansion: expansion)
         case .ai(let c):
-            return makeAI(c, agentKind: agentKind, displayMode: displayMode)
+            return makeAI(c, agentKind: agentKind, displayMode: displayMode, expansion: expansion)
         case .system(let c):
-            return makeSystem(c, displayMode: displayMode)
+            return makeSystem(c, displayMode: displayMode, expansion: expansion)
         case .compact(let c):
             return makeCompact(c, displayMode: displayMode)
         case .meta(let c):
-            return makeMeta(c, displayMode: displayMode)
+            return makeMeta(c, displayMode: displayMode, expansion: expansion)
         }
     }
 
@@ -213,7 +258,11 @@ extension ChunkRowSnapshot {
         }
     }
 
-    private static func makeUser(_ c: UserChunk, displayMode: DisplayMode) -> ChunkRowSnapshot {
+    private static func makeUser(
+        _ c: UserChunk,
+        displayMode: DisplayMode,
+        expansion: ExpansionResolver
+    ) -> ChunkRowSnapshot {
         let primary = oneLine(c.text, maxChars: 80)
         let words = c.text.trimmingCharacters(in: .whitespacesAndNewlines)
             .split { $0.isWhitespace || $0.isNewline }
@@ -222,6 +271,7 @@ extension ChunkRowSnapshot {
             id: c.id,
             kind: .user,
             timestamp: c.startTime,
+            chunkBodyOpen: expansion.chunkBodyOpen(c.id),
             userPrimary: primary,
             userFull: makeExpandable(c.text, caps: InspectorCaps.userPrompt, displayMode: displayMode),
             userCharCount: c.text.count,
@@ -232,7 +282,8 @@ extension ChunkRowSnapshot {
     private static func makeAI(
         _ c: AIChunk,
         agentKind: AgentKindLabel = .unknown,
-        displayMode: DisplayMode
+        displayMode: DisplayMode,
+        expansion: ExpansionResolver
     ) -> ChunkRowSnapshot {
         let duration: TimeInterval? = {
             guard let end = c.endTime else { return nil }
@@ -267,6 +318,9 @@ extension ChunkRowSnapshot {
             id: c.id,
             kind: .ai,
             timestamp: c.startTime,
+            chunkBodyOpen: false,
+            aiHeaderOpen: expansion.aiHeaderOpen(c.id),
+            thinkingOpen: thinkingContent != nil ? expansion.thinkingOpen(c.id) : false,
             userPrimary: "",
             userFull: .empty,
             userCharCount: 0,
@@ -299,7 +353,8 @@ extension ChunkRowSnapshot {
                     status: status,
                     subagentChip: makeSubagentChip(tc),
                     durationMs: tc.durationMs,
-                    sidechainChunkCount: tc.sidechainTranscript?.count
+                    sidechainChunkCount: tc.sidechainTranscript?.count,
+                    expanded: expansion.toolExpanded(tc.id)
                 )
             },
             assistantTextOverflow: assistantOverflow,
@@ -310,11 +365,16 @@ extension ChunkRowSnapshot {
         )
     }
 
-    private static func makeSystem(_ c: SystemChunk, displayMode: DisplayMode) -> ChunkRowSnapshot {
+    private static func makeSystem(
+        _ c: SystemChunk,
+        displayMode: DisplayMode,
+        expansion: ExpansionResolver
+    ) -> ChunkRowSnapshot {
         base(
             id: c.id,
             kind: .system,
             timestamp: c.startTime,
+            chunkBodyOpen: expansion.chunkBodyOpen(c.id),
             systemBody: makeExpandable(c.output, caps: InspectorCaps.systemBody, displayMode: displayMode)
         )
     }
@@ -330,7 +390,11 @@ extension ChunkRowSnapshot {
         )
     }
 
-    private static func makeMeta(_ c: MetaChunk, displayMode: DisplayMode) -> ChunkRowSnapshot {
+    private static func makeMeta(
+        _ c: MetaChunk,
+        displayMode: DisplayMode,
+        expansion: ExpansionResolver
+    ) -> ChunkRowSnapshot {
         switch c {
         case .branchLink(let b):
             let preview = b.firstPromptPreview ?? "(no prompt)"
@@ -338,6 +402,7 @@ extension ChunkRowSnapshot {
                 id: b.id,
                 kind: .meta(.branchLink),
                 timestamp: b.startTime,
+                chunkBodyOpen: expansion.chunkBodyOpen(b.id),
                 meta: MetaSnapshot(
                     title: "Rewind \(b.rewindIndex) of \(b.totalRewinds)",
                     subtitle: "\(b.chunkCount) chunks · \(preview)",
@@ -352,6 +417,7 @@ extension ChunkRowSnapshot {
                 id: r.id,
                 kind: .meta(.recap),
                 timestamp: r.startTime,
+                chunkBodyOpen: expansion.chunkBodyOpen(r.id),
                 meta: MetaSnapshot(
                     title: "Recap",
                     subtitle: nil,
@@ -406,6 +472,7 @@ extension ChunkRowSnapshot {
                 id: o.id,
                 kind: .meta(.slashCmdOutput(isStderr: o.isStderr)),
                 timestamp: o.startTime,
+                chunkBodyOpen: expansion.chunkBodyOpen(o.id),
                 meta: MetaSnapshot(
                     title: o.isStderr ? "Slash command stderr" : "Slash command output",
                     subtitle: nil,
@@ -420,6 +487,7 @@ extension ChunkRowSnapshot {
                 id: l.id,
                 kind: .meta(.localCommandCaveat),
                 timestamp: l.startTime,
+                chunkBodyOpen: expansion.chunkBodyOpen(l.id),
                 meta: MetaSnapshot(
                     title: "Caveat",
                     subtitle: nil,
@@ -434,6 +502,7 @@ extension ChunkRowSnapshot {
                 id: r.id,
                 kind: .meta(.systemReminder),
                 timestamp: r.startTime,
+                chunkBodyOpen: expansion.chunkBodyOpen(r.id),
                 meta: MetaSnapshot(
                     title: "System reminder",
                     subtitle: nil,
@@ -448,6 +517,7 @@ extension ChunkRowSnapshot {
                 id: cu.id,
                 kind: .meta(.contextUsage),
                 timestamp: cu.startTime,
+                chunkBodyOpen: expansion.chunkBodyOpen(cu.id),
                 meta: MetaSnapshot(
                     title: "Context usage",
                     subtitle: nil,
@@ -493,6 +563,7 @@ extension ChunkRowSnapshot {
         id: String,
         kind: Kind,
         timestamp: Date,
+        chunkBodyOpen: Bool = false,
         userPrimary: String = "",
         userFull: ExpandableContent = .empty,
         userCharCount: Int = 0,
@@ -505,6 +576,9 @@ extension ChunkRowSnapshot {
             id: id,
             kind: kind,
             timestamp: timestamp,
+            chunkBodyOpen: chunkBodyOpen,
+            aiHeaderOpen: false,
+            thinkingOpen: false,
             userPrimary: userPrimary,
             userFull: userFull,
             userCharCount: userCharCount,

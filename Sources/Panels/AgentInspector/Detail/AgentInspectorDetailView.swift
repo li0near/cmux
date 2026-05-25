@@ -38,7 +38,12 @@ struct AgentInspectorDetailView: View {
     private func transcriptList(chunks: [AgentChunk], palette: HudPalette) -> some View {
         let agentKind: ChunkRowSnapshot.AgentKindLabel = .claude
         let snapshots = chunks.map {
-            ChunkRowSnapshot.from($0, agentKind: agentKind, displayMode: .fullDetail)
+            ChunkRowSnapshot.from(
+                $0,
+                agentKind: agentKind,
+                displayMode: .fullDetail,
+                expansion: .allExpanded
+            )
         }
         let token = HudPaletteToken.from(palette)
         ScrollView {
@@ -48,13 +53,8 @@ struct AgentInspectorDetailView: View {
                         snapshot: snapshot,
                         palette: token,
                         streamingAIChunkId: nil,
-                        bulkState: AgentInspectorPanel.BulkExpansionState(
-                            stage: .fullyExpanded,
-                            tick: 0,
-                            lastDirection: nil
-                        ),
                         onOpenDetail: { _ in /* no nested detail */ },
-                        onManualOverride: { _ in /* detail mode: no bulk */ }
+                        onToggleExpansion: { _ in /* detail mode: no bulk */ }
                     )
                     .equatable()
                     .id(snapshot.id)

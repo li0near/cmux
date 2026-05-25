@@ -79,12 +79,32 @@ struct AgentInspectorPanelView: View {
                 return true
             }
             : postFilterChunks
+        // Resolve per-row expansion state from the panel's bulk stage
+        // and per-id overrides. Baked into each `ChunkRowSnapshot` so
+        // rows hold no `@State` for bulk-managed expansion — bulk
+        // changes settle in one synchronous body pass for every row,
+        // visible or off-screen, with no `.onChange` cascade.
+        let stage = panel.bulkState.stage
+        let overrides = panel.expansionOverrides
+        let expansion = ChunkRowSnapshot.ExpansionResolver(
+            chunkBodyOpen: { id in
+                overrides.value(forKey: "chunk:\(id)", default: stage == .fullyExpanded)
+            },
+            aiHeaderOpen: { id in
+                overrides.value(forKey: "ai:\(id)", default: stage != .fullyCollapsed)
+            },
+            thinkingOpen: { id in
+                overrides.value(forKey: "thinking:\(id)", default: stage == .fullyExpanded)
+            },
+            toolExpanded: { id in
+                overrides.value(forKey: "tool:\(id)", default: stage == .fullyExpanded)
+            }
+        )
         let snapshots = visibleChunks.map {
-            ChunkRowSnapshot.from($0, agentKind: agentKind)
+            ChunkRowSnapshot.from($0, agentKind: agentKind, expansion: expansion)
         }
         let palette = HudPaletteToken.from(HudPalette(appearance: appearance))
         let streamingAIChunkId = panel.streamingAIChunkId
-        let bulkState = panel.bulkState
 
         if snapshots.isEmpty {
             emptyTranscriptView
@@ -97,12 +117,11 @@ struct AgentInspectorPanelView: View {
                                 snapshot: snapshot,
                                 palette: palette,
                                 streamingAIChunkId: streamingAIChunkId,
-                                bulkState: bulkState,
                                 onOpenDetail: { request in
                                     panel.openDetail(request: request)
                                 },
-                                onManualOverride: { direction in
-                                    panel.noteManualOverride(direction)
+                                onToggleExpansion: { toggle in
+                                    panel.toggleExpansion(toggle)
                                 }
                             )
                             .equatable()
@@ -149,40 +168,18 @@ struct AgentInspectorPanelView: View {
                         panel.expandSnap()
                     }
                 }
-                // After a bulk collapse, the content height shrinks
-                // dramatically. There is a layout-vs-scroll race:
-                //
-                //   1. `bulkState` publishes; panel `.onChange` fires
-                //      synchronously and calls `proxy.scrollTo(.bottom)`.
-                //   2. At that moment the row `.onChange` handlers have
-                //      NOT yet run — row `@State` is still expanded, row
-                //      heights are still large.
-                //   3. `proxy.scrollTo` computes "bottom" against the
-                //      OLD (large) layout and sets a scroll offset
-                //      sized to the old content.
-                //   4. Then rows process their `.onChange` (visible
-                //      rows ~30ms; off-screen rows up to seconds later
-                //      as they appear), shrinking. LazyVStack's total
-                //      height collapses past the user's offset.
-                //   5. ScrollView's offset is now beyond the new
-                //      content end → blank space.
-                //
-                // Defer the scroll-to-bottom by two runloop hops so
-                // SwiftUI completes both passes (panel re-render +
-                // row `@State` updates from row `.onChange`) before
-                // we ask for the bottom position.
+                // After a bulk collapse, content height shrinks and the
+                // user's absolute scroll offset can land past the new
+                // bottom → blank space. Rows render synchronously in
+                // the same body pass as the panel (per-row `@State` is
+                // gone; expansion is baked into the snapshot), so a
+                // single `DispatchQueue.main.async` is enough to push
+                // the scroll past the layout pass that publishes
+                // shrunken row heights.
                 .onChange(of: panel.bulkState) { newState in
                     guard newState.lastDirection == .collapse else { return }
-                    #if DEBUG
-                    cmuxDebugLog("agentInspector.panel.onCollapse stage=\(newState.stage.rawValue)/\(newState.tick) — deferring scrollToBottom")
-                    #endif
                     DispatchQueue.main.async {
-                        DispatchQueue.main.async {
-                            #if DEBUG
-                            cmuxDebugLog("agentInspector.panel.deferredScrollToBottom firing")
-                            #endif
-                            scrollToBottom(proxy: proxy, snapshots: snapshots)
-                        }
+                        scrollToBottom(proxy: proxy, snapshots: snapshots)
                     }
                 }
                 // Belt-and-suspenders for tab-switch: even if the
