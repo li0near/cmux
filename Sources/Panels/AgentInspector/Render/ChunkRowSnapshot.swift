@@ -49,6 +49,10 @@ struct ChunkRowSnapshot: Equatable, Identifiable {
     /// `InspectorCaps.assistantText.alwaysLink` binding). Nil when the
     /// AI chunk has no assistant text yet (rare; mid-stream tool-only).
     let assistantTextOverflow: ExpandableContent?
+    /// Word count of the assistant response. Surfaced in the `↗ assistant
+    /// response · N words` link label (per design feedback — words read
+    /// more naturally than lines for prose).
+    let assistantTextWordCount: Int
 
     // System-only
     let systemBody: ExpandableContent
@@ -245,6 +249,11 @@ extension ChunkRowSnapshot {
             // row + detail link; no inline body.
             return makeExpandable(c.assistantText, caps: InspectorCaps.assistantText, displayMode: displayMode)
         }()
+        let assistantWords: Int = {
+            let trimmed = c.assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return 0 }
+            return trimmed.split { $0.isWhitespace || $0.isNewline }.count
+        }()
 
         return ChunkRowSnapshot(
             id: c.id,
@@ -285,6 +294,7 @@ extension ChunkRowSnapshot {
                 )
             },
             assistantTextOverflow: assistantOverflow,
+            assistantTextWordCount: assistantWords,
             systemBody: .empty,
             compactSummary: "",
             meta: nil
@@ -498,6 +508,7 @@ extension ChunkRowSnapshot {
             thinking: nil,
             toolCalls: [],
             assistantTextOverflow: nil,
+            assistantTextWordCount: 0,
             systemBody: systemBody,
             compactSummary: compactSummary,
             meta: meta

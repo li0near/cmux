@@ -263,14 +263,14 @@ private struct AIChunkRow: View {
     /// Phase B: assistant final text body opens in a detail tab. Always-link
     /// per `InspectorCaps.assistantText.alwaysLink` — the inspector surfaces
     /// the link, not the body inline.
-    private func assistantTextLink(_ snapshot: ChunkRowSnapshot.ExpandableContent) -> some View {
+    private func assistantTextLink(_ overflow: ChunkRowSnapshot.ExpandableContent) -> some View {
         HStack(spacing: 6) {
             typeIcon(
                 systemName: "microbe.circle",
                 color: palette.claude
             )
             Button(action: { onOpenDetail(.assistantResponse(chunkId: self.snapshot.id)) }) {
-                Text("↗ assistant response · \(snapshot.totalLines) lines")
+                Text("↗ assistant response · \(snapshot.assistantTextWordCount) words")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(palette.claude)
                     .underline(true, color: palette.claude.opacity(0.6))
