@@ -10,6 +10,17 @@ enum InspectorDetailRequest: Equatable {
     case systemOutput(chunkId: String)
     case toolInput(chunkId: String, toolId: String)
     case toolResult(chunkId: String, toolId: String)
+    // Phase B Meta surfaces. Each is identified by the source chunk's id;
+    // resolution against `AgentChunk.meta(...)` happens in
+    // `AgentInspectorDetailContent.resolve(...)`.
+    case assistantResponse(chunkId: String)
+    case abandonedBranch(branchRootUuid: String)
+    case subagentTranscript(chunkId: String, toolId: String)
+    case skillBody(chunkId: String)
+    case slashCommandBody(chunkId: String)
+    case systemReminderBody(chunkId: String)
+    case recapBody(chunkId: String)
+    case localCommandCaveatBody(chunkId: String)
 }
 
 /// One row in the Agent Inspector chunk list.
@@ -54,6 +65,13 @@ struct ChunkRowView: View, Equatable {
             SystemChunkRow(snapshot: snapshot, palette: palette, onOpenDetail: onOpenDetail)
         case .compact:
             CompactChunkRow(snapshot: snapshot, palette: palette)
+        case .meta(let metaKind):
+            MetaChunkRow(
+                snapshot: snapshot,
+                metaKind: metaKind,
+                palette: palette,
+                onOpenDetail: onOpenDetail
+            )
         }
     }
 }
@@ -155,6 +173,9 @@ private struct AIChunkRow: View {
                 if let thinking = snapshot.thinking {
                     thinkingSection(thinking)
                 }
+                if let assistantText = snapshot.assistantTextOverflow {
+                    assistantTextLink(assistantText)
+                }
                 if !snapshot.toolCalls.isEmpty {
                     ForEach(snapshot.toolCalls) { tool in
                         toolCallRow(tool)
@@ -165,6 +186,28 @@ private struct AIChunkRow: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Phase B: assistant final text body opens in a detail tab. Always-link
+    /// per `InspectorCaps.assistantText.alwaysLink` — the inspector surfaces
+    /// the link, not the body inline.
+    private func assistantTextLink(_ snapshot: ChunkRowSnapshot.ExpandableContent) -> some View {
+        HStack(spacing: 6) {
+            typeIcon(
+                systemName: InspectorIcon.ai.systemName(expanded: false),
+                color: palette.claude
+            )
+            Button(action: { onOpenDetail(.assistantResponse(chunkId: self.snapshot.id)) }) {
+                Text("↗ assistant response · \(snapshot.totalLines) lines")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(palette.claude)
+                    .underline(true, color: palette.claude.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.leading, expandedIndent)
+        .padding(.vertical, 1)
     }
 
     /// AI chunk header — has THREE independent click targets that share the
@@ -240,8 +283,12 @@ private struct AIChunkRow: View {
     }
 
     private var headerTrailingLabel: String {
-        if showDurationInHeader, let secs = snapshot.durationSeconds {
-            return formatDuration(secs)
+        if showDurationInHeader {
+            // Prefer the authoritative per-turn duration from
+            // `system.subtype: turn_duration` JSONL lines when available;
+            // fall back to the locally-computed `endTime - startTime`.
+            if let label = snapshot.perTurnDurationLabel { return label }
+            if let secs = snapshot.durationSeconds { return formatDuration(secs) }
         }
         return formatTime(snapshot.timestamp)
     }
@@ -342,9 +389,35 @@ private struct AIChunkRow: View {
                     }
                     .padding(.leading, expandedIndent + 14)
                 }
+                if let count = tool.sidechainChunkCount, count > 0 {
+                    subagentTranscriptLink(toolId: tool.id, chunkCount: count)
+                        .padding(.leading, expandedIndent + 14)
+                }
             }
         }
         .padding(.top, 2)
+    }
+
+    /// Phase B: `↳ Sub-agent transcript` link inside a Task/Agent tool's
+    /// row. Mimics claude-devtools' sub-agent expansion model — the link
+    /// opens the sidechain transcript in a sibling detail tab.
+    private func subagentTranscriptLink(toolId: String, chunkCount: Int) -> some View {
+        Button(action: {
+            onOpenDetail(.subagentTranscript(chunkId: snapshot.id, toolId: toolId))
+        }) {
+            HStack(spacing: 6) {
+                Text("↳")
+                    .foregroundColor(palette.dim)
+                Image(systemName: "person.2")
+                    .foregroundColor(palette.magenta)
+                Text("Sub-agent transcript · \(chunkCount) chunks ↗")
+                    .underline(true, color: palette.magenta.opacity(0.6))
+                    .foregroundColor(palette.magenta)
+            }
+            .font(.system(size: 11, design: .monospaced))
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 1)
     }
 
     private func expandedBlock(
@@ -463,6 +536,133 @@ private struct CompactChunkRow: View {
             .fill(palette.dim.opacity(0.4))
             .frame(height: 1)
             .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Meta row (Phase B)
+
+/// One-row dispatcher for every `MetaChunk` variant. The icon, color, and
+/// indentation are chosen by `metaKind`; the body, title, subtitle, and
+/// detail-route come from `snapshot.meta`. Single shared row keeps the
+/// chunk list visually coherent across all meta surfaces.
+private struct MetaChunkRow: View {
+    let snapshot: ChunkRowSnapshot
+    let metaKind: ChunkRowSnapshot.MetaKind
+    let palette: HudPaletteToken
+    let onOpenDetail: (InspectorDetailRequest) -> Void
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            header
+            if expanded, let meta = snapshot.meta, !meta.body.isEmpty {
+                expandedBody(meta: meta)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .padding(.leading, isBranchStyle ? 14 : 0)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            if isBranchStyle {
+                Text("↳")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(palette.dim)
+            }
+            typeIcon(
+                systemName: iconPair.systemName(expanded: expanded || hasOnlyDetailLink),
+                color: palette.kindColor(for: snapshot.kind)
+            )
+            Button(action: handleTitleTap) {
+                titleText
+            }
+            .buttonStyle(.plain)
+            if let subtitle = snapshot.meta?.subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(palette.dim)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            trailingAction
+        }
+    }
+
+    private var titleText: some View {
+        let title = snapshot.meta?.title ?? ""
+        return Text(title)
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundColor(palette.kindColor(for: snapshot.kind))
+            .underline(isLink, color: palette.kindColor(for: snapshot.kind).opacity(0.6))
+    }
+
+    @ViewBuilder
+    private var trailingAction: some View {
+        if let meta = snapshot.meta, meta.body.overflow,
+           let request = meta.detailRequest {
+            openDetailLink(palette: palette, totalLines: meta.body.totalLines) {
+                onOpenDetail(request)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func expandedBody(meta: ChunkRowSnapshot.MetaSnapshot) -> some View {
+        if !meta.body.inlineBody.isEmpty {
+            Text(meta.body.inlineBody)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundColor(palette.dim)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, expandedIndent)
+                .padding(.top, 2)
+        }
+    }
+
+    private func handleTitleTap() {
+        if hasOnlyDetailLink, let req = snapshot.meta?.detailRequest {
+            onOpenDetail(req)
+            return
+        }
+        if let url = snapshot.meta?.externalUrl, let resolved = URL(string: url) {
+            #if canImport(AppKit)
+            NSWorkspace.shared.open(resolved)
+            #endif
+            return
+        }
+        guard let meta = snapshot.meta, !meta.body.isEmpty else { return }
+        expanded.toggle()
+    }
+
+    private var hasOnlyDetailLink: Bool {
+        guard let meta = snapshot.meta else { return false }
+        return meta.detailRequest != nil && meta.body.inlineBody.isEmpty && meta.body.overflow
+    }
+
+    private var isLink: Bool {
+        guard let meta = snapshot.meta else { return false }
+        return meta.detailRequest != nil || meta.externalUrl != nil
+    }
+
+    private var isBranchStyle: Bool {
+        if case .branchLink = metaKind { return true }
+        return false
+    }
+
+    private var iconPair: InspectorIcon.Pair {
+        switch metaKind {
+        case .branchLink: return InspectorIcon.branchLink
+        case .recap: return InspectorIcon.recap
+        case .prLink: return InspectorIcon.prLink
+        case .skillTitle: return InspectorIcon.skill
+        case .slashCmdInput, .slashCmdOutput: return InspectorIcon.slashCommand
+        case .localCommandCaveat: return InspectorIcon.info
+        case .systemReminder: return InspectorIcon.systemReminder
+        case .contextUsage: return InspectorIcon.info
+        case .continueResume: return InspectorIcon.continueResume
+        }
     }
 }
 
@@ -659,6 +859,19 @@ struct HudPaletteToken: Equatable {
         case .ai: return claude
         case .system: return cyan
         case .compact: return dim
+        case .meta(let metaKind):
+            switch metaKind {
+            case .branchLink, .continueResume, .localCommandCaveat, .contextUsage:
+                return dim
+            case .recap, .slashCmdInput, .slashCmdOutput:
+                return cyan
+            case .prLink:
+                return blue
+            case .skillTitle:
+                return magenta
+            case .systemReminder:
+                return yellow
+            }
         }
     }
 }

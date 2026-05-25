@@ -483,11 +483,20 @@ private extension InspectorDetailRequest {
         switch self {
         case .userPrompt(let id),
              .thinking(let id),
-             .systemOutput(let id):
+             .systemOutput(let id),
+             .assistantResponse(let id),
+             .skillBody(let id),
+             .slashCommandBody(let id),
+             .systemReminderBody(let id),
+             .recapBody(let id),
+             .localCommandCaveatBody(let id):
             return id
         case .toolInput(let chunkId, _),
-             .toolResult(let chunkId, _):
+             .toolResult(let chunkId, _),
+             .subagentTranscript(let chunkId, _):
             return chunkId
+        case .abandonedBranch(let branchRootUuid):
+            return branchRootUuid
         }
     }
 }

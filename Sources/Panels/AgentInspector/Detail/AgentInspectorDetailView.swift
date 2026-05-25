@@ -55,6 +55,14 @@ struct AgentInspectorDetailView: View {
         case .systemOutput: return HudGlyph.toolArrow
         case .toolInput: return HudGlyph.toolArrow
         case .toolResult(_, let isError): return isError ? HudGlyph.errorCross : HudGlyph.completedCheck
+        case .assistantResponse: return "✶"
+        case .abandonedBranch: return "↳"
+        case .subagentTranscript: return "↳"
+        case .skillBody: return "✦"
+        case .slashCommandBody: return "/"
+        case .systemReminderBody: return "!"
+        case .recapBody: return "↺"
+        case .localCommandCaveatBody: return "ⓘ"
         }
     }
 
@@ -65,14 +73,25 @@ struct AgentInspectorDetailView: View {
         case .systemOutput: return palette.cyan
         case .toolInput: return palette.cyan
         case .toolResult(_, let isError): return isError ? palette.red : palette.green
+        case .assistantResponse: return palette.claude
+        case .abandonedBranch: return palette.dim
+        case .subagentTranscript: return palette.magenta
+        case .skillBody: return palette.magenta
+        case .slashCommandBody: return palette.cyan
+        case .systemReminderBody: return palette.yellow
+        case .recapBody: return palette.cyan
+        case .localCommandCaveatBody: return palette.dim
         }
     }
 
     private func bodyColor(palette: HudPalette) -> Color {
         switch content.kind {
-        case .thinking: return palette.dim
-        case .toolResult(_, let isError): return isError ? palette.red : palette.primary.opacity(0.85)
-        default: return palette.primary
+        case .thinking, .abandonedBranch, .localCommandCaveatBody:
+            return palette.dim
+        case .toolResult(_, let isError):
+            return isError ? palette.red : palette.primary.opacity(0.85)
+        default:
+            return palette.primary
         }
     }
 }
