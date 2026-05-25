@@ -176,6 +176,22 @@ final class AgentInspectorPanel: Panel, ObservableObject {
         Set(turnAnchorStore.orderedAnchors.map(\.userChunkId))
     }
 
+    /// Single source of truth for "is the inspector currently locked
+    /// onto a specific snap turn?". True iff snap mode is on AND the
+    /// active filter is `.turns(...)` — i.e., the chunks rendered are
+    /// the contents of a real conversation turn the user is anchored
+    /// onto. False for `.off` (free scroll), `.all` (every chunk
+    /// rendered), and `.preAnchored` (free-scroll history zone).
+    ///
+    /// All snap-turn-specific UX must gate on this predicate:
+    /// status-bar pill visibility (auto-expand toggle, Expand-snap
+    /// action) and the auto-expand-on-filter-change trigger.
+    var isShowingSnapTurn: Bool {
+        guard syncMode == .snap else { return false }
+        if case .turns = visibleTurnFilter { return true }
+        return false
+    }
+
     /// Transcript stream — live `AgentChunk` snapshots. Empty in detail mode.
     let stream = TranscriptStream()
 

@@ -140,15 +140,13 @@ struct AgentInspectorPanelView: View {
                 .onAppear {
                     scrollForFilter(proxy: proxy)
                 }
-                .onChange(of: panel.visibleTurnFilter) { newFilter in
+                .onChange(of: panel.visibleTurnFilter) { _ in
                     scrollForFilter(proxy: proxy)
-                    // Auto-expand only on snap-mode + actual snapped-turn
-                    // filters. Free-scroll history (`.preAnchored`) and
-                    // the catch-all `.all` filter MUST NOT auto-expand —
-                    // expanding history "would be a nightmare."
-                    if panel.syncMode == .snap,
-                       panel.expansionMode == .autoExpandSnap,
-                       case .turns = newFilter {
+                    // Auto-expand fires only when the inspector has
+                    // actually settled on a snap turn — `.preAnchored`
+                    // history scrolling and `.all` free-scroll never
+                    // open chunks automatically.
+                    if panel.expansionMode == .autoExpandSnap, panel.isShowingSnapTurn {
                         panel.expandSnap()
                     }
                 }

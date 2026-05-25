@@ -30,15 +30,13 @@ struct InspectorStatusBar: View {
     /// Icon-pill row, left-to-right:
     ///   1. Scroll mode (label-pill, always visible).
     ///   2. Rewinds visibility toggle (icon, always visible).
-    ///   3. Snap-expand mode toggle — only relevant when snap is
-    ///      currently locked onto a turn.
+    ///   3. Snap-expand mode toggle — only when locked onto a snap turn.
     ///   4. Collapse all (action, always visible).
     ///   5. Expand snap (action) — same gating as pill 3.
     ///
-    /// Pills 3 and 5 hide when sync is `.off` AND when the active
-    /// filter is `.preAnchored` or `.all` — outside an actual snap
-    /// turn, "auto-expand snap turn" / "expand snap" have no
-    /// meaningful target.
+    /// Pills 3 and 5 hide when `panel.isShowingSnapTurn` is false —
+    /// outside an actual snap turn, "auto-expand snap turn" /
+    /// "expand snap" have no meaningful target.
     private var pillRow: some View {
         HStack(spacing: 6) {
             syncModePill
@@ -50,7 +48,7 @@ struct InspectorStatusBar: View {
                     : "Hide rewound branch links",
                 action: { panel.rewindVisibility = panel.rewindVisibility.cycled() }
             )
-            if isLockedOntoSnapTurn {
+            if panel.isShowingSnapTurn {
                 iconButton(
                     systemName: "arrow.up.left.and.arrow.down.right",
                     color: panel.expansionMode == .autoExpandSnap ? palette.cyan : palette.dim,
@@ -66,7 +64,7 @@ struct InspectorStatusBar: View {
                 tooltip: "Collapse: 1st click closes sub-items, 2nd closes everything",
                 action: { panel.collapseAll() }
             )
-            if isLockedOntoSnapTurn {
+            if panel.isShowingSnapTurn {
                 iconButton(
                     systemName: "rectangle.expand.vertical",
                     color: palette.dim,
@@ -75,17 +73,6 @@ struct InspectorStatusBar: View {
                 )
             }
         }
-    }
-
-    /// True iff the inspector is currently rendering chunks of a real
-    /// snap turn (`.turns(...)` filter while in snap mode). Free-scroll
-    /// (`.off`), pre-anchored history (`.preAnchored`), and the
-    /// catch-all (`.all`) filter all return false — auto-expand pills
-    /// hide because there's no snap turn to act on.
-    private var isLockedOntoSnapTurn: Bool {
-        guard panel.syncMode == .snap else { return false }
-        if case .turns = panel.visibleTurnFilter { return true }
-        return false
     }
 
     private var syncModePill: some View {
