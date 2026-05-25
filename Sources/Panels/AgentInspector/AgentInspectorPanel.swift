@@ -140,29 +140,38 @@ final class AgentInspectorPanel: Panel, ObservableObject {
 
     /// Per-id manual expansion overrides. Written by row `Button`
     /// taps via `toggleExpansion(_:)`; cleared on every non-no-op
-    /// bulk action. When non-empty, the next bulk click in either
-    /// direction snaps rows back to the current `bulkState.stage`
-    /// instead of advancing — matches the user's mental model that
-    /// "first collapse undoes my manual fiddling, then advance."
+    /// bulk action. Each entry encodes "this row is at a value DIFFERENT
+    /// from what `bulkState.stage` would imply" — entries equal to the
+    /// stage-default are removed automatically. From this invariant,
+    /// `hasExpandFiddle` = any `true` entry (above default) and
+    /// `hasCollapseFiddle` = any `false` entry (below default).
+    /// Bulk action behavior:
+    ///   - `Collapse` clicked while `hasExpandFiddle`: snap rows back
+    ///     to current stage (close the user's expansions). Don't
+    ///     advance — matches "first collapse undoes my fiddle, then
+    ///     advance."
+    ///   - `Expand` clicked while `hasCollapseFiddle`: symmetric.
+    ///   - `Expand` clicked while `hasExpandFiddle` only: advance
+    ///     toward `fullyExpanded` directly. The user fiddled in the
+    ///     same direction as the click; they want MORE, not snap-back.
     @Published private(set) var expansionOverrides: ExpansionOverrides = ExpansionOverrides()
 
     /// Trigger a stepped collapse-all signal for row views.
     ///
     /// Behavior:
-    /// - At `fullyCollapsed` with no overrides: true no-op (no tick,
-    ///   no publish, no scroll reset). Avoids the "blank screen jump"
-    ///   when the user clicks the button at the terminal stage.
-    /// - When `expansionOverrides` is non-empty: snap rows back to
-    ///   the current panel stage by clearing the overrides. Don't
-    ///   advance `bulkState.stage`. Tick still bumps so the publish
-    ///   reaches observers.
-    /// - Otherwise: advance one stage downward.
+    /// - At `fullyCollapsed` with no expand-direction overrides: true
+    ///   no-op (no tick, no publish, no scroll reset).
+    /// - When `hasExpandFiddle`: snap rows back to the current panel
+    ///   stage by clearing the overrides. Don't advance — the user
+    ///   first wants to undo their manual expansion.
+    /// - Otherwise: advance one stage downward. Drops any
+    ///   collapse-direction fiddle as a side-effect of `clear()`.
     func collapseAll() {
-        if bulkState.stage == .fullyCollapsed && expansionOverrides.isEmpty {
+        if bulkState.stage == .fullyCollapsed && !expansionOverrides.hasExpandFiddle {
             return
         }
         let nextStage: BulkExpansionStage
-        if !expansionOverrides.isEmpty {
+        if expansionOverrides.hasExpandFiddle {
             nextStage = bulkState.stage
         } else {
             switch bulkState.stage {
@@ -181,13 +190,16 @@ final class AgentInspectorPanel: Panel, ObservableObject {
 
     /// Trigger a stepped expand-all signal for row views. Mirror of
     /// `collapseAll()` — see that comment for the snap-back-first
-    /// semantics. No-op at `fullyExpanded` with no overrides.
+    /// semantics. Direction-aware: a user who fiddled in the EXPAND
+    /// direction and clicks Expand again advances directly to
+    /// `fullyExpanded` rather than seeing their manual expansion
+    /// snap-back-collapsed.
     func expandSnap() {
-        if bulkState.stage == .fullyExpanded && expansionOverrides.isEmpty {
+        if bulkState.stage == .fullyExpanded && !expansionOverrides.hasCollapseFiddle {
             return
         }
         let nextStage: BulkExpansionStage
-        if !expansionOverrides.isEmpty {
+        if expansionOverrides.hasCollapseFiddle {
             nextStage = bulkState.stage
         } else {
             switch bulkState.stage {
@@ -216,9 +228,10 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     }
 
     /// Apply a manual expansion toggle. Reads the current resolved
-    /// value, flips it, writes to `expansionOverrides`. The next bulk
-    /// action will see `!expansionOverrides.isEmpty` and snap-back
-    /// instead of advancing.
+    /// value, flips it, writes to `expansionOverrides`. Entries equal
+    /// to the bulk default are dropped so `hasExpandFiddle` /
+    /// `hasCollapseFiddle` accurately reflect "the user is currently
+    /// off-default in this direction" without sticky flags.
     func toggleExpansion(_ toggle: ExpansionToggle) {
         let key: String
         let defaultValue: Bool
@@ -238,7 +251,7 @@ final class AgentInspectorPanel: Panel, ObservableObject {
             defaultValue = stage == .fullyExpanded
         }
         let current = expansionOverrides.value(forKey: key, default: defaultValue)
-        expansionOverrides.set(key: key, value: !current)
+        expansionOverrides.set(key: key, value: !current, defaultValue: defaultValue)
     }
 
     enum BulkExpansionStage: String, Equatable {
@@ -271,20 +284,38 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     }
 
     /// Per-id manual expansion overrides. Keyed by a string that
-    /// includes a `kind:` prefix so AI / thinking / tool / chunkBody
-    /// don't collide. Non-empty ⇒ next bulk action snaps rows back
-    /// to `bulkState.stage` instead of advancing.
+    /// includes a `kind:` prefix (`ai:`, `thinking:`, `tool:`,
+    /// `chunk:`) so different knobs don't collide. Entries are
+    /// **always different from the stage default** — `set(...)` drops
+    /// the entry when the new value equals the default. This makes
+    /// `hasExpandFiddle` / `hasCollapseFiddle` simple boolean walks
+    /// of the dict, and removes the need for sticky flags that would
+    /// have to reset on revert-toggles.
     struct ExpansionOverrides: Equatable {
         private(set) var values: [String: Bool] = [:]
 
         var isEmpty: Bool { values.isEmpty }
 
+        /// True iff at least one row is more expanded than the bulk
+        /// default — the user opened something they otherwise wouldn't
+        /// see. Read by `collapseAll()` to decide snap-back vs advance.
+        var hasExpandFiddle: Bool { values.contains { _, v in v } }
+
+        /// True iff at least one row is less expanded than the bulk
+        /// default — the user closed something the bulk would have
+        /// kept open. Read by `expandSnap()`.
+        var hasCollapseFiddle: Bool { values.contains { _, v in !v } }
+
         func value(forKey key: String, default defaultValue: Bool) -> Bool {
             values[key] ?? defaultValue
         }
 
-        mutating func set(key: String, value: Bool) {
-            values[key] = value
+        mutating func set(key: String, value: Bool, defaultValue: Bool) {
+            if value == defaultValue {
+                values.removeValue(forKey: key)
+            } else {
+                values[key] = value
+            }
         }
 
         mutating func clear() {

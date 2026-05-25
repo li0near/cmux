@@ -107,14 +107,13 @@ private struct UserChunkRow: View {
     let onToggleExpansion: (AgentInspectorPanel.ExpansionToggle) -> Void
 
     private var hasMore: Bool {
-        // Allow expansion when:
-        //  - the prompt has multiple lines, OR
-        //  - the displayed primary ends in `…` — `oneLine()` adds the
-        //    ellipsis if and only if it data-side truncated the first
-        //    line. The chevron decision is now unambiguous and matches
-        //    what the user literally sees in `userPrimary`.
-        snapshot.userFull.totalLines > 1
-            || snapshot.userPrimary.hasSuffix("…")
+        // Allow expansion for any non-empty user prompt. SwiftUI's
+        // `lineLimit(1).truncationMode(.tail)` can visually truncate
+        // the displayed primary at any panel width, but the inspector
+        // can't measure that without GeometryReader. Worst case for a
+        // short single-line prompt: expanding shows the same text in a
+        // wrap-friendly box — never wrong. Click is always meaningful.
+        !snapshot.userFull.isEmpty
     }
 
     private var expanded: Bool { snapshot.chunkBodyOpen }
