@@ -48,8 +48,8 @@ struct AgentInspectorDetailView: View {
                         snapshot: snapshot,
                         palette: token,
                         streamingAIChunkId: nil,
-                        collapseAllTick: 0,
-                        expandSnapTick: 0,
+                        bulkExpansionStage: .fullyExpanded,
+                        bulkActionTick: 0,
                         onOpenDetail: { _ in /* no nested detail */ }
                     )
                     .equatable()

@@ -41,13 +41,15 @@ struct ChunkRowView: View, Equatable {
     /// snapshot's id, the AI row's header glyph pulses. Snapshot-policy
     /// safe — plain value type.
     let streamingAIChunkId: String?
-    /// Phase D iter 3: monotonic ticks. On each increment, each row
-    /// infers its own current expansion stage from local @State and
-    /// advances one step in the matching direction. No global
-    /// "intended action" is needed — the direction is implicit in
-    /// which tick fired.
-    let collapseAllTick: Int
-    let expandSnapTick: Int
+    /// Phase D iter 4: panel-level global expansion stage. Rows
+    /// (visible AND lazy-not-yet-materialized) initialize their
+    /// per-row `@State` from this value, and re-sync via
+    /// `.onChange(of: bulkActionTick)` after each bulk-action click.
+    /// Bulk actions therefore reach every chunk in the rendered set,
+    /// not just chunks that happen to be in the viewport when the
+    /// click fires.
+    let bulkExpansionStage: AgentInspectorPanel.BulkExpansionStage
+    let bulkActionTick: Int
     /// Stable closure reference. Ignored by `==` per the snapshot policy.
     let onOpenDetail: (InspectorDetailRequest) -> Void
 
@@ -55,8 +57,8 @@ struct ChunkRowView: View, Equatable {
         lhs.snapshot == rhs.snapshot
             && lhs.palette == rhs.palette
             && lhs.streamingAIChunkId == rhs.streamingAIChunkId
-            && lhs.collapseAllTick == rhs.collapseAllTick
-            && lhs.expandSnapTick == rhs.expandSnapTick
+            && lhs.bulkExpansionStage == rhs.bulkExpansionStage
+            && lhs.bulkActionTick == rhs.bulkActionTick
     }
 
     var body: some View {
@@ -65,8 +67,8 @@ struct ChunkRowView: View, Equatable {
             UserChunkRow(
                 snapshot: snapshot,
                 palette: palette,
-                collapseAllTick: collapseAllTick,
-                expandSnapTick: expandSnapTick,
+                bulkExpansionStage: bulkExpansionStage,
+                bulkActionTick: bulkActionTick,
                 onOpenDetail: onOpenDetail
             )
         case .ai:
@@ -74,16 +76,16 @@ struct ChunkRowView: View, Equatable {
                 snapshot: snapshot,
                 palette: palette,
                 isStreaming: streamingAIChunkId == snapshot.id,
-                collapseAllTick: collapseAllTick,
-                expandSnapTick: expandSnapTick,
+                bulkExpansionStage: bulkExpansionStage,
+                bulkActionTick: bulkActionTick,
                 onOpenDetail: onOpenDetail
             )
         case .system:
             SystemChunkRow(
                 snapshot: snapshot,
                 palette: palette,
-                collapseAllTick: collapseAllTick,
-                expandSnapTick: expandSnapTick,
+                bulkExpansionStage: bulkExpansionStage,
+                bulkActionTick: bulkActionTick,
                 onOpenDetail: onOpenDetail
             )
         case .compact:
@@ -93,8 +95,8 @@ struct ChunkRowView: View, Equatable {
                 snapshot: snapshot,
                 metaKind: metaKind,
                 palette: palette,
-                collapseAllTick: collapseAllTick,
-                expandSnapTick: expandSnapTick,
+                bulkExpansionStage: bulkExpansionStage,
+                bulkActionTick: bulkActionTick,
                 onOpenDetail: onOpenDetail
             )
         }
@@ -106,10 +108,27 @@ struct ChunkRowView: View, Equatable {
 private struct UserChunkRow: View {
     let snapshot: ChunkRowSnapshot
     let palette: HudPaletteToken
-    let collapseAllTick: Int
-    let expandSnapTick: Int
+    let bulkExpansionStage: AgentInspectorPanel.BulkExpansionStage
+    let bulkActionTick: Int
     let onOpenDetail: (InspectorDetailRequest) -> Void
-    @State private var expanded = false
+    @State private var expanded: Bool
+
+    init(
+        snapshot: ChunkRowSnapshot,
+        palette: HudPaletteToken,
+        bulkExpansionStage: AgentInspectorPanel.BulkExpansionStage,
+        bulkActionTick: Int,
+        onOpenDetail: @escaping (InspectorDetailRequest) -> Void
+    ) {
+        self.snapshot = snapshot
+        self.palette = palette
+        self.bulkExpansionStage = bulkExpansionStage
+        self.bulkActionTick = bulkActionTick
+        self.onOpenDetail = onOpenDetail
+        // Lazy-loaded rows scrolling in *after* a bulk action pick up
+        // the panel's current stage as their initial @State.
+        _expanded = State(initialValue: bulkExpansionStage == .fullyExpanded)
+    }
 
     private var hasMore: Bool {
         snapshot.userFull.totalLines > 1 || snapshot.userCharCount > snapshot.userPrimary.count
@@ -160,8 +179,12 @@ private struct UserChunkRow: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onChange(of: collapseAllTick) { _ in expanded = false }
-        .onChange(of: expandSnapTick) { _ in if hasMore { expanded = true } }
+        .onChange(of: bulkActionTick) { _ in
+            // Snap @State to the panel's current bulk stage. Even
+            // when the stage didn't change (terminal-state click),
+            // this re-syncs any manual fiddling done since last bulk.
+            expanded = (bulkExpansionStage == .fullyExpanded) && hasMore
+        }
     }
 }
 
@@ -173,11 +196,11 @@ private struct AIChunkRow: View {
     /// Drives the pulse animation on the header glyph while the trailing
     /// AI chunk is still being written.
     let isStreaming: Bool
-    let collapseAllTick: Int
-    let expandSnapTick: Int
+    let bulkExpansionStage: AgentInspectorPanel.BulkExpansionStage
+    let bulkActionTick: Int
     let onOpenDetail: (InspectorDetailRequest) -> Void
-    @State private var aiExpanded = true
-    @State private var thinkingExpanded = false
+    @State private var aiExpanded: Bool
+    @State private var thinkingExpanded: Bool
     @State private var showDurationInHeader = false
     /// Independent of `aiExpanded` — the tokens segment toggles between
     /// total (default) and per-bucket breakdown when clicked.
@@ -185,7 +208,30 @@ private struct AIChunkRow: View {
     /// Per-tool expansion override. nil → use default (collapsed,
     /// regardless of status — red glyph + red name flag errors); non-nil
     /// is the user's explicit toggle.
-    @State private var toolExpansionOverrides: [String: Bool] = [:]
+    @State private var toolExpansionOverrides: [String: Bool]
+
+    init(
+        snapshot: ChunkRowSnapshot,
+        palette: HudPaletteToken,
+        isStreaming: Bool,
+        bulkExpansionStage: AgentInspectorPanel.BulkExpansionStage,
+        bulkActionTick: Int,
+        onOpenDetail: @escaping (InspectorDetailRequest) -> Void
+    ) {
+        self.snapshot = snapshot
+        self.palette = palette
+        self.isStreaming = isStreaming
+        self.bulkExpansionStage = bulkExpansionStage
+        self.bulkActionTick = bulkActionTick
+        self.onOpenDetail = onOpenDetail
+        _aiExpanded = State(initialValue: bulkExpansionStage != .fullyCollapsed)
+        _thinkingExpanded = State(initialValue: bulkExpansionStage == .fullyExpanded)
+        var overrides: [String: Bool] = [:]
+        if bulkExpansionStage == .fullyExpanded {
+            for tool in snapshot.toolCalls { overrides[tool.id] = true }
+        }
+        _toolExpansionOverrides = State(initialValue: overrides)
+    }
 
     private func isToolExpanded(_ tool: ChunkRowSnapshot.ToolCallSnapshot) -> Bool {
         if let override = toolExpansionOverrides[tool.id] { return override }
@@ -217,28 +263,22 @@ private struct AIChunkRow: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onChange(of: collapseAllTick) { _ in
-            // Per-row stepped collapse: detect current visual stage and
-            // advance one step toward fully collapsed.
-            //   stage 3 (anything sub-open) → stage 2 (close sub-items, keep aiExpanded)
-            //   stage 2 (only aiExpanded)   → stage 1 (close aiExpanded)
-            //   stage 1 (closed)            → no-op
-            let anySubOpen = thinkingExpanded || toolExpansionOverrides.values.contains(true)
-            if anySubOpen {
+        .onChange(of: bulkActionTick) { _ in
+            // Snap @State to panel's current bulk stage. Manual
+            // fiddling between bulk clicks is overridden so all
+            // chunks (visible + lazy not-yet-materialized) end up
+            // at the same stage.
+            switch bulkExpansionStage {
+            case .fullyCollapsed:
+                aiExpanded = false
                 thinkingExpanded = false
                 toolExpansionOverrides.removeAll()
-            } else if aiExpanded {
-                aiExpanded = false
-            }
-        }
-        .onChange(of: expandSnapTick) { _ in
-            // Per-row stepped expand: advance one step toward fully expanded.
-            //   stage 1 (closed)   → stage 2 (aiExpanded only)
-            //   stage 2            → stage 3 (open thinking + every tool)
-            //   stage 3            → no-op
-            if !aiExpanded {
+            case .topLevelExpanded:
                 aiExpanded = true
-            } else {
+                thinkingExpanded = false
+                toolExpansionOverrides.removeAll()
+            case .fullyExpanded:
+                aiExpanded = true
                 if snapshot.thinking != nil { thinkingExpanded = true }
                 for tool in snapshot.toolCalls {
                     toolExpansionOverrides[tool.id] = true
@@ -514,13 +554,28 @@ private struct AIChunkRow: View {
 private struct SystemChunkRow: View {
     let snapshot: ChunkRowSnapshot
     let palette: HudPaletteToken
-    let collapseAllTick: Int
-    let expandSnapTick: Int
+    let bulkExpansionStage: AgentInspectorPanel.BulkExpansionStage
+    let bulkActionTick: Int
     let onOpenDetail: (InspectorDetailRequest) -> Void
     /// Default folded — system rows are typically reference output
-    /// (turn duration, hook summaries, recap) the user opens
-    /// deliberately rather than reads inline.
-    @State private var expanded = false
+    /// the user opens deliberately. New rows scrolling in pick up
+    /// the panel's current bulk stage.
+    @State private var expanded: Bool
+
+    init(
+        snapshot: ChunkRowSnapshot,
+        palette: HudPaletteToken,
+        bulkExpansionStage: AgentInspectorPanel.BulkExpansionStage,
+        bulkActionTick: Int,
+        onOpenDetail: @escaping (InspectorDetailRequest) -> Void
+    ) {
+        self.snapshot = snapshot
+        self.palette = palette
+        self.bulkExpansionStage = bulkExpansionStage
+        self.bulkActionTick = bulkActionTick
+        self.onOpenDetail = onOpenDetail
+        _expanded = State(initialValue: bulkExpansionStage == .fullyExpanded)
+    }
 
     private var hasBody: Bool { !snapshot.systemBody.isEmpty }
 
@@ -563,8 +618,9 @@ private struct SystemChunkRow: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onChange(of: collapseAllTick) { _ in expanded = false }
-        .onChange(of: expandSnapTick) { _ in if hasBody { expanded = true } }
+        .onChange(of: bulkActionTick) { _ in
+            expanded = (bulkExpansionStage == .fullyExpanded) && hasBody
+        }
     }
 }
 
@@ -615,10 +671,27 @@ private struct MetaChunkRow: View {
     let snapshot: ChunkRowSnapshot
     let metaKind: ChunkRowSnapshot.MetaKind
     let palette: HudPaletteToken
-    let collapseAllTick: Int
-    let expandSnapTick: Int
+    let bulkExpansionStage: AgentInspectorPanel.BulkExpansionStage
+    let bulkActionTick: Int
     let onOpenDetail: (InspectorDetailRequest) -> Void
-    @State private var expanded = false
+    @State private var expanded: Bool
+
+    init(
+        snapshot: ChunkRowSnapshot,
+        metaKind: ChunkRowSnapshot.MetaKind,
+        palette: HudPaletteToken,
+        bulkExpansionStage: AgentInspectorPanel.BulkExpansionStage,
+        bulkActionTick: Int,
+        onOpenDetail: @escaping (InspectorDetailRequest) -> Void
+    ) {
+        self.snapshot = snapshot
+        self.metaKind = metaKind
+        self.palette = palette
+        self.bulkExpansionStage = bulkExpansionStage
+        self.bulkActionTick = bulkActionTick
+        self.onOpenDetail = onOpenDetail
+        _expanded = State(initialValue: bulkExpansionStage == .fullyExpanded)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -631,11 +704,9 @@ private struct MetaChunkRow: View {
         .padding(.horizontal, 12)
         .padding(.leading, isBranchStyle ? 14 : 0)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onChange(of: collapseAllTick) { _ in expanded = false }
-        .onChange(of: expandSnapTick) { _ in
-            if let meta = snapshot.meta, !meta.body.isEmpty {
-                expanded = true
-            }
+        .onChange(of: bulkActionTick) { _ in
+            let bodyAvailable = !(snapshot.meta?.body.isEmpty ?? true)
+            expanded = (bulkExpansionStage == .fullyExpanded) && bodyAvailable
         }
     }
 

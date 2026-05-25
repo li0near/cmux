@@ -84,8 +84,8 @@ struct AgentInspectorPanelView: View {
         }
         let palette = HudPaletteToken.from(HudPalette(appearance: appearance))
         let streamingAIChunkId = panel.streamingAIChunkId
-        let collapseTick = panel.collapseAllTick
-        let expandTick = panel.expandSnapTick
+        let collapseTick = panel.bulkActionTick
+        let bulkStage = panel.bulkExpansionStage
 
         if snapshots.isEmpty {
             emptyTranscriptView
@@ -98,8 +98,8 @@ struct AgentInspectorPanelView: View {
                                 snapshot: snapshot,
                                 palette: palette,
                                 streamingAIChunkId: streamingAIChunkId,
-                                collapseAllTick: collapseTick,
-                                expandSnapTick: expandTick,
+                                bulkExpansionStage: bulkStage,
+                                bulkActionTick: collapseTick,
                                 onOpenDetail: { request in
                                     panel.openDetail(request: request)
                                 }
@@ -153,7 +153,7 @@ struct AgentInspectorPanelView: View {
                 // them looking at white space below the new (shorter)
                 // content. Re-run the filter-aware scroll target so
                 // they land at the bottom of the freshly-compacted list.
-                .onChange(of: panel.collapseAllTick) { _ in
+                .onChange(of: panel.bulkActionTick) { _ in
                     scrollForFilter(proxy: proxy)
                 }
                 // Belt-and-suspenders for tab-switch: even if the

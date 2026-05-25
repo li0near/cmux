@@ -108,7 +108,7 @@ struct InspectorStatusBar: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverTooltip(tooltip)
+        .help(tooltip)
     }
 
     // MARK: - Status glyph + text
