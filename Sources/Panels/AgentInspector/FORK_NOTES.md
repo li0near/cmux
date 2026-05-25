@@ -41,6 +41,10 @@ Sources/Panels/AgentInspector/
       ClaudeJSONLLine.swift
       ClaudeChunkBuilder.swift
       ClaudeHookSessionStore.swift
+      ClaudeBuilderConsts.swift                  # Phase A (named numeric thresholds)
+      ClaudeContentDetector.swift                # Phase A (isMeta content classifier)
+      ClaudeBranchResolver.swift                 # Phase A (rewind-tree walker)
+      ClaudeRenderPolicy.swift                   # Phase A (line-routing policy)
     Codex/
       CodexRolloutLine.swift
       CodexChunkBuilder.swift
@@ -50,43 +54,58 @@ Sources/Panels/AgentInspector/
     AgentSessionResolver.swift
     FocusedSurfaceObserver.swift
   Detail/
-    AgentInspectorDetailContent.swift          # Phase A++ (rendering revamp)
-    AgentInspectorDetailView.swift             # Phase A++
+    AgentInspectorDetailContent.swift            # Phase A++ → extended in Phase B
+    AgentInspectorDetailView.swift               # Phase A++ → extended in Phase B
   Model/
-    AgentChunk.swift
-    AgentToolCall.swift
+    AgentChunk.swift                             # MetaChunk added in Phase A
+    AgentToolCall.swift                          # sidechainTranscript added in Phase A
   Render/
     HudPalette.swift
-    ChunkRowSnapshot.swift
-    ChunkRowView.swift
-    InspectorIcon.swift                        # Phase A++ (per-action SF Symbols)
-    ClaudeModelNameMap.swift                   # Phase A++ (friendly model names)
+    ChunkRowSnapshot.swift                       # MetaSnapshot added in Phase B
+    ChunkRowView.swift                           # MetaChunkRow added in Phase B
+    InspectorIcon.swift                          # Phase A++ + Phase B icons
+    ClaudeModelNameMap.swift                     # Phase A++
+    InspectorCaps.swift                          # Phase B (per-section cap policy)
+    InspectorStatusBar.swift                     # Phase C (icon-pill row)
+    HoverTooltip.swift                           # iter (UNUSED — see known issues)
   Sync/
-    ScrollbarStateCache.swift                  # Phase B (terminal → inspector sync)
-    TurnAnchorStore.swift                      # Phase B
-    InspectorSyncMode.swift                    # Phase B
-    VisibleTurnIds.swift                       # Phase B v2 (visible-turn filter algorithm)
-    ClaudeAnchorPayload.swift                  # Phase C (live-anchor payload from claude_anchor socket)
+    ScrollbarStateCache.swift                    # Phase B (terminal → inspector sync)
+    TurnAnchorStore.swift                        # Phase B
+    InspectorSyncMode.swift                      # Phase B
+    VisibleTurnIds.swift                         # Phase B v2 (visible-turn filter algorithm)
+    ClaudeAnchorPayload.swift                    # Phase C (live-anchor payload from claude_anchor socket)
+    InspectorRewindVisibility.swift              # Phase C (rewind toggle)
+    InspectorExpansionMode.swift                 # Phase C (auto-expand toggle)
+    InspectorBulkAction.swift                    # iter (UNUSED legacy enum — candidate for deletion)
+    InspectorBulkExpansionState.swift            # iter (UNUSED legacy enum — candidate for deletion)
   Tail/
     JSONLTail.swift
     TranscriptStream.swift
 
 cmuxTests/AgentInspector/
-  ClaudeChunkBuilderTests.swift
+  ClaudeChunkBuilderTests.swift                  # extended in Phase A with rewind/sidechain/recap/multi-PR/meta cases
   ClaudeHookSessionStoreTests.swift
   CodexChunkBuilderTests.swift
   JSONLTailTests.swift
   AgentSessionResolverTests.swift
-  ClaudeModelNameMapTests.swift                # Phase A++
-  InspectorIconTests.swift                     # Phase A++
-  AgentInspectorDetailContentTests.swift       # Phase A++
-  TurnAnchorStoreTests.swift                   # Phase B
-  VisibleTurnFilterTests.swift                 # Phase B v2 → renamed in Phase C
-  LiveAnchorReceiverTests.swift                # Phase C
+  ClaudeModelNameMapTests.swift                  # Phase A++
+  InspectorIconTests.swift                       # Phase A++
+  AgentInspectorDetailContentTests.swift         # Phase A++
+  TurnAnchorStoreTests.swift                     # Phase B
+  VisibleTurnFilterTests.swift                   # Phase B v2 → renamed in Phase C
+  LiveAnchorReceiverTests.swift                  # Phase C
+  ClaudeBranchResolverTests.swift                # Phase A
+  ClaudeContentDetectorTests.swift               # Phase A
+  ClaudeRenderPolicyTests.swift                  # Phase A
 cmuxTests/Resources/AgentInspector/
   claude-sample.jsonl
   claude-hook-sessions.json
   codex-sample.jsonl
+  claude-rewind-tree.jsonl                       # Phase A fixture
+  claude-sidechain-task.jsonl                    # Phase A fixture
+  claude-recap.jsonl                             # Phase A fixture
+  claude-multi-pr.jsonl                          # Phase A fixture
+  claude-meta-content.jsonl                      # Phase A fixture
 ```
 
 ## Reapplying after an upstream pull
@@ -150,33 +169,74 @@ override env var. Stock homebrew `zig` 0.16.0 fails because Ghostty's
 
 Pre-existing `Resources/shell-integration/cmux-zsh-integration.zsh` is untouched.
 
-## Current state and known limitations (as of Phase D)
+## Current state and known limitations
 
-The inspector's snap mode is functionally correct on the committed
-tip of `agent-inspector`, but transitions between filter regimes
-(`.turns([latest])` ↔ `.preAnchored`) cause a visible content-set
-swap. Hysteresis (at-bottom tolerance = 3) reduces the *frequency*
-of these transitions; it does not eliminate the *amplitude*. The
-flash manifests as a brief render of new content at the previous
-scroll offset, followed by a deferred `proxy.scrollTo` that snaps
-to the appropriate position one frame later.
+The inspector has shipped Phase A–D of comprehensive Claude JSONL render
+correctness plus six post-D dogfood iterations. All work lives on
+`agent-inspector`; tip is `78e67cbf9`. **Tests:** 115 passing in the
+AgentInspector subset.
 
-This is **deferred** to a follow-up session. Two viable paths:
+### What's shipped
 
-1. **Filter + synchronous `proxy.scrollTo`** — drop the
-   `DispatchQueue.main.async` deferral; commit content + scroll in
-   one SwiftUI cycle. Small change.
-2. **NSScrollView wrapper** — replace the SwiftUI `ScrollView` with
-   a hand-rolled `NSViewRepresentable`-backed `NSScrollView` for
-   atomic content+offset commit. Larger refactor.
+- **Active-branch rewind handling** — `last-prompt`/`parentUuid` walk
+  (`ClaudeBranchResolver.swift`) computes the active branch; abandoned
+  branches surface as indented `↳ Rewind N of M` rows that open the
+  full transcript in a detail tab. Orphan branches emit at the top of
+  the chunk stream.
+- **Sidechain segregation** — `Task` tool transcripts attached to the
+  parent tool call; expand-row link opens the sub-agent transcript in
+  a detail tab.
+- **Per-section caps** (`InspectorCaps.swift`) — `mostlyShort`,
+  `mostlyLong`, `alwaysLink`, `neverCap` bindings per chunk section.
+  Assistant text is `alwaysLink` (opens in detail tab, not inline).
+- **Status-bar icon-pill row** (`InspectorStatusBar.swift`) — scroll
+  mode, rewinds visibility, auto-expand toggle (snap-turn-only),
+  collapse-all action, expand-all action. Toggle state persisted via
+  UserDefaults.
+- **Bulk collapse/expand** — three-stage state machine
+  (`fullyCollapsed → topLevelExpanded → fullyExpanded`) at the panel
+  level so lazy-not-yet-materialized rows pick up the current stage
+  on first appearance.
+- **Recap (`away_summary`)**, **`pr-link`**, **slash-command pairs**,
+  **skill titles**, **system reminders** routed via
+  `ClaudeRenderPolicy.swift` to dedicated `MetaChunk` variants.
+- **Per-turn duration** sourced from `system.subtype: turn_duration`
+  with local-computation fallback.
+- **Phase D debug probes** stripped (the `cmuxDebugLog` calls referenced
+  in older versions of this file).
+- **Wrapper hookbin precedence fix** for tagged debug builds (still
+  applied; see Phase D upstream-touch table above).
 
-A **rejected experiment** was also attempted (Option A): always
-render every chunk, repurpose the filter as a scroll target only.
-That eliminated the flash but lost the snap-mode visual constraint
-the user wanted. See `DECISIONS.md` Phase D section for full
-context. Don't re-walk that path.
+### Known issues deferred to follow-up
 
-Debug probes (under `#if DEBUG`) are present in
-`AgentInspectorPanel.swift` and `FocusedSurfaceObserver.swift` and
-should be removed when Phase D's deferred work ships. Tail location:
-`/tmp/cmux-debug-agent-inspector.log`.
+1. **Bulk-expand inversion regression** (post-`78e67cbf9` dogfood):
+   "collapse would expand, expand would collapse sometimes." Suspected
+   `@Published` ordering race between `bulkExpansionStage` and
+   `bulkActionTick` writes inside `collapseAll()` / `expandSnap()` —
+   the row's `.onChange(of: bulkActionTick)` may read the OLD stage.
+   See `~/.claude/plans/crystalline-seeking-firefly.md` for the fix
+   candidates.
+2. **"Certain user prompts cannot be expanded"** — unverified report;
+   most likely the `hasMore == false` no-op branch is correct
+   behaviour. Needs a specific repro from the user before investigating.
+3. **`HoverTooltip.swift`** is unused — the custom 0.5 s tooltip
+   modifier was tried twice (popover blocked clicks; overlay never
+   appeared) and reverted to `.help(...)` (system delay ~1.5 s).
+   Either delete the file or revisit with `NSViewRepresentable`-backed
+   `NSToolTipManager` access.
+4. **`InspectorBulkAction.swift` + `InspectorBulkExpansionState.swift`**
+   are legacy enum files left over from earlier iterations. Currently
+   unused — candidates for deletion.
+
+### Earlier flash/flap saga (now closed)
+
+The original Phase D handover described the
+`.turns([latest])` ↔ `.preAnchored` content-set swap flash as a
+follow-up shipper. **It shipped** in commit `5c37d9b72`
+("Stay-band + filter-aware scroll target; sync proxy.scrollTo")
+which combined three fixes: synchronous `proxy.scrollTo`, a wider
+"stay band" using anchor-row when present, and a filter-aware scroll
+target landing on the boundary chunk. Don't re-walk the
+`defaultScrollAnchor(.bottom)` or "Option A always-render-all"
+experiments — both were rejected and the lessons are captured in
+`DECISIONS.md`.

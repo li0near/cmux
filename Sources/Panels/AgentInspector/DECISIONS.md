@@ -940,259 +940,195 @@ without trying to align with the terminal.
   setting toggles the precision tier on a per-session basis; with
   the toggle off, all chunks fall into `.preAnchored`.
 
-## Phase D: Flap / flash debugging (in progress, partly shipped, partly deferred)
+## Phase D: Flap / flash debugging (shipped — closed)
 
-After Phase C shipped, dogfooding surfaced a class of UI symptoms
-collectively described as "flap" or "flash" during snap mode in the
-inspector. This phase ran an extended investigation, shipped a stack
-of incremental improvements, and ended on a deferred architectural
-trade-off that the next session must resolve.
+The flash on `.turns([latest])` ↔ `.preAnchored` transitions and
+related symptoms (1-row flap, off-bottom flash with expanded tools,
+"wrong content" after off-bottom round-trip) shipped fixes in commit
+`5c37d9b72` "Stay-band + filter-aware scroll target; sync proxy.scrollTo".
+Three coordinated changes:
 
-### Symptoms (as user-reported)
+- **Synchronous `proxy.scrollTo`** — dropped
+  `InspectorScrollCoordinator` + `DispatchQueue.main.async`. The
+  scroll request now commits in the same render frame as the new
+  content set, eliminating the two-frame "render at old offset then
+  snap" flash.
+- **Wider stay band** in `computeVisibleTurnFilter` — replaced the
+  narrow at-bottom-tolerance check (3 rows) with a band keyed on
+  the latest user prompt's anchor row when available, falling back
+  to `2 * len` rows from scrollback bottom for unanchored sessions.
+  Common scroll gestures no longer flap the filter into
+  `.preAnchored` and back.
+- **Filter-aware scroll target** via `inspectorScrollTarget(...)` —
+  on transitions to `.preAnchored` in unanchored sessions the
+  inspector lands on the chunk preceding the latest user prompt
+  (history boundary) instead of re-landing on the same latest-turn
+  chunks the user just scrolled away from. Specific chunk-id
+  targets are also more deterministic than the LazyVStack container
+  sentinel under lazy row materialisation.
 
-1. **1-row flap** — terminal scrollbar reports oscillating between
-   adjacent values (e.g. `viewportEnd=2029` ↔ `2030`) flap the filter
-   between `.turns([latest])` and `.preAnchored`. Both happen for
-   normal user scrolls, not just sub-row jitter — *any* multi-row
-   scroll passes through the boundary one row at a time.
-2. **Off-bottom flash with expanded tools** — when the latest turn's
-   chunks are tall enough to make the inspector scrollable, exiting
-   at-bottom briefly renders previous-turn content and then snaps
-   back. Worse with expanded tool calls (taller LazyVStack).
-3. **"Wrong content" after off-bottom round-trip** — user scrolls
-   terminal up past the boundary then back to bottom; inspector
-   ends in the at-bottom (latest-turn) state when they expected
-   `.preAnchored` (history). Reframed by the user: not a flicker,
-   "wrong content shown."
-4. **Black non-scrollable inspector after exit-then-re-enter** —
-   *false alarm*; the inspector was actually scrollable, the user
-   just needed to scroll up further inside the latest turn's
-   expanded content.
+The earlier-handover deferred follow-ups — synchronous `scrollTo`
++ NSScrollView wrapper + Option A always-render-all — are CLOSED.
+Path 1 (sync scrollTo) was sufficient; the wrapper and Option A
+are not needed.
 
-### Investigation: log-probe findings
+### Bug A/B/C/P1 (still relevant)
 
-Added `cmuxDebugLog` probes (`scrollbar.queued`, `filter.transition`,
-`scrollToBottom.requested/.executed`, `body filter=…` from inside the
-view body's let-block). Two ground-truth findings:
+These earlier flash-related fixes shipped in `bc8f7ada4`:
 
-1. **Filter oscillates** at the at-bottom boundary. With tolerance=3,
-   `viewportEnd=2030` registers as at-bottom (2030+3 ≥ 2033) but
-   `2029` doesn't (2029+3 < 2033). Trackpad / scroll natural
-   behaviour reliably crosses this 1-row boundary.
-2. **Closure-staleness** in the view's `.onChange(of: visibleTurnFilter)`
-   handler. The closure captures `snapshots` from the body
-   invocation that *registered* it, not the body that's currently
-   rendering. So `scrollToBottom.requested snapshots=N` consistently
-   lags one body-invocation behind `body visibleChunks=…`. **Not
-   symptom-causing today** (scroll target is the LazyVStack's
-   container `.id`, not derived from `snapshots`), but a real
-   correctness issue if any future logic reads `snapshots` from
-   inside a `.onChange` closure.
+- **Bug A — cold-attach empty inspector.** Scrollbar nil + chunks
+  non-empty returns `.turns([latestId])` so the inspector shows
+  the live tail rather than the empty placeholder.
+- **Bug B — resumed-session scroll-up flash.** Restored
+  `.preAnchored` free-scroll for off-bottom in resumed sessions
+  (`1654eba9a`); the v1 over-correction was reverted.
+- **Bug C — tab-switch top-of-list.** Synchronous filter recompute
+  on session change (`b1a3d934f`) eliminates the brief "Waiting for
+  transcript" flash on tab switch.
+- **P1 — deferred-scroll race amplifier.** Cancellable
+  `DispatchWorkItem` coordinator (later removed in `5c37d9b72`
+  when sync scroll made it unnecessary).
 
-The dramatic content-set swap is the actual mechanism behind
-symptoms 1–3. With one stream, `.turns([latestId])` rendered 2
-chunks while `.preAnchored` rendered 191 (≈95× size delta). Each
-filter transition rebuilds the LazyVStack. SwiftUI's ScrollView
-preserves contentOffset across content changes → new content lands
-at OLD offset for one frame → deferred `scrollTo` snaps to bottom
-the next frame → user perceives "loaded then scrolled" two-state
-flash.
+### Rejected experiments (don't re-walk)
 
-### Decisions (shipped)
-
-- **Bug A (cold-attach empty inspector).** When `scrollbar` is nil
-  but `chunks` is non-empty (cold attach / tab-switch / resume
-  before first scrollbar tick), `computeVisibleTurnFilter` returns
-  `.turns([latestId])` instead of `.turns([])`. Inspector shows the
-  live tail rather than the empty placeholder. Shipped in
-  `bc8f7ada4`.
-- **Bug B (resumed-session scroll-up flash).** Initially
-  short-circuited resumed sessions to stay on `.turns([latest])` when
-  off-bottom; user pushed back ("you removed the above-bottom
-  free-scroll"). Reverted to `.preAnchored` in `1654eba9a`; flap
-  symptom addressed via at-bottom tolerance instead.
-- **Bug C (tab-switch top-of-list).** ScrollView reused its scroll
-  offset across session changes. First tried `.id(sessionId)` to
-  force recreation (caused recreate-flash, reverted). Final fix:
-  drop `.id`, rely on `.onChange(of: panel.resolvedSession?.sessionId)`
-  with the cancellable scroll coordinator. Shipped in `bc8f7ada4`,
-  refined in `1654eba9a`.
-- **P1 (deferred-scroll race amplifier).** A single user gesture
-  could schedule multiple `DispatchQueue.main.async` scroll work
-  items that all execute in order, briefly flashing the LazyVStack
-  to intermediate positions. New `InspectorScrollCoordinator`
-  (class held by `@State`) cancels the previous `DispatchWorkItem`
-  before scheduling a new one. Only the trailing scroll executes.
-  Shipped in `bc8f7ada4`.
-- **At-bottom tolerance (3 rows).** Restored in `1654eba9a` after
-  Bug B's overcorrection was reverted. Reduces but doesn't eliminate
-  the 1-row flap.
-- **Synchronous filter recompute on session change.** Tab-switch
-  produced a brief "Waiting for transcript" flash because SwiftUI's
-  first re-render after `handleSessionChange` saw the new
-  `resolvedSession` + new `chunks` but the **stale**
-  `visibleTurnFilter` from the previous session — `chunksForFilter`
-  with an old user-chunk-id returned an empty list. Fix: call
-  `recomputeVisibleTurnFilter()` synchronously inside
-  `handleSessionChange` (after `stream.attach`). Shipped in
-  `b1a3d934f`.
-- **Wrapper hookbin precedence fix.** Auto-attach broke for the
-  tagged debug app because `Resources/bin/claude`'s
-  `resolve_hook_cmux_bin` checked `CMUX_BUNDLED_CLI_PATH` env var
-  first; that env can leak from a different bundle (production
-  cmux) into the tagged terminal. Inverted priority to prefer
-  `$self_dir/cmux` (the cmux that ships in the *same* bundle as the
-  wrapper). Shipped in `961a1b7ed`. **This should be added to
-  FORK_NOTES upstream-touch surface** if `Resources/bin/claude` is
-  considered upstream territory; it's currently the cmux wrapper
-  bundled with the app.
-- **Cosmetic / scroll-anchor fixes**: hide inspector scrollbar
-  (`.scrollIndicators(.never)`, `f3ebfff66`); auto-follow on every
-  JSONL line (not chunk id) for true `tail -f` behaviour with tool
-  calls folded into existing AI chunks (`e938911a7`); scroll
-  target = LazyVStack's container `.id` so the bottom edge matches
-  the user-reachable manual scroll bottom (`c424b2c4e`); defer
-  scroll-to-bottom to next runloop (`5f6d2cd52`).
-
-### Decisions (reverted)
-
-- **`.defaultScrollAnchor(.bottom)`** (`58ca48644`, reverted in
-  `b241ee532`). Aligned the trailing tool-call rows at the *bottom*
-  of the viewport — user wanted prompts at the *top*. Wrong UX for
-  expanded turns.
-- **Single-height bottom sentinel** (`1ad6df443`, replaced by
-  `b7db64e27` then by `c424b2c4e`). User: "the manual sentinel
-  thing is ugly."
-- **Dividers between rows + no bottom padding** (`b7db64e27`,
-  reverted by `c424b2c4e`). User wanted the trailing divider
-  visible.
+- **`defaultScrollAnchor(.bottom)`** (`58ca48644`, reverted in
+  `b241ee532`) — aligned tools at viewport bottom, wrong UX.
+- **Single-height bottom sentinel** (`1ad6df443`) — visually ugly per user.
+- **Dividers between rows + no bottom padding** (`b7db64e27`) —
+  removed the trailing divider user wanted visible.
 - **Bug B v1 (anchors-empty → stay on latest)** (in `bc8f7ada4`,
-  reverted by `1654eba9a`). Killed the off-bottom free-scroll the
-  user explicitly wanted for resumed sessions.
+  reverted by `1654eba9a`) — killed the off-bottom free-scroll.
+- **Option A: always render all chunks; filter as scroll target.**
+  Eliminated flash but lost the snap-mode visual constraint
+  (latest turn's chunks isolated). Rejected by user.
 
-### Decisions (deferred)
+## Phase E: Comprehensive Claude JSONL render correctness (shipped)
 
-The deferred decision is the design tension between filter UX and
-flash. Background:
+After Phase D, dogfood on the rewound `ece1123a-…` session in
+`/Users/I505728/temp/github/hai-proxy` exposed a separate class of
+bugs: the inspector was rendering all 221 main-chain messages while
+the terminal showed only the active branch's ~26. Investigation
+broadened the scope to comprehensive JSONL render correctness
+(the prior flash debt was UX correctness; this is data correctness).
 
-- The user wants `.turns([latestId])` snap mode to act as a
-  **visual constraint** — only the latest turn's chunks are visible,
-  user can't scroll up to older content from within snap mode.
-  This is the filter UX. Currently shipped.
-- The user wants `.preAnchored` snap mode to act as **free-scroll
-  history** when the terminal is off-bottom in a resumed session.
-  Currently shipped.
-- The user wants **no flash** during transitions between regimes.
-  Currently NOT shipped — every transition swaps the LazyVStack's
-  content set dramatically (2 ↔ 191), SwiftUI preserves contentOffset
-  across the swap, deferred `scrollTo` snaps the rest of the way
-  one frame later.
+### Decisions (shipped — `189e2f781`, `b5805a8ea`, `8d1894712`, `5b86a3cf9` plus six iterations)
 
-The shipped solution provides UX (1) and (2) but not (3). Hysteresis
-reduces the *frequency* of transitions (no more 1-row flap for tiny
-trackpad jitter) but does nothing for the *amplitude* of each
-transition.
+- **Active-branch filtering via `last-prompt → leafUuid → parentUuid`
+  walk.** New module `ClaudeBranchResolver.swift`. Abandoned
+  branches grouped by divergence point; emitted as
+  `↳ Rewind N of M` indented links at the divergence point. Click
+  opens the abandoned branch's full transcript in a detail tab
+  (recursive sub-build by `ClaudeChunkBuilder`). Orphan branches
+  (parent chain ends without an active hit) emit at the top of
+  the chunk stream so they don't disappear.
+- **Single source of truth for line routing.** New
+  `ClaudeRenderPolicy.swift` keyed on
+  `(type, subtype, isMeta, isSidechain, isCompactSummary)`.
+  Replaces scattered `switch line.type` checks. Routing decisions:
+  `skip` (session-orphan metadata, `last-prompt`,
+  `permission-mode`, `agent-name`, `custom-title`,
+  `queue-operation`, `progress`, `system.subtype: turn_duration`,
+  `Continue from where you left off.`, `<local-command-caveat>`),
+  `skipBranchAffiliated`, `sidechainMain`,
+  `render(ClaudeRenderKind)`, `renderSpecial(ClaudeSpecialKind)`.
+- **`isMeta=true` user-line classifier.** New
+  `ClaudeContentDetector.swift` — pure functions matching the
+  structural tags Claude uses (`<command-name>`,
+  `<command-message>`, `<local-command-stdout>`,
+  `<system-reminder>`, `Base directory for this skill: …`,
+  `## Context Usage`). Tool-result blocks still fold into the
+  pending AIChunk (existing behaviour preserved).
+- **Sidechain transcripts attached to parent `Task` tool calls.**
+  `AgentToolCall.sidechainTranscript: [AgentChunk]?`.
+- **`turn_duration` consumed for per-turn duration stamping.**
+  Pre-pass over `system.subtype: turn_duration` lines; AIChunk
+  picks up `perTurnDurationMs` + `messageCount` from the
+  matching parent UUID at flush time.
+- **`MetaChunk` enum with ten cases** for new chunk types
+  (branchLink, recap, prLink, skillTitle, slashCmdInput,
+  slashCmdOutput, localCommandCaveat, systemReminder,
+  contextUsage, continueResume — though continueResume +
+  localCommandCaveat are policy-skipped in practice).
+- **Per-section caps** via `InspectorCaps.swift`. `mostlyShort`
+  (150 / 16 KiB), `standard` (150 / 16 KiB), `mostlyLong`
+  (100 / 8 KiB), `alwaysLink` (assistant text, skill body,
+  slash-command body), `neverCap` (thinking).
+- **Assistant text is always-link.** No inline rendering;
+  surfaces a `↗ assistant response · N words` link with the
+  `microbe.circle` icon. Body opens in a detail tab.
+- **Status-bar icon-pill row** (`InspectorStatusBar.swift`).
+  Five pills: scroll mode (label) → Rewinds toggle → Auto-expand
+  toggle (only when `panel.isShowingSnapTurn`) → Collapse all
+  → Expand all. Toggle state persisted via UserDefaults.
+- **Bulk collapse/expand state machine** at panel level
+  (`AgentInspectorPanel.BulkExpansionStage`,
+  `fullyCollapsed → topLevelExpanded → fullyExpanded`). Each
+  click advances exactly one step. Visible AND lazy-not-yet-
+  materialised rows snap to the panel's current stage (rows
+  initialise `@State` from `bulkExpansionStage`; re-sync via
+  `.onChange(of: bulkActionTick)`).
+- **Auto-expand-snap fires only on `.turns(...)` filter
+  transitions** while `isShowingSnapTurn` is true. History
+  scrolling (`.preAnchored`) does NOT auto-open chunks per the
+  "expanding history would be a nightmare" requirement.
+- **`panel.isShowingSnapTurn`** is the single intent-named
+  predicate gating snap-turn-specific UX.
+- **Debug probes stripped** in `5b86a3cf9`. Inspector code is
+  probe-free.
 
-Two viable paths are deferred to the next session:
+### Phase E commit ladder
 
-1. **Filter + synchronous `proxy.scrollTo`** (small change, ~30
-   lines). Inside `.onChange(of: visibleTurnFilter)`, drop the
-   `DispatchQueue.main.async` and the `InspectorScrollCoordinator`.
-   Call `proxy.scrollTo(targetId, anchor: .bottom)` synchronously,
-   inside the same SwiftUI update cycle as the body re-eval. The
-   hypothesis is SwiftUI commits content + scroll position in a
-   single frame when the scroll request is registered during the
-   update cycle. Risk: LazyVStack's deferred row materialization
-   may bite us — `proxy.scrollTo` could land at an estimated
-   position before rows are sized.
-2. **NSScrollView wrapper** (larger refactor, ~150 lines of
-   `NSViewRepresentable` bridge code). Replace SwiftUI's ScrollView
-   with a hand-rolled NSScrollView. Lets us atomically set
-   contentOffset + content view. Definitively no flash. Carries
-   macOS-specific bridge code that needs to handle: scroll bouncing,
-   `NSScrollView.scrollerStyle = .overlay`, mouse-wheel events,
-   trackpad inertia, scroll-to-bottom on chunk arrival, etc.
+```
+78e67cbf9  Bulk collapse/expand applies to ALL chunks; restore .help() tooltips
+bca03d079  Stepped collapse/expand: per-row inference, expand-all everywhere
+c25981ad6  Refactor: panel.isShowingSnapTurn as single source of truth
+1d8e673ca  Iterate on tooltip + auto-expand + assistant link
+9f9fd7514  Iterate on dogfood feedback (5 fixes)
+c5a5a2c35  Iterate on Phase B–D dogfood feedback
+5b86a3cf9  Phase D: Bulk expand/collapse + auto-expand-snap + cleanup
+8d1894712  Phase C: Status-bar icon-pill row + persisted toggles
+b5805a8ea  Phase B: Render layer for new MetaChunk variants
+189e2f781  Phase A: Claude JSONL render correctness — data foundation
+```
 
-User's stated preference: try (1) first since it's small; fall back
-to (2) if it still flashes.
+(Phases A-D in the commit subjects belong to the comprehensive-
+render-correctness plan and are distinct from the historical
+"Phase D flash debugging" of commit `5c37d9b72` and predecessors.)
 
-### Rejected experiment: Option A (don't filter; render all chunks
-always, repurpose filter as scroll target)
+## Bulk-expand inversion regression (deferred — open ship-blocker)
 
-To eliminate the flash by construction, considered restructuring
-the inspector to always render every chunk and use the filter
-purely as a *scroll target*. `VisibleTurnFilter` enum →
-`InspectorScrollTarget = {chunkId, anchor: UnitPoint}`.
-`computeVisibleTurnFilter` → `computeScrollTarget`.
-`chunksForFilter`, `chunksMatchingTurnPredicate`, `anchoredUserIds`
-all dropped. View renders `panel.stream.chunks` always; on
-`.onChange(of: panel.scrollTarget)`, calls
-`proxy.scrollTo(target.chunkId, anchor: target.anchor)`
-synchronously.
+Reported on dogfood of commit `78e67cbf9`: bulk
+"Collapse all" / "Expand all" sometimes go the wrong direction.
+Hypothesised cause: the row's `.onChange(of: bulkActionTick)` reads
+`bulkExpansionStage` at the moment the closure fires, but the two
+`@Published` writes inside `collapseAll()` / `expandSnap()` may
+deliver in an order where the tick observation reaches the view
+before `bulkExpansionStage`'s write is visible — so the closure
+applies the OLD stage.
 
-Implemented locally + tests rewritten + verified flash-free in the
-tagged debug app. **Rejected by user**: "enter at-bottom doesn't
-snap me to the last turn chunks anymore. It's just inspector
-scrolls to the bottom, but I can scroll up to previous
-conversations." The all-chunks-always design lost the visual
-constraint that filtering provided. Snap mode no longer felt like a
-snap — just a scroll position.
+Fix candidates (next session):
 
-Decision: discard Option A; preserve the learning here. The
-filtering UX is essential and cannot be removed. Future work must
-address the flash without removing the filter.
+- (a) Combine `bulkExpansionStage` + tick into a single `@Published`
+  struct so both values become visible atomically. Smallest fix.
+- (b) Drop the tick; observe `bulkExpansionStage` directly with a
+  wrapped `Equatable` change-id to also fire on terminal-state
+  re-clicks.
+- (c) Move expansion state per chunk-id (panel dict) so rows derive
+  from snapshot value rather than syncing via `.onChange`. Larger
+  refactor; cleaner long-term.
 
-### Closure-staleness diagnosis
+See `~/.claude/plans/crystalline-seeking-firefly.md` for the
+detailed handover narrative.
 
-Distinct from the symptoms above; documented for next-session
-correctness. The view's `.onChange` handlers — `.onChange(of:
-visibleTurnFilter)`, `.onChange(of: stream.lineCount)`, `.onChange(of:
-resolvedSession?.sessionId)` — capture the body's `let snapshots = …`
-projection by closure. SwiftUI fires the closure that was registered
-by the body invocation *that just produced the new state*, but
-the captured `snapshots` is from the prior invocation. So
-`isFollowingLiveTail(snapshots)` reads stale data; lag is one body
-invocation.
+## Closure-staleness diagnosis (still relevant)
 
-Empirical: `body visibleChunks=191` followed by
-`scrollToBottom.requested snapshots=2` for the same filter
-transition.
+Flagged during the earlier flash investigation: the view's
+`.onChange` handlers in `AgentInspectorPanelView.swift` capture
+the body's `let snapshots` projection by closure, which can read
+one body-invocation behind. Not currently symptom-causing
+(scroll target uses panel state, not `snapshots`), but a real
+correctness issue if any future predicate reads `snapshots`
+from inside a `.onChange` closure. Fix when re-touching the
+view: read panel state directly inside the closure rather than
+capturing `snapshots`.
 
-Doesn't show as a flash today because the actual scroll target is
-the LazyVStack's container `.id` (not derived from `snapshots`).
-But any future predicate that reads `snapshots` from inside a
-`.onChange` closure (e.g. `isFollowingLiveTail`) will silently use
-stale data. Fix when re-touching the view: read panel state directly
-inside the closure rather than capturing `snapshots`.
-
-### Files added in Phase D
-
-None. All Phase D fixes either modified existing files or were
-local experiments that were reverted/discarded.
-
-### Files modified in Phase D (committed)
-
-- `Sources/Panels/AgentInspector/AgentInspectorPanel.swift` —
-  `recomputeVisibleTurnFilter` synchronously called from
-  `handleSessionChange`; debug probes (`liveAnchor`,
-  `liveAnchor.miss`, `scrollbar.queued`, `filter.transition`).
-- `Sources/Panels/AgentInspector/AgentInspectorPanelView.swift` —
-  `.scrollIndicators(.never)`; `InspectorScrollCoordinator` for
-  cancellable deferred scroll; `.onChange` on filter, lineCount,
-  sessionId; LazyVStack tagged with container `.id` for scroll
-  target; trailing divider preserved.
-- `Sources/Panels/AgentInspector/Sync/VisibleTurnIds.swift` —
-  cold-attach guard (`scrollbar nil` returns latest user chunk's
-  turn); `previousFilter:` parameter added; at-bottom tolerance =
-  3 rows.
-- `Resources/bin/claude` — `resolve_hook_cmux_bin` prefers
-  `$self_dir/cmux` over `CMUX_BUNDLED_CLI_PATH` env (avoids stale
-  env leakage between bundles).
-
-### Debug probes still present
-
-Inside `#if DEBUG` blocks at: `AgentInspectorPanel.swift`
-(`liveAnchor`, `liveAnchor.miss`, `scrollbar.queued`,
-`filter.transition`); `FocusedSurfaceObserver.swift`
-(`agentInspector.recompute`). Should be removed before any "polish"
-commit if/when Phase D's deferred work is shipped.
