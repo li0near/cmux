@@ -156,63 +156,56 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     ///     same direction as the click; they want MORE, not snap-back.
     @Published private(set) var expansionOverrides: ExpansionOverrides = ExpansionOverrides()
 
-    /// Trigger a stepped collapse-all signal for row views.
-    ///
-    /// Behavior:
-    /// - At `fullyCollapsed` with no expand-direction overrides: true
-    ///   no-op (no tick, no publish, no scroll reset).
-    /// - When `hasExpandFiddle`: snap rows back to the current panel
-    ///   stage by clearing the overrides. Don't advance — the user
-    ///   first wants to undo their manual expansion.
-    /// - Otherwise: advance one stage downward. Drops any
-    ///   collapse-direction fiddle as a side-effect of `clear()`.
+    /// Trigger a stepped collapse-all signal for row views. See
+    /// `ExpansionOverrides.collapseOutcome(stage:overrides:)` for the
+    /// pure-function semantics that this method drives — extracted so
+    /// the bulk-action behavior is unit-testable without instantiating
+    /// the panel.
     func collapseAll() {
-        if bulkState.stage == .fullyCollapsed && !expansionOverrides.hasExpandFiddle {
-            return
-        }
-        let nextStage: BulkExpansionStage
-        if expansionOverrides.hasExpandFiddle {
-            nextStage = bulkState.stage
-        } else {
-            switch bulkState.stage {
-            case .fullyExpanded: nextStage = .topLevelExpanded
-            case .topLevelExpanded: nextStage = .fullyCollapsed
-            case .fullyCollapsed: return
-            }
-        }
-        expansionOverrides.clear()
-        bulkState = BulkExpansionState(
-            stage: nextStage,
-            tick: bulkState.tick &+ 1,
-            lastDirection: .collapse
+        applyBulkOutcome(
+            ExpansionOverrides.collapseOutcome(
+                stage: bulkState.stage,
+                overrides: expansionOverrides
+            ),
+            direction: .collapse
         )
     }
 
     /// Trigger a stepped expand-all signal for row views. Mirror of
-    /// `collapseAll()` — see that comment for the snap-back-first
-    /// semantics. Direction-aware: a user who fiddled in the EXPAND
-    /// direction and clicks Expand again advances directly to
-    /// `fullyExpanded` rather than seeing their manual expansion
-    /// snap-back-collapsed.
+    /// `collapseAll()`.
     func expandSnap() {
-        if bulkState.stage == .fullyExpanded && !expansionOverrides.hasCollapseFiddle {
-            return
-        }
+        applyBulkOutcome(
+            ExpansionOverrides.expandOutcome(
+                stage: bulkState.stage,
+                overrides: expansionOverrides
+            ),
+            direction: .expand
+        )
+    }
+
+    /// Apply a bulk-outcome decision to the panel's state. Both the
+    /// `advance` and `snapBack` outcomes clear `expansionOverrides`
+    /// and bump the tick; only `advance` changes the stage. `noop`
+    /// publishes nothing so the view's `.onChange(of: panel.bulkState)`
+    /// stays silent at terminal-stage clicks.
+    private func applyBulkOutcome(
+        _ outcome: BulkOutcome,
+        direction: BulkExpansionState.Direction
+    ) {
         let nextStage: BulkExpansionStage
-        if expansionOverrides.hasCollapseFiddle {
+        switch outcome {
+        case .noop:
+            return
+        case .advance(let to):
+            nextStage = to
+        case .snapBack:
             nextStage = bulkState.stage
-        } else {
-            switch bulkState.stage {
-            case .fullyCollapsed: nextStage = .topLevelExpanded
-            case .topLevelExpanded: nextStage = .fullyExpanded
-            case .fullyExpanded: return
-            }
         }
         expansionOverrides.clear()
         bulkState = BulkExpansionState(
             stage: nextStage,
             tick: bulkState.tick &+ 1,
-            lastDirection: .expand
+            lastDirection: direction
         )
     }
 
@@ -283,6 +276,17 @@ final class AgentInspectorPanel: Panel, ObservableObject {
         }
     }
 
+    /// Decision returned by `ExpansionOverrides.collapseOutcome` /
+    /// `expandOutcome`. Lets the bulk-action semantics live as pure
+    /// functions for testability while the panel handles the
+    /// imperative side effects (clearing overrides, bumping tick,
+    /// publishing).
+    enum BulkOutcome: Equatable {
+        case noop
+        case advance(to: BulkExpansionStage)
+        case snapBack
+    }
+
     /// Per-id manual expansion overrides. Keyed by a string that
     /// includes a `kind:` prefix (`ai:`, `thinking:`, `tool:`,
     /// `chunk:`) so different knobs don't collide. Entries are
@@ -320,6 +324,50 @@ final class AgentInspectorPanel: Panel, ObservableObject {
 
         mutating func clear() {
             values.removeAll(keepingCapacity: false)
+        }
+
+        /// Pure computation of what `collapseAll()` should do given
+        /// the panel's stage and current overrides. Behavior:
+        /// - At `fullyCollapsed` with no expand-direction overrides:
+        ///   `.noop`.
+        /// - With `hasExpandFiddle`: `.snapBack` (close the user's
+        ///   manual expansions; don't advance the stage).
+        /// - Otherwise: `.advance(to:)` one stage downward.
+        static func collapseOutcome(
+            stage: BulkExpansionStage,
+            overrides: ExpansionOverrides
+        ) -> BulkOutcome {
+            if stage == .fullyCollapsed && !overrides.hasExpandFiddle {
+                return .noop
+            }
+            if overrides.hasExpandFiddle {
+                return .snapBack
+            }
+            switch stage {
+            case .fullyExpanded: return .advance(to: .topLevelExpanded)
+            case .topLevelExpanded: return .advance(to: .fullyCollapsed)
+            case .fullyCollapsed: return .noop
+            }
+        }
+
+        /// Pure mirror of `collapseOutcome`. Snap-back triggers on
+        /// `hasCollapseFiddle`; the no-op case is `fullyExpanded`
+        /// without collapse-direction overrides.
+        static func expandOutcome(
+            stage: BulkExpansionStage,
+            overrides: ExpansionOverrides
+        ) -> BulkOutcome {
+            if stage == .fullyExpanded && !overrides.hasCollapseFiddle {
+                return .noop
+            }
+            if overrides.hasCollapseFiddle {
+                return .snapBack
+            }
+            switch stage {
+            case .fullyCollapsed: return .advance(to: .topLevelExpanded)
+            case .topLevelExpanded: return .advance(to: .fullyExpanded)
+            case .fullyExpanded: return .noop
+            }
         }
     }
 
