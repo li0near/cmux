@@ -172,9 +172,10 @@ Pre-existing `Resources/shell-integration/cmux-zsh-integration.zsh` is untouched
 ## Current state and known limitations
 
 The inspector has shipped Phase A–D of comprehensive Claude JSONL render
-correctness plus six post-D dogfood iterations. All work lives on
-`agent-inspector`; tip is `78e67cbf9`. **Tests:** 115 passing in the
-AgentInspector subset.
+correctness plus a post-D cascade refactor closing the
+intermittent blank-screen / inversion class. All work lives on
+`agent-inspector`. **Tests:** 115 passing in the AgentInspector
+subset.
 
 ### What's shipped
 
@@ -193,40 +194,40 @@ AgentInspector subset.
   mode, rewinds visibility, auto-expand toggle (snap-turn-only),
   collapse-all action, expand-all action. Toggle state persisted via
   UserDefaults.
-- **Bulk collapse/expand** — three-stage state machine
-  (`fullyCollapsed → topLevelExpanded → fullyExpanded`) at the panel
-  level so lazy-not-yet-materialized rows pick up the current stage
-  on first appearance.
+- **Bulk collapse/expand — snapshot-driven** (post-cascade-refactor).
+  Panel owns `expansionOverrides: [String: Bool]` keyed by
+  `kind:chunkId` / `kind:toolId`. `ChunkRowSnapshot` carries the
+  resolved per-row booleans (`chunkBodyOpen`, `aiHeaderOpen`,
+  `thinkingOpen`, per-tool `expanded`), baked in by
+  `AgentInspectorPanelView` via `ChunkRowSnapshot.ExpansionResolver`.
+  Rows hold no `@State` for bulk-managed expansion; manual toggles
+  call `panel.toggleExpansion(_:)` which writes the dict. Snap-back-
+  first triggers on `!expansionOverrides.isEmpty`. Eliminates the
+  `.onChange(of: bulkState)` cascade that caused intermittent
+  blank-screen and inversion symptoms.
 - **Recap (`away_summary`)**, **`pr-link`**, **slash-command pairs**,
   **skill titles**, **system reminders** routed via
   `ClaudeRenderPolicy.swift` to dedicated `MetaChunk` variants.
 - **Per-turn duration** sourced from `system.subtype: turn_duration`
   with local-computation fallback.
-- **Phase D debug probes** stripped (the `cmuxDebugLog` calls referenced
-  in older versions of this file).
 - **Wrapper hookbin precedence fix** for tagged debug builds (still
   applied; see Phase D upstream-touch table above).
 
 ### Known issues deferred to follow-up
 
-1. **Bulk-expand inversion regression** (post-`78e67cbf9` dogfood):
-   "collapse would expand, expand would collapse sometimes." Suspected
-   `@Published` ordering race between `bulkExpansionStage` and
-   `bulkActionTick` writes inside `collapseAll()` / `expandSnap()` —
-   the row's `.onChange(of: bulkActionTick)` may read the OLD stage.
-   See `~/.claude/plans/crystalline-seeking-firefly.md` for the fix
-   candidates.
-2. **"Certain user prompts cannot be expanded"** — unverified report;
-   most likely the `hasMore == false` no-op branch is correct
-   behaviour. Needs a specific repro from the user before investigating.
-3. **`HoverTooltip.swift`** is unused — the custom 0.5 s tooltip
+1. **`HoverTooltip.swift`** is unused — the custom 0.5 s tooltip
    modifier was tried twice (popover blocked clicks; overlay never
    appeared) and reverted to `.help(...)` (system delay ~1.5 s).
    Either delete the file or revisit with `NSViewRepresentable`-backed
    `NSToolTipManager` access.
-4. **`InspectorBulkAction.swift` + `InspectorBulkExpansionState.swift`**
+2. **`InspectorBulkAction.swift` + `InspectorBulkExpansionState.swift`**
    are legacy enum files left over from earlier iterations. Currently
    unused — candidates for deletion.
+3. **Filter ping-pong hysteresis** — `recomputeVisibleTurnFilter`
+   can churn at the stay-band boundary on fast scrolls. Not
+   user-reported; revisit if dogfood shows flicker.
+4. **`makeExpandable` overflow flag false-positive** when truncation
+   removed nothing meaningful — cosmetic.
 
 ### Earlier flash/flap saga (now closed)
 

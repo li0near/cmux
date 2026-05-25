@@ -1095,40 +1095,74 @@ b5805a8ea  Phase B: Render layer for new MetaChunk variants
 render-correctness plan and are distinct from the historical
 "Phase D flash debugging" of commit `5c37d9b72` and predecessors.)
 
-## Bulk-expand inversion regression (deferred — open ship-blocker)
+## Bulk-expand inversion regression — closed by cascade refactor
 
 Reported on dogfood of commit `78e67cbf9`: bulk
-"Collapse all" / "Expand all" sometimes go the wrong direction.
-Hypothesised cause: the row's `.onChange(of: bulkActionTick)` reads
-`bulkExpansionStage` at the moment the closure fires, but the two
-`@Published` writes inside `collapseAll()` / `expandSnap()` may
-deliver in an order where the tick observation reaches the view
-before `bulkExpansionStage`'s write is visible — so the closure
-applies the OLD stage.
+"Collapse all" / "Expand all" sometimes went the wrong direction;
+later reports surfaced an intermittent blank-screen-on-collapse on
+top of it. Five reload cycles attempted spot fixes (atomic
+`@Published` struct, `newState`-parameter reads to dodge stale-self
+captures, snap-back-first semantics, terminal-stage no-op,
+deferred-double-async scroll). Each removed one symptom. None
+addressed the architectural cause.
 
-Fix candidates (next session):
+Three independent code-review subagents converged on the same
+diagnosis: **bulk-managed expansion was per-row `@State`,
+reconciled through `.onChange(of: bulkState)`**. The cascade was
+async per-row and lazy per-LazyVStack — visible rows processed
+`.onChange` over ~70 ms; off-screen rows lagged 3+ ticks behind
+(captured in `/tmp/cmux-debug-agent-inspector.log` at the
+`selfStage=.../tick=33` entries while the panel was already at
+`tick=36`). Any `proxy.scrollTo` fired during the window landed
+against a layout that mixed real and estimated row heights,
+leaving the user past the new content end once off-screen rows
+finally shrank.
 
-- (a) Combine `bulkExpansionStage` + tick into a single `@Published`
-  struct so both values become visible atomically. Smallest fix.
-- (b) Drop the tick; observe `bulkExpansionStage` directly with a
-  wrapped `Equatable` change-id to also fire on terminal-state
-  re-clicks.
-- (c) Move expansion state per chunk-id (panel dict) so rows derive
-  from snapshot value rather than syncing via `.onChange`. Larger
-  refactor; cleaner long-term.
+**Fix shipped in commit `72de3a07b`:** moved expansion to a
+panel-owned source-of-truth.
 
-See `~/.claude/plans/crystalline-seeking-firefly.md` for the
-detailed handover narrative.
+- New `AgentInspectorPanel.expansionOverrides: [String: Bool]`
+  keyed with `kind:` prefixes (`ai:`, `thinking:`, `tool:`,
+  `chunk:`).
+- `ChunkRowSnapshot` carries `chunkBodyOpen / aiHeaderOpen /
+  thinkingOpen` plus per-`ToolCallSnapshot.expanded`, all resolved
+  by `AgentInspectorPanelView` from
+  `(bulkState.stage, expansionOverrides)` before snapshot
+  construction (via a new `ExpansionResolver` value type).
+- All bulk-managed `@State` removed from row views. All
+  `.onChange(of: bulkState)` row handlers removed. Rows take a
+  `onToggleExpansion: (ExpansionToggle) -> Void` closure instead.
+- Snap-back-first now triggers on `!expansionOverrides.isEmpty`;
+  `collapseAll()` / `expandSnap()` clear the dict on advance.
+- The deferred-double-async scroll workaround in the panel view
+  collapses to a single `DispatchQueue.main.async` since layout
+  settles in one body pass.
 
-## Closure-staleness diagnosis (still relevant)
+Result: bulk action publishes once → all rows render the new
+state synchronously in the same body pass → no cascade, no
+off-screen drift, no race against scroll math. `tokensExpanded`
+and `showDurationInHeader` in `AIChunkRow` remain `@State` because
+they're independent of bulk semantics.
 
-Flagged during the earlier flash investigation: the view's
-`.onChange` handlers in `AgentInspectorPanelView.swift` capture
-the body's `let snapshots` projection by closure, which can read
-one body-invocation behind. Not currently symptom-causing
-(scroll target uses panel state, not `snapshots`), but a real
-correctness issue if any future predicate reads `snapshots`
-from inside a `.onChange` closure. Fix when re-touching the
-view: read panel state directly inside the closure rather than
-capturing `snapshots`.
+### Rejected alternatives
+
+- **`scrollPosition($id)` API** — would address the scroll race
+  symptomatically but leaves the cascade in place, so any future
+  per-row state would face the same divergence problem.
+- **`defaultScrollAnchor(.bottom)`** — already on the rejected
+  list (commit `b241ee532`) for unrelated UX reasons.
+- **`asyncAfter(50ms / 100ms)`** — papered over the visible-row
+  cascade timing but couldn't help with off-screen rows that
+  materialise seconds later.
+
+## Closure-staleness diagnosis (resolved in cleanup pass)
+
+Flagged during the earlier flash investigation: `.onChange`
+handlers in `AgentInspectorPanelView.swift` captured the body's
+`let snapshots` projection by closure, which could read one
+body-invocation behind. Resolved as part of the audit cleanup
+(`isFollowingLiveTail()` now reads `panel.stream.chunks` and
+re-derives the visible chunk set live). Future `.onChange`
+handlers should read panel state directly rather than capturing
+projections.
 
