@@ -116,8 +116,10 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     /// Phase D iter 4: panel-level global expansion state. Bulk
     /// "Collapse all" / "Expand all" actions advance this one step
     /// per click. Rows (visible AND not-yet-materialized in the
-    /// LazyVStack) read this as their initial expansion state, and
-    /// observe `bulkActionTick` to re-sync after manual interactions.
+    /// LazyVStack) read `bulkState.stage` as their initial expansion
+    /// state, and observe `bulkState` (an `Equatable` struct that
+    /// includes a per-click tick) to re-sync after manual
+    /// interactions.
     ///
     /// State machine (each click advances exactly one step):
     ///
@@ -126,42 +128,155 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     ///
     /// Initial value is `.topLevelExpanded` to match the design
     /// default (AI chunk header open, sub-items closed). Lazy-loaded
-    /// rows that scroll into view *after* a bulk action picks up the
+    /// rows that scroll into view *after* a bulk action pick up the
     /// then-current stage as their initial state — bulk actions
     /// therefore affect every chunk in the rendered set, not just
     /// chunks visible in the viewport when the click fired.
-    @Published private(set) var bulkExpansionStage: BulkExpansionStage = .topLevelExpanded
-
-    /// Tick that fires on every bulk-action click (regardless of
-    /// whether `bulkExpansionStage` changes — terminal states still
-    /// fire the tick so previously-fiddled rows snap back to the
-    /// global stage).
-    @Published private(set) var bulkActionTick: Int = 0
+    ///
+    /// **Atomic single-`@Published` design**: stage and tick live in
+    /// one struct so SwiftUI observers cannot see a mixed (new-tick,
+    /// old-stage) snapshot. The earlier dual-`@Published` design hit
+    /// an inversion regression on rapid clicks where the row's
+    /// `.onChange(of: bulkActionTick)` could fire while
+    /// `bulkExpansionStage` was still observed at the previous value.
+    @Published private(set) var bulkState: BulkExpansionState = BulkExpansionState(
+        stage: .topLevelExpanded,
+        tick: 0,
+        lastDirection: nil
+    )
 
     /// Trigger a stepped collapse-all signal for row views.
+    ///
+    /// Behavior:
+    /// - At `fullyCollapsed` with no opposite-direction overrides:
+    ///   true no-op (no tick, no publish, no scroll reset). Avoids
+    ///   the "blank screen jump" when the user clicks the button at
+    ///   the terminal stage.
+    /// - When the user has manually expanded any sub-item since the
+    ///   last bulk action: snap rows back to the current panel stage
+    ///   (re-apply, don't advance). Resets the override flags.
+    ///   Matches the user's mental model: "first collapse undoes my
+    ///   manual expansion, then the next collapse advances stages."
+    /// - Otherwise: advance one stage downward and reset both flags.
     func collapseAll() {
-        switch bulkExpansionStage {
-        case .fullyExpanded: bulkExpansionStage = .topLevelExpanded
-        case .topLevelExpanded: bulkExpansionStage = .fullyCollapsed
-        case .fullyCollapsed: break
+        if bulkState.stage == .fullyCollapsed && !manualExpandsSinceBulk {
+            #if DEBUG
+            cmuxDebugLog("agentInspector.collapseAll noop at fullyCollapsed")
+            #endif
+            return
         }
-        bulkActionTick &+= 1
+        let nextStage: BulkExpansionStage
+        let snapBack = manualExpandsSinceBulk
+        if snapBack {
+            nextStage = bulkState.stage
+        } else {
+            switch bulkState.stage {
+            case .fullyExpanded: nextStage = .topLevelExpanded
+            case .topLevelExpanded: nextStage = .fullyCollapsed
+            case .fullyCollapsed: return
+            }
+        }
+        manualExpandsSinceBulk = false
+        manualCollapsesSinceBulk = false
+        let newState = BulkExpansionState(
+            stage: nextStage,
+            tick: bulkState.tick &+ 1,
+            lastDirection: .collapse
+        )
+        #if DEBUG
+        cmuxDebugLog("agentInspector.collapseAll snapBack=\(snapBack) prev=\(bulkState.stage.rawValue)/\(bulkState.tick) next=\(newState.stage.rawValue)/\(newState.tick)")
+        #endif
+        bulkState = newState
     }
 
-    /// Trigger a stepped expand-all signal for row views.
+    /// Trigger a stepped expand-all signal for row views. Mirror of
+    /// `collapseAll()` — see that comment for the snap-back-first
+    /// semantics. No-op at `fullyExpanded` with no opposite-direction
+    /// overrides.
     func expandSnap() {
-        switch bulkExpansionStage {
-        case .fullyCollapsed: bulkExpansionStage = .topLevelExpanded
-        case .topLevelExpanded: bulkExpansionStage = .fullyExpanded
-        case .fullyExpanded: break
+        if bulkState.stage == .fullyExpanded && !manualCollapsesSinceBulk {
+            #if DEBUG
+            cmuxDebugLog("agentInspector.expandSnap noop at fullyExpanded")
+            #endif
+            return
         }
-        bulkActionTick &+= 1
+        let nextStage: BulkExpansionStage
+        let snapBack = manualCollapsesSinceBulk
+        if snapBack {
+            nextStage = bulkState.stage
+        } else {
+            switch bulkState.stage {
+            case .fullyCollapsed: nextStage = .topLevelExpanded
+            case .topLevelExpanded: nextStage = .fullyExpanded
+            case .fullyExpanded: return
+            }
+        }
+        manualExpandsSinceBulk = false
+        manualCollapsesSinceBulk = false
+        let newState = BulkExpansionState(
+            stage: nextStage,
+            tick: bulkState.tick &+ 1,
+            lastDirection: .expand
+        )
+        #if DEBUG
+        cmuxDebugLog("agentInspector.expandSnap snapBack=\(snapBack) prev=\(bulkState.stage.rawValue)/\(bulkState.tick) next=\(newState.stage.rawValue)/\(newState.tick)")
+        #endif
+        bulkState = newState
     }
+
+    /// Direction tag for manual row-level expansion toggles. Used by
+    /// rows to inform the panel that the user fiddled, so the next
+    /// bulk click can honor the snap-back-first rule.
+    enum ManualOverrideDirection {
+        case expand
+        case collapse
+    }
+
+    /// Called from row Button actions when the user manually toggles
+    /// an expansion. Sets a one-shot flag that is consulted (and
+    /// cleared) by the next bulk action.
+    func noteManualOverride(_ direction: ManualOverrideDirection) {
+        switch direction {
+        case .expand: manualExpandsSinceBulk = true
+        case .collapse: manualCollapsesSinceBulk = true
+        }
+    }
+
+    /// Set when the user manually expands a sub-item between bulk
+    /// actions. Read & cleared inside `collapseAll()`.
+    private var manualExpandsSinceBulk: Bool = false
+
+    /// Set when the user manually collapses a sub-item between bulk
+    /// actions. Read & cleared inside `expandSnap()`.
+    private var manualCollapsesSinceBulk: Bool = false
 
     enum BulkExpansionStage: String, Equatable {
         case fullyCollapsed
         case topLevelExpanded
         case fullyExpanded
+    }
+
+    /// Atomic snapshot of the panel's bulk-expansion intent. Equal
+    /// when stage, tick, and direction all match — the tick guarantees
+    /// that terminal-stage clicks (e.g., a second "Expand all" while
+    /// already at `.fullyExpanded`) still publish a change so
+    /// previously-fiddled rows snap back to the panel stage.
+    ///
+    /// `lastDirection` carries the click direction the panel view
+    /// reads to decide whether to clamp scroll-to-bottom on bulk
+    /// actions. `.collapse` shrinks content (or stays the same on
+    /// snap-back, which can also shrink) — at-bottom users would
+    /// otherwise see blank space below the now-shorter list.
+    /// `.expand` grows content; no scroll clamp needed.
+    struct BulkExpansionState: Equatable {
+        let stage: BulkExpansionStage
+        let tick: Int
+        let lastDirection: Direction?
+
+        enum Direction: Equatable {
+            case collapse
+            case expand
+        }
     }
 
     /// Turn anchors keyed by user-chunk id. Populated by exact

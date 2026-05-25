@@ -48,9 +48,13 @@ struct AgentInspectorDetailView: View {
                         snapshot: snapshot,
                         palette: token,
                         streamingAIChunkId: nil,
-                        bulkExpansionStage: .fullyExpanded,
-                        bulkActionTick: 0,
-                        onOpenDetail: { _ in /* no nested detail */ }
+                        bulkState: AgentInspectorPanel.BulkExpansionState(
+                            stage: .fullyExpanded,
+                            tick: 0,
+                            lastDirection: nil
+                        ),
+                        onOpenDetail: { _ in /* no nested detail */ },
+                        onManualOverride: { _ in /* detail mode: no bulk */ }
                     )
                     .equatable()
                     .id(snapshot.id)

@@ -84,8 +84,7 @@ struct AgentInspectorPanelView: View {
         }
         let palette = HudPaletteToken.from(HudPalette(appearance: appearance))
         let streamingAIChunkId = panel.streamingAIChunkId
-        let collapseTick = panel.bulkActionTick
-        let bulkStage = panel.bulkExpansionStage
+        let bulkState = panel.bulkState
 
         if snapshots.isEmpty {
             emptyTranscriptView
@@ -98,10 +97,12 @@ struct AgentInspectorPanelView: View {
                                 snapshot: snapshot,
                                 palette: palette,
                                 streamingAIChunkId: streamingAIChunkId,
-                                bulkExpansionStage: bulkStage,
-                                bulkActionTick: collapseTick,
+                                bulkState: bulkState,
                                 onOpenDetail: { request in
                                     panel.openDetail(request: request)
+                                },
+                                onManualOverride: { direction in
+                                    panel.noteManualOverride(direction)
                                 }
                             )
                             .equatable()
@@ -148,13 +149,41 @@ struct AgentInspectorPanelView: View {
                         panel.expandSnap()
                     }
                 }
-                // Phase D iter: after a bulk collapse, the rows above
-                // the user's previous scroll position vanish, leaving
-                // them looking at white space below the new (shorter)
-                // content. Re-run the filter-aware scroll target so
-                // they land at the bottom of the freshly-compacted list.
-                .onChange(of: panel.bulkActionTick) { _ in
-                    scrollForFilter(proxy: proxy)
+                // After a bulk collapse, the content height shrinks
+                // dramatically. There is a layout-vs-scroll race:
+                //
+                //   1. `bulkState` publishes; panel `.onChange` fires
+                //      synchronously and calls `proxy.scrollTo(.bottom)`.
+                //   2. At that moment the row `.onChange` handlers have
+                //      NOT yet run — row `@State` is still expanded, row
+                //      heights are still large.
+                //   3. `proxy.scrollTo` computes "bottom" against the
+                //      OLD (large) layout and sets a scroll offset
+                //      sized to the old content.
+                //   4. Then rows process their `.onChange` (visible
+                //      rows ~30ms; off-screen rows up to seconds later
+                //      as they appear), shrinking. LazyVStack's total
+                //      height collapses past the user's offset.
+                //   5. ScrollView's offset is now beyond the new
+                //      content end → blank space.
+                //
+                // Defer the scroll-to-bottom by two runloop hops so
+                // SwiftUI completes both passes (panel re-render +
+                // row `@State` updates from row `.onChange`) before
+                // we ask for the bottom position.
+                .onChange(of: panel.bulkState) { newState in
+                    guard newState.lastDirection == .collapse else { return }
+                    #if DEBUG
+                    cmuxDebugLog("agentInspector.panel.onCollapse stage=\(newState.stage.rawValue)/\(newState.tick) — deferring scrollToBottom")
+                    #endif
+                    DispatchQueue.main.async {
+                        DispatchQueue.main.async {
+                            #if DEBUG
+                            cmuxDebugLog("agentInspector.panel.deferredScrollToBottom firing")
+                            #endif
+                            scrollToBottom(proxy: proxy, snapshots: snapshots)
+                        }
+                    }
                 }
                 // Belt-and-suspenders for tab-switch: even if the
                 // ScrollView's session-keyed identity didn't flip
