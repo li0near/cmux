@@ -61,13 +61,12 @@ Sources/Panels/AgentInspector/
     AgentToolCall.swift                          # sidechainTranscript added in Phase A
   Render/
     HudPalette.swift
-    ChunkRowSnapshot.swift                       # MetaSnapshot added in Phase B
-    ChunkRowView.swift                           # MetaChunkRow added in Phase B
+    ChunkRowSnapshot.swift                       # MetaSnapshot added in Phase B; ExpansionResolver added in cascade refactor
+    ChunkRowView.swift                           # MetaChunkRow added in Phase B; bulk-managed @State removed in cascade refactor
     InspectorIcon.swift                          # Phase A++ + Phase B icons
     ClaudeModelNameMap.swift                     # Phase A++
     InspectorCaps.swift                          # Phase B (per-section cap policy)
     InspectorStatusBar.swift                     # Phase C (icon-pill row)
-    HoverTooltip.swift                           # iter (UNUSED — see known issues)
   Sync/
     ScrollbarStateCache.swift                    # Phase B (terminal → inspector sync)
     TurnAnchorStore.swift                        # Phase B
@@ -76,8 +75,6 @@ Sources/Panels/AgentInspector/
     ClaudeAnchorPayload.swift                    # Phase C (live-anchor payload from claude_anchor socket)
     InspectorRewindVisibility.swift              # Phase C (rewind toggle)
     InspectorExpansionMode.swift                 # Phase C (auto-expand toggle)
-    InspectorBulkAction.swift                    # iter (UNUSED legacy enum — candidate for deletion)
-    InspectorBulkExpansionState.swift            # iter (UNUSED legacy enum — candidate for deletion)
   Tail/
     JSONLTail.swift
     TranscriptStream.swift
@@ -97,6 +94,7 @@ cmuxTests/AgentInspector/
   ClaudeBranchResolverTests.swift                # Phase A
   ClaudeContentDetectorTests.swift               # Phase A
   ClaudeRenderPolicyTests.swift                  # Phase A
+  AgentInspectorBulkExpansionTests.swift         # cascade refactor (BulkOutcome + ExpansionOverrides + ExpansionResolver)
 cmuxTests/Resources/AgentInspector/
   claude-sample.jsonl
   claude-hook-sessions.json
@@ -215,19 +213,16 @@ subset.
 
 ### Known issues deferred to follow-up
 
-1. **`HoverTooltip.swift`** is unused — the custom 0.5 s tooltip
-   modifier was tried twice (popover blocked clicks; overlay never
-   appeared) and reverted to `.help(...)` (system delay ~1.5 s).
-   Either delete the file or revisit with `NSViewRepresentable`-backed
-   `NSToolTipManager` access.
-2. **`InspectorBulkAction.swift` + `InspectorBulkExpansionState.swift`**
-   are legacy enum files left over from earlier iterations. Currently
-   unused — candidates for deletion.
-3. **Filter ping-pong hysteresis** — `recomputeVisibleTurnFilter`
+1. **Filter ping-pong hysteresis** — `recomputeVisibleTurnFilter`
    can churn at the stay-band boundary on fast scrolls. Not
    user-reported; revisit if dogfood shows flicker.
-4. **`makeExpandable` overflow flag false-positive** when truncation
+2. **`makeExpandable` overflow flag false-positive** when truncation
    removed nothing meaningful — cosmetic.
+3. **Terminal-stage button feedback** — `Collapse` and `Expand`
+   buttons in the status bar do not visually disable / dim when at
+   their respective terminal stages. Click is correctly a no-op,
+   but the user gets no visual indication that they're at the limit.
+   Surface tooltip update or `.disabled(...)` modifier when revisited.
 
 ### Earlier flash/flap saga (now closed)
 

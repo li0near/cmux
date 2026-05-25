@@ -1063,10 +1063,10 @@ broadened the scope to comprehensive JSONL render correctness
 - **Bulk collapse/expand state machine** at panel level
   (`AgentInspectorPanel.BulkExpansionStage`,
   `fullyCollapsed → topLevelExpanded → fullyExpanded`). Each
-  click advances exactly one step. Visible AND lazy-not-yet-
-  materialised rows snap to the panel's current stage (rows
-  initialise `@State` from `bulkExpansionStage`; re-sync via
-  `.onChange(of: bulkActionTick)`).
+  click advances exactly one step. Resolved per-row state is
+  baked into `ChunkRowSnapshot` from `(bulkState.stage,
+  expansionOverrides)` — see the cascade-refactor section below
+  for the post-Phase D evolution.
 - **Auto-expand-snap fires only on `.turns(...)` filter
   transitions** while `isShowingSnapTurn` is true. History
   scrolling (`.preAnchored`) does NOT auto-open chunks per the
