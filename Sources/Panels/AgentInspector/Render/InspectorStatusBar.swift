@@ -62,13 +62,31 @@ struct InspectorStatusBar: View {
             iconButton(
                 systemName: "rectangle.compress.vertical",
                 color: palette.dim,
-                tooltip: "Collapse one stage (sub-items first, then headers)",
+                tooltip: panel.bulkState.stage == .fullyCollapsed
+                    ? String(
+                        localized: "agentInspector.statusbar.collapse.tooltip.terminal",
+                        defaultValue: "Already fully collapsed"
+                    )
+                    : String(
+                        localized: "agentInspector.statusbar.collapse.tooltip",
+                        defaultValue: "Collapse one stage (sub-items first, then headers)"
+                    ),
+                disabled: panel.bulkState.stage == .fullyCollapsed,
                 action: { panel.collapseAll() }
             )
             iconButton(
                 systemName: "rectangle.expand.vertical",
                 color: palette.dim,
-                tooltip: "Expand one stage (headers first, then sub-items)",
+                tooltip: panel.bulkState.stage == .fullyExpanded
+                    ? String(
+                        localized: "agentInspector.statusbar.expand.tooltip.terminal",
+                        defaultValue: "Already fully expanded"
+                    )
+                    : String(
+                        localized: "agentInspector.statusbar.expand.tooltip",
+                        defaultValue: "Expand one stage (headers first, then sub-items)"
+                    ),
+                disabled: panel.bulkState.stage == .fullyExpanded,
                 action: { panel.expandSnap() }
             )
         }
@@ -97,6 +115,7 @@ struct InspectorStatusBar: View {
         systemName: String,
         color: Color,
         tooltip: String,
+        disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -108,6 +127,7 @@ struct InspectorStatusBar: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
         .help(tooltip)
     }
 
