@@ -25,6 +25,7 @@ and re-apply if upstream replaced the surrounding code.
 | `Sources/Workspace.swift` | Relax `private var isProgrammaticSplit = false` to module-internal so `Workspace+AgentInspector.swift` can wrap programmatic splits the same way `splitPaneWithMarkdown` does. Single-character change (drop `private`). | Required for the side-by-side pane UX (split the focused pane and drop the inspector in the new sibling). |
 | `Resources/Localizable.xcstrings` | New keys: `agentInspector.title`, `agentInspector.placeholder.header`, `agentInspector.placeholder.noSession`, `agentInspector.debug.menu.openCurrent`, `commandPalette.kind.agentInspector`. | Localization. Additive only; never conflicts. |
 | `cmux.xcodeproj/project.pbxproj` | New PBXFileReference, PBXBuildFile, PBXGroup, PBXSourcesBuildPhase entries for the files under `Sources/Panels/AgentInspector/`. Generated with the `xcodeproj` Ruby gem. | Register new compilation units in the cmux target. |
+| `Sources/ClosedItemHistory.swift` | `case .agentInspector:` arm in the `switch snapshot.type` block that maps `PanelType` to a recently-closed-panel display label. Returns localized "Agent Inspector" via `menu.history.recentlyClosed.panel.agentInspector` key. | New upstream file (added in upstream merge 2026-05-26) exhaustively switches on `PanelType`; soft-fork policy adds the case. |
 
 ## Files owned by this fork (no upstream conflict expected)
 
