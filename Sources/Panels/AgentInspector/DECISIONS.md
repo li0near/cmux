@@ -219,3 +219,15 @@ The bulk-collapse-direction handler and the live-tail follow handler call `proxy
 **Outcome**: blank-screen-on-collapse appears **much less frequently**. `→ .fullyCollapsed` did not reproduce in user dogfood; `→ .topLevelExpanded` was occasionally observed mid-`.fullyExpanded → .topLevelExpanded` immediately post-ship, but is **not currently observable** in subsequent dogfood — may have been further reduced by other changes along the way.
 
 **Escalation if the bug returns**: `.id(...)` remount of the LazyVStack on collapse-direction publishes — out of scope unless residual returns. AppKit migration permanently ruled out per don't-re-walk #4.
+
+### Chunk-computed side cache (per-chunk `makeExpandable` + word-counts)
+
+**File**: `Sources/Panels/AgentInspector/Render/ChunkComputedCache.swift` — `ChunkComputedFields` value type (per-kind substructs) + `ChunkContentSignature` (cheap UTF-8 byte fingerprint) + `ChunkComputedCache` (`@MainActor final class`). Plumbed via a new `computed: ChunkComputedFields?` parameter on `ChunkRowSnapshot.from(...)`. Shipped in `18b45861c`.
+
+Owned by `AgentInspectorPanel` as `let computedCache = ChunkComputedCache()`; reset on `handleSessionChange`.
+
+**Why**: every panel-body invocation rebuilds `ChunkRowSnapshot` for each visible chunk, running line-split + UTF-8 byte walk inside `makeExpandable` for every content section, plus `trimmed.split { ... }.count` word-counts. These are deterministic per `(chunk content, displayMode)`; caching them keyed by `(chunk.id, signature-bytes, displayMode)` eliminates the repeated work without changing snapshot output.
+
+**Outcome**: addresses the suspected cause of plan §5.E (initial freeze on first at-bottom-band crossing), which is currently non-observable. No behavioural change visible to the user; the cache is a perf scaffold ready for when the freeze returns or for sessions large enough to make the per-frame recompute matter.
+
+**Subsumes** the previously-listed "Snapshot caching keyed by `(chunk-id, expansion-resolved-state)`" idea: this design caches only the `(chunk content, displayMode)`-deterministic bits, orthogonal to expansion state. Expansion-state changes still rebuild the snapshot but read cached `makeExpandable` results.
