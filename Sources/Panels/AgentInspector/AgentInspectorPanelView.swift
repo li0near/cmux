@@ -100,8 +100,14 @@ struct AgentInspectorPanelView: View {
                 overrides.value(forKey: "tool:\(id)", default: stage == .fullyExpanded)
             }
         )
-        let snapshots = visibleChunks.map {
-            ChunkRowSnapshot.from($0, agentKind: agentKind, expansion: expansion)
+        let snapshots = visibleChunks.map { chunk in
+            let computed = panel.computedCache.compute(for: chunk, displayMode: .compact)
+            return ChunkRowSnapshot.from(
+                chunk,
+                agentKind: agentKind,
+                expansion: expansion,
+                computed: computed
+            )
         }
         let palette = HudPaletteToken.from(HudPalette(appearance: appearance))
         let streamingAIChunkId = panel.streamingAIChunkId

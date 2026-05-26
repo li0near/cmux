@@ -169,6 +169,8 @@
 		BC00A0000000000000000001 /* InspectorRewindVisibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0090000000000000000001 /* InspectorRewindVisibility.swift */; };
 		BC00A0000000000000000002 /* InspectorExpansionMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0090000000000000000002 /* InspectorExpansionMode.swift */; };
 		BC00A0000000000000000003 /* InspectorStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0090000000000000000003 /* InspectorStatusBar.swift */; };
+		BC00A0000000000000000004 /* ChunkComputedCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0090000000000000000004 /* ChunkComputedCache.swift */; };
+		BC00A0000000000000000005 /* ChunkComputedCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0090000000000000000005 /* ChunkComputedCacheTests.swift */; };
 		BC0080000000000000000001 /* InspectorCaps.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0070000000000000000001 /* InspectorCaps.swift */; };
 		76027A12C93B4538BF22C71E /* ShortcutBareStartRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB7F2E9143904957AAA70726 /* ShortcutBareStartRouting.swift */; };
 		7D77A0EBBE3D8E05CDC16229 /* WorkspaceActionDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5CC15CEAA80B779ADEE78AA /* WorkspaceActionDispatcher.swift */; };
@@ -881,6 +883,8 @@
 		BC0090000000000000000001 /* InspectorRewindVisibility.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InspectorRewindVisibility.swift; path = Panels/AgentInspector/Sync/InspectorRewindVisibility.swift; sourceTree = "<group>"; };
 		BC0090000000000000000002 /* InspectorExpansionMode.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InspectorExpansionMode.swift; path = Panels/AgentInspector/Sync/InspectorExpansionMode.swift; sourceTree = "<group>"; };
 		BC0090000000000000000003 /* InspectorStatusBar.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InspectorStatusBar.swift; path = Panels/AgentInspector/Render/InspectorStatusBar.swift; sourceTree = "<group>"; };
+		BC0090000000000000000004 /* ChunkComputedCache.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChunkComputedCache.swift; path = Panels/AgentInspector/Render/ChunkComputedCache.swift; sourceTree = "<group>"; };
+		BC0090000000000000000005 /* ChunkComputedCacheTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChunkComputedCacheTests.swift; path = AgentInspector/ChunkComputedCacheTests.swift; sourceTree = "<group>"; };
 		BC0070000000000000000001 /* InspectorCaps.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = InspectorCaps.swift; path = Panels/AgentInspector/Render/InspectorCaps.swift; sourceTree = "<group>"; };
 		A080D1F6CCCBFBED8D95DD1D /* ShortcutHintPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutHintPill.swift; sourceTree = "<group>"; };
 		A11EAA000000000000000001 /* AppearanceSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsTests.swift; sourceTree = "<group>"; };
@@ -1882,6 +1886,7 @@
 				BC0090000000000000000001 /* InspectorRewindVisibility.swift */,
 				BC0090000000000000000002 /* InspectorExpansionMode.swift */,
 				BC0090000000000000000003 /* InspectorStatusBar.swift */,
+				BC0090000000000000000004 /* ChunkComputedCache.swift */,
 				BC0070000000000000000001 /* InspectorCaps.swift */,
 				F71FD7732817DD7084509D8D /* ChunkRowView.swift */,
 				C7E62656EF2507C78962E8AE /* DECISIONS.md */,
@@ -2090,6 +2095,7 @@
 				6277255E83BCBDEE7C9EC943 /* InspectorIconTests.swift */,
 				71DB529BF61504378D30F3A7 /* AgentInspectorDetailContentTests.swift */,
 				977C4BD18E824F2B9758CDF0 /* AgentInspectorBulkExpansionTests.swift */,
+				BC0090000000000000000005 /* ChunkComputedCacheTests.swift */,
 				23CED4F0077FD7E94AFEAD88 /* TurnAnchorStoreTests.swift */,
 				326452752C3EE646FC31690F /* VisibleTurnFilterTests.swift */,
 				BC0050000000000000000001 /* ClaudeBranchResolverTests.swift */,
@@ -2732,6 +2738,7 @@
 				BC00A0000000000000000001 /* InspectorRewindVisibility.swift in Sources */,
 				BC00A0000000000000000002 /* InspectorExpansionMode.swift in Sources */,
 				BC00A0000000000000000003 /* InspectorStatusBar.swift in Sources */,
+				BC00A0000000000000000004 /* ChunkComputedCache.swift in Sources */,
 				BC0080000000000000000001 /* InspectorCaps.swift in Sources */,
 				F472B14EC1C20D5EE78597D4 /* ChunkRowView.swift in Sources */,
 				6B05EA57C7B8E4791069A1F1 /* CodexRolloutLine.swift in Sources */,
@@ -2963,6 +2970,7 @@
 				A27B0B981CCAC8E6C380E5BC /* InspectorIconTests.swift in Sources */,
 				FABC77930BE2B3B513CDB101 /* AgentInspectorDetailContentTests.swift in Sources */,
 				9EDAC94AA7C147A69D0C54FF /* AgentInspectorBulkExpansionTests.swift in Sources */,
+				BC00A0000000000000000005 /* ChunkComputedCacheTests.swift in Sources */,
 				EA361A1C27E1B889DE9785BD /* TurnAnchorStoreTests.swift in Sources */,
 				5533469E88E718FD4FF2990C /* VisibleTurnFilterTests.swift in Sources */,
 				BC0060000000000000000001 /* ClaudeBranchResolverTests.swift in Sources */,

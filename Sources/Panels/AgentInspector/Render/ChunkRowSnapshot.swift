@@ -223,23 +223,31 @@ extension ChunkRowSnapshot {
 
     /// Build a row snapshot from one `AgentChunk`. Caps and summarisation
     /// happen here, not in the row view, so the renderer only reads fields.
+    ///
+    /// `computed` carries precomputed `makeExpandable` + word-count
+    /// results from `ChunkComputedCache` so the panel body's per-frame
+    /// snapshot rebuild doesn't re-walk every chunk's content. Pass
+    /// `nil` (the default) to recompute inline — used by callers
+    /// without a cache (detail view, unit tests).
     static func from(
         _ chunk: AgentChunk,
         agentKind: AgentKindLabel = .unknown,
         displayMode: DisplayMode = .compact,
-        expansion: ExpansionResolver = .topLevelDefault
+        expansion: ExpansionResolver = .topLevelDefault,
+        computed: ChunkComputedFields? = nil
     ) -> ChunkRowSnapshot {
+        let fields = computed ?? ChunkComputedFields.compute(for: chunk, displayMode: displayMode)
         switch chunk {
         case .user(let c):
-            return makeUser(c, displayMode: displayMode, expansion: expansion)
+            return makeUser(c, displayMode: displayMode, expansion: expansion, fields: fields.user)
         case .ai(let c):
-            return makeAI(c, agentKind: agentKind, displayMode: displayMode, expansion: expansion)
+            return makeAI(c, agentKind: agentKind, displayMode: displayMode, expansion: expansion, fields: fields.ai)
         case .system(let c):
-            return makeSystem(c, displayMode: displayMode, expansion: expansion)
+            return makeSystem(c, displayMode: displayMode, expansion: expansion, fields: fields.system)
         case .compact(let c):
             return makeCompact(c, displayMode: displayMode)
         case .meta(let c):
-            return makeMeta(c, displayMode: displayMode, expansion: expansion)
+            return makeMeta(c, displayMode: displayMode, expansion: expansion, fields: fields.meta)
         }
     }
 
@@ -261,24 +269,24 @@ extension ChunkRowSnapshot {
     private static func makeUser(
         _ c: UserChunk,
         displayMode: DisplayMode,
-        expansion: ExpansionResolver
+        expansion: ExpansionResolver,
+        fields: ChunkComputedFields.User
     ) -> ChunkRowSnapshot {
         let primary = oneLine(c.text, maxChars: 80)
         let trimmed = c.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let words = trimmed.split { $0.isWhitespace || $0.isNewline }.count
         return base(
             id: c.id,
             kind: .user,
             timestamp: c.startTime,
             chunkBodyOpen: expansion.chunkBodyOpen(c.id),
             userPrimary: primary,
-            userFull: makeExpandable(c.text, caps: InspectorCaps.userPrompt, displayMode: displayMode),
+            userFull: fields.full,
             // Compare like-for-like with `userPrimary` (which is also
             // trimmed by `oneLine`). Using `c.text.count` directly here
             // produced false-positive `hasMore` results on
             // whitespace-only diffs.
             userCharCount: trimmed.count,
-            userWordCount: words
+            userWordCount: fields.wordCount
         )
     }
 
@@ -286,7 +294,8 @@ extension ChunkRowSnapshot {
         _ c: AIChunk,
         agentKind: AgentKindLabel = .unknown,
         displayMode: DisplayMode,
-        expansion: ExpansionResolver
+        expansion: ExpansionResolver,
+        fields: ChunkComputedFields.AI
     ) -> ChunkRowSnapshot {
         let duration: TimeInterval? = {
             guard let end = c.endTime else { return nil }
@@ -297,33 +306,13 @@ extension ChunkRowSnapshot {
             formatDurationLabel(ms: ms)
         }
 
-        let thinkingContent: ExpandableContent? = {
-            let trimmed = c.thinkingText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            return makeExpandable(c.thinkingText, caps: InspectorCaps.thinking, displayMode: displayMode)
-        }()
-
-        let assistantOverflow: ExpandableContent? = {
-            let trimmed = c.assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            // assistantText is `alwaysLink` — overflow flag is always
-            // true when there's content. The renderer surfaces a title
-            // row + detail link; no inline body.
-            return makeExpandable(c.assistantText, caps: InspectorCaps.assistantText, displayMode: displayMode)
-        }()
-        let assistantWords: Int = {
-            let trimmed = c.assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return 0 }
-            return trimmed.split { $0.isWhitespace || $0.isNewline }.count
-        }()
-
         return ChunkRowSnapshot(
             id: c.id,
             kind: .ai,
             timestamp: c.startTime,
             chunkBodyOpen: false,
             aiHeaderOpen: expansion.aiHeaderOpen(c.id),
-            thinkingOpen: thinkingContent != nil ? expansion.thinkingOpen(c.id) : false,
+            thinkingOpen: fields.thinking != nil ? expansion.thinkingOpen(c.id) : false,
             userPrimary: "",
             userFull: .empty,
             userCharCount: 0,
@@ -340,19 +329,20 @@ extension ChunkRowSnapshot {
             durationSeconds: duration,
             perTurnDurationLabel: perTurnLabel,
             perTurnMessageCount: c.messageCount,
-            thinking: thinkingContent,
+            thinking: fields.thinking,
             toolCalls: c.toolCalls.map { tc in
                 let status: ToolCallSnapshot.Status = {
                     if tc.isError { return .error }
                     if tc.result == nil { return .pending }
                     return .ok
                 }()
+                let toolFields = fields.toolExpandables[tc.id]
                 return ToolCallSnapshot(
                     id: tc.id,
                     name: tc.name,
                     summary: tc.summary,
-                    input: makeExpandable(tc.inputDetail, caps: InspectorCaps.toolInput, displayMode: displayMode),
-                    result: makeExpandable(tc.result ?? "", caps: InspectorCaps.toolResult, displayMode: displayMode),
+                    input: toolFields?.input ?? .empty,
+                    result: toolFields?.result ?? .empty,
                     status: status,
                     subagentChip: makeSubagentChip(tc),
                     durationMs: tc.durationMs,
@@ -360,8 +350,8 @@ extension ChunkRowSnapshot {
                     expanded: expansion.toolExpanded(tc.id)
                 )
             },
-            assistantTextOverflow: assistantOverflow,
-            assistantTextWordCount: assistantWords,
+            assistantTextOverflow: fields.assistantOverflow,
+            assistantTextWordCount: fields.assistantWordCount,
             systemBody: .empty,
             compactSummary: "",
             meta: nil
@@ -371,14 +361,15 @@ extension ChunkRowSnapshot {
     private static func makeSystem(
         _ c: SystemChunk,
         displayMode: DisplayMode,
-        expansion: ExpansionResolver
+        expansion: ExpansionResolver,
+        fields: ChunkComputedFields.System
     ) -> ChunkRowSnapshot {
         base(
             id: c.id,
             kind: .system,
             timestamp: c.startTime,
             chunkBodyOpen: expansion.chunkBodyOpen(c.id),
-            systemBody: makeExpandable(c.output, caps: InspectorCaps.systemBody, displayMode: displayMode)
+            systemBody: fields.body
         )
     }
 
@@ -396,7 +387,8 @@ extension ChunkRowSnapshot {
     private static func makeMeta(
         _ c: MetaChunk,
         displayMode: DisplayMode,
-        expansion: ExpansionResolver
+        expansion: ExpansionResolver,
+        fields: ChunkComputedFields.Meta
     ) -> ChunkRowSnapshot {
         switch c {
         case .branchLink(let b):
@@ -415,7 +407,6 @@ extension ChunkRowSnapshot {
                 )
             )
         case .recap(let r):
-            let body = makeExpandable(r.body, caps: InspectorCaps.recapBody, displayMode: displayMode)
             return base(
                 id: r.id,
                 kind: .meta(.recap),
@@ -424,7 +415,7 @@ extension ChunkRowSnapshot {
                 meta: MetaSnapshot(
                     title: "Recap",
                     subtitle: nil,
-                    body: body,
+                    body: fields.body,
                     detailRequest: .recapBody(chunkId: r.id),
                     externalUrl: nil
                 )
@@ -470,7 +461,6 @@ extension ChunkRowSnapshot {
                 )
             )
         case .slashCmdOutput(let o):
-            let body = makeExpandable(o.body, caps: InspectorCaps.slashCmdOutput, displayMode: displayMode)
             return base(
                 id: o.id,
                 kind: .meta(.slashCmdOutput(isStderr: o.isStderr)),
@@ -479,13 +469,12 @@ extension ChunkRowSnapshot {
                 meta: MetaSnapshot(
                     title: o.isStderr ? "Slash command stderr" : "Slash command output",
                     subtitle: nil,
-                    body: body,
+                    body: fields.body,
                     detailRequest: nil,
                     externalUrl: nil
                 )
             )
         case .localCommandCaveat(let l):
-            let body = makeExpandable(l.body, caps: InspectorCaps.localCommandCaveat, displayMode: displayMode)
             return base(
                 id: l.id,
                 kind: .meta(.localCommandCaveat),
@@ -494,13 +483,12 @@ extension ChunkRowSnapshot {
                 meta: MetaSnapshot(
                     title: "Caveat",
                     subtitle: nil,
-                    body: body,
-                    detailRequest: body.overflow ? .localCommandCaveatBody(chunkId: l.id) : nil,
+                    body: fields.body,
+                    detailRequest: fields.body.overflow ? .localCommandCaveatBody(chunkId: l.id) : nil,
                     externalUrl: nil
                 )
             )
         case .systemReminder(let r):
-            let body = makeExpandable(r.body, caps: InspectorCaps.systemReminder, displayMode: displayMode)
             return base(
                 id: r.id,
                 kind: .meta(.systemReminder),
@@ -509,13 +497,12 @@ extension ChunkRowSnapshot {
                 meta: MetaSnapshot(
                     title: "System reminder",
                     subtitle: nil,
-                    body: body,
-                    detailRequest: body.overflow ? .systemReminderBody(chunkId: r.id) : nil,
+                    body: fields.body,
+                    detailRequest: fields.body.overflow ? .systemReminderBody(chunkId: r.id) : nil,
                     externalUrl: nil
                 )
             )
         case .contextUsage(let cu):
-            let body = makeExpandable(cu.body, caps: InspectorCaps.contextUsage, displayMode: displayMode)
             return base(
                 id: cu.id,
                 kind: .meta(.contextUsage),
@@ -524,7 +511,7 @@ extension ChunkRowSnapshot {
                 meta: MetaSnapshot(
                     title: "Context usage",
                     subtitle: nil,
-                    body: body,
+                    body: fields.body,
                     detailRequest: nil,
                     externalUrl: nil
                 )

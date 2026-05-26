@@ -403,6 +403,13 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     /// Transcript stream — live `AgentChunk` snapshots. Empty in detail mode.
     let stream = TranscriptStream()
 
+    /// Per-chunk computed-fields cache. Avoids re-running the expensive
+    /// `makeExpandable(...)` + word-count work in `ChunkRowSnapshot.from(...)`
+    /// on every panel-body invocation. Reset on session change (see
+    /// `handleSessionChange`); per-panel scope so no cross-session
+    /// contamination.
+    let computedCache = ChunkComputedCache()
+
     private var focusedSurfaceObserver: FocusedSurfaceObserver?
     private var sessionCancellable: AnyCancellable?
     private var streamCancellable: AnyCancellable?
@@ -521,6 +528,9 @@ final class AgentInspectorPanel: Panel, ObservableObject {
     private func handleSessionChange(_ session: ResolvedAgentSession?) {
         resolvedSession = session
         stream.attach(session: session)
+        // New session → drop precomputed chunk fields; ids may collide
+        // by chance and stale content would be served.
+        computedCache.reset()
         // Re-scope the anchor store on session change. New session ⇒ drop
         // anchors from the previous turn timeline.
         if let session,
