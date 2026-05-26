@@ -179,7 +179,7 @@ struct AgentInspectorPanelView: View {
                 .onChange(of: panel.bulkState) { newState in
                     guard newState.lastDirection == .collapse else { return }
                     DispatchQueue.main.async {
-                        scrollToBottom(proxy: proxy, snapshots: snapshots)
+                        scrollToBottom(proxy: proxy)
                     }
                 }
                 // Belt-and-suspenders for tab-switch: even if the
@@ -211,7 +211,7 @@ struct AgentInspectorPanelView: View {
                     // tick.
                     if case .preAnchored = panel.visibleTurnFilter { return }
                     guard isFollowingLiveTail() else { return }
-                    scrollToBottom(proxy: proxy, snapshots: snapshots)
+                    scrollToBottom(proxy: proxy)
                 }
             }
         }
@@ -225,10 +225,20 @@ struct AgentInspectorPanelView: View {
     /// the body could be one tick behind by the time `.onChange` of
     /// `stream.lineCount` fires).
     private func isFollowingLiveTail() -> Bool {
+        guard let streamLastId = panel.stream.chunks.last?.id else { return false }
+        guard let visibleLastId = visibleLastSnapshotId() else { return false }
+        return visibleLastId == streamLastId
+    }
+
+    /// Id of the last visible chunk (post-filter, post-rewind-hide),
+    /// re-derived live from `panel` state. Same projection as the
+    /// `body`'s `visibleChunks` `let`, but readable from inside
+    /// `.onChange` closures without paying the closure-staleness cost
+    /// of capturing the body projection (per `DECISIONS.md`
+    /// "Hard-won lessons → Closure-staleness in `.onChange` handlers").
+    private func visibleLastSnapshotId() -> String? {
         let allChunks = panel.stream.chunks
-        guard let streamLastId = allChunks.last?.id else { return false }
-        // Re-derive the visible chunk set the same way the body does
-        // so we compare against the actually-rendered tail.
+        guard !allChunks.isEmpty else { return nil }
         let postFilter: [AgentChunk]
         switch panel.syncMode {
         case .off:
@@ -246,8 +256,7 @@ struct AgentInspectorPanelView: View {
                 return true
             }
             : postFilter
-        guard let visibleLastId = visible.last?.id else { return false }
-        return visibleLastId == streamLastId
+        return visible.last?.id
     }
 
     /// Scroll the inspector based on the current filter regime. The
@@ -277,27 +286,43 @@ struct AgentInspectorPanelView: View {
         }
     }
 
-    /// Scroll the inspector to the bottom of the LazyVStack containing
-    /// the chunk rows. Aligning the LazyVStack's own bottom edge with
-    /// the viewport bottom lands at exactly the spot the user can
-    /// reach by manual scroll inside the chunk list — including past
-    /// the trailing Divider — without adding a sentinel view to the
-    /// layout.
+    /// Scroll the inspector to the last visible chunk's bottom edge.
     ///
-    /// Used by the live-tail follow path (`stream.lineCount` change):
-    /// while the filter is rendering the latest turn at the bottom,
-    /// new chunks landing should keep the user pinned at the tail.
-    /// Filter transitions go through `scrollForFilter(...)` instead so
-    /// the landing position depends on the filter regime.
-    private func scrollToBottom(
-        proxy: ScrollViewProxy,
-        snapshots: [ChunkRowSnapshot]
-    ) {
-        guard !snapshots.isEmpty else { return }
+    /// We target the last visible chunk's `id` (re-derived live to
+    /// avoid closure-staleness) with `anchor: .bottom`, rather than
+    /// the LazyVStack's container `.id(...)`. Targeting the container
+    /// makes SwiftUI compute "where is the LazyVStack's bottom?" from
+    /// the LazyVStack's total `contentSize`, which Apple documents
+    /// as trading layout correctness for performance —
+    /// "the system only calculates the geometry for subviews as they
+    /// become visible" (`developer.apple.com/documentation/swiftui/
+    /// creating-performant-scrollable-stacks`). Off-screen rows'
+    /// estimated heights lag after a state change shrinks the
+    /// visible rows, so the container's reported bottom is a stale
+    /// pixel offset and the scroll lands past the real content end
+    /// (blank-screen-on-collapse). Targeting the last row by id
+    /// asks SwiftUI to position THAT specific row at the viewport
+    /// bottom, which empirically tests whether `ScrollViewReader`
+    /// resolves the target's frame from real layout or from the
+    /// same estimated layout.
+    ///
+    /// Used by the live-tail follow path (`stream.lineCount` change)
+    /// and by the bulk-collapse handler. Filter transitions go
+    /// through `scrollForFilter(...)` instead so the landing position
+    /// depends on the filter regime.
+    ///
+    /// Falls back to the LazyVStack container id if there are no
+    /// visible chunks (defensive — the bulk-collapse handler is
+    /// only reached when `snapshots` is non-empty).
+    private func scrollToBottom(proxy: ScrollViewProxy) {
         var tx = Transaction()
         tx.disablesAnimations = true
         withTransaction(tx) {
-            proxy.scrollTo(Self.chunkListId, anchor: .bottom)
+            if let lastId = visibleLastSnapshotId() {
+                proxy.scrollTo(lastId, anchor: .bottom)
+            } else {
+                proxy.scrollTo(Self.chunkListId, anchor: .bottom)
+            }
         }
     }
 

@@ -169,75 +169,73 @@ Pre-existing `Resources/shell-integration/cmux-zsh-integration.zsh` is untouched
 
 ## Current state and known limitations
 
-The inspector has shipped Phase A–D of comprehensive Claude JSONL render
-correctness plus a post-D cascade refactor closing the
-intermittent blank-screen / inversion class. The branch is
-synced with `upstream/main` (last merge: 76 upstream commits,
-`vendor/bonsplit` bumped to `ddb21d5` for the new
-`onTabCloseRequest` signature). All work lives on
-`agent-inspector`. **Tests:** 141 passing in the AgentInspector
-subset (115 pre-refactor + 18 `AgentInspectorBulkExpansionTests`
-outcome / overrides invariants + 8 `ExpansionResolver` integration
-cases).
+The full feature surface, architecture, tests, and tech-stack
+notes live in
+`~/.claude/plans/crystalline-seeking-firefly.md` §1–§4. This
+file's job is the upstream-touch ledger (above) plus the deferred
+known-issues catalog and design-invariant checklist below.
 
-### What's shipped
+For agent workflow guidance — LSP vs grep, when to delegate to
+`Explore`, Apple/Swift doc-source priority (Xcode DocC →
+`developer.apple.com` via `/browse-url` skill → swift-evolution →
+source), and the verify-before-trust checklist — see
+`AGENT_WORKFLOW.md` in this directory. Read it before any
+non-trivial inspector work.
 
-- **Active-branch rewind handling** — `last-prompt`/`parentUuid` walk
-  (`ClaudeBranchResolver.swift`) computes the active branch; abandoned
-  branches surface as indented `↳ Rewind N of M` rows that open the
-  full transcript in a detail tab. Orphan branches emit at the top of
-  the chunk stream.
-- **Sidechain segregation** — `Task` tool transcripts attached to the
-  parent tool call; expand-row link opens the sub-agent transcript in
-  a detail tab.
-- **Per-section caps** (`InspectorCaps.swift`) — `mostlyShort`,
-  `mostlyLong`, `alwaysLink`, `neverCap` bindings per chunk section.
-  Assistant text is `alwaysLink` (opens in detail tab, not inline).
-- **Status-bar icon-pill row** (`InspectorStatusBar.swift`) — scroll
-  mode, rewinds visibility, auto-expand toggle (snap-turn-only),
-  collapse-all action, expand-all action. Toggle state persisted via
-  UserDefaults.
-- **Bulk collapse/expand — snapshot-driven** (post-cascade-refactor).
-  Panel owns `expansionOverrides: [String: Bool]` keyed by
-  `kind:chunkId` / `kind:toolId`. `ChunkRowSnapshot` carries the
-  resolved per-row booleans (`chunkBodyOpen`, `aiHeaderOpen`,
-  `thinkingOpen`, per-tool `expanded`), baked in by
-  `AgentInspectorPanelView` via `ChunkRowSnapshot.ExpansionResolver`.
-  Rows hold no `@State` for bulk-managed expansion; manual toggles
-  call `panel.toggleExpansion(_:)` which writes the dict. Snap-back-
-  first triggers on `!expansionOverrides.isEmpty`. Eliminates the
-  `.onChange(of: bulkState)` cascade that caused intermittent
-  blank-screen and inversion symptoms.
-- **Recap (`away_summary`)**, **`pr-link`**, **slash-command pairs**,
-  **skill titles**, **system reminders** routed via
-  `ClaudeRenderPolicy.swift` to dedicated `MetaChunk` variants.
-- **Per-turn duration** sourced from `system.subtype: turn_duration`
-  with local-computation fallback.
-- **Wrapper hookbin precedence fix** for tagged debug builds (still
-  applied; see Phase D upstream-touch table above).
+Branch `agent-inspector` is synced with `upstream/main` (last
+merge: 76 upstream commits; `vendor/bonsplit` pinned to `ddb21d5`).
+**Tests:** 141 passing in the AgentInspector subset.
 
 ### Known issues deferred to follow-up
 
-1. **Filter ping-pong hysteresis** — `recomputeVisibleTurnFilter`
+The cross-validated catalog with full root-cause + repro lives in
+`~/.claude/plans/crystalline-seeking-firefly.md` §5. Headlines:
+
+1. **Blank screens on bulk-collapse and on at-bottom-band crossing
+   (PRIMARY OPEN BUG)** — `LazyVStack` reports `contentHeight`
+   with estimated heights for off-screen rows, which lag reality
+   after rows shrink. Every scroll-clamp primitive (`proxy.scrollTo`,
+   `.scrollPosition(id:)`, `.defaultScrollAnchor(.bottom)`,
+   `.onScrollGeometryChange`) reads the same stale total. Mitigation
+   shipped: deferred-async `scrollToBottom` on
+   `panel.bulkState` collapse-direction handler in
+   `AgentInspectorPanelView.swift:179-184`. Reduces but does not
+   eliminate the symptom. Proposed next step: `NSViewRepresentable`
+   wrapping `NSScrollView`+`NSTableView`. See plan §5.A and
+   `DECISIONS.md` "Don't-re-walk list" for the full attempted-and-
+   reverted approaches.
+2. **Filter ping-pong hysteresis** — `recomputeVisibleTurnFilter`
    can churn at the stay-band boundary on fast scrolls. Not
    user-reported; revisit if dogfood shows flicker.
-2. **`makeExpandable` overflow flag false-positive** when truncation
+3. **`makeExpandable` overflow flag false-positive** when truncation
    removed nothing meaningful — cosmetic.
-3. **Terminal-stage button feedback** — `Collapse` and `Expand`
-   buttons in the status bar do not visually disable / dim when at
-   their respective terminal stages. Click is correctly a no-op,
-   but the user gets no visual indication that they're at the limit.
-   Surface tooltip update or `.disabled(...)` modifier when revisited.
+4. **Terminal-stage button feedback** — `Collapse` / `Expand`
+   buttons don't visually disable at terminal stages. Click is a
+   no-op but UI gives no signal.
+5. **Initial freeze on first at-bottom-band crossing** —
+   `ChunkRowSnapshot.from(...)` cost (`makeExpandable` +
+   word-count splits per visible chunk) for ~200 chunks of long
+   content can pause the first transition. Plan §7.3 / §7.4 for
+   memoization + word-count-on-chunk proposals.
 
-### Earlier flash/flap saga (now closed)
+### Design invariants enforced (not in README)
 
-The original Phase D handover described the
-`.turns([latest])` ↔ `.preAnchored` content-set swap flash as a
-follow-up shipper. **It shipped** in commit `5c37d9b72`
-("Stay-band + filter-aware scroll target; sync proxy.scrollTo")
-which combined three fixes: synchronous `proxy.scrollTo`, a wider
-"stay band" using anchor-row when present, and a filter-aware scroll
-target landing on the boundary chunk. Don't re-walk the
-`defaultScrollAnchor(.bottom)` or "Option A always-render-all"
-experiments — both were rejected and the lessons are captured in
-`DECISIONS.md`.
+Cross-validated against the code; rationale and code refs in
+`~/.claude/plans/crystalline-seeking-firefly.md` §6.
+
+1. **Snapshot-boundary policy** — rows below the LazyVStack hold
+   no observable references. Value types + stable closures only.
+   Custom `Equatable` for SwiftUI diff skipping. See
+   `Render/ChunkRowView.swift:28-32`.
+2. **No state mutation in view-body computations** (CLAUDE.md).
+3. **Snap-back-first bulk semantics** — first bulk click reverts
+   user's manual fiddles in the OPPOSITE direction; subsequent
+   clicks advance. Direction-aware and asymmetric.
+4. **Stepped expand/collapse** — each click advances exactly one
+   stage; terminal-stage clicks are true no-ops.
+5. **Cascade-free row updates** — bulk action publishes ONCE; every
+   row updates SYNCHRONOUSLY in the same body pass.
+6. **Universal pixel-offset clamp model** (verbal spec, NOT
+   shipped) — see plan §6.6.
+7. **Tagged debug builds only** —
+   `./scripts/reload.sh --tag agent-inspector`.
