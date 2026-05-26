@@ -167,75 +167,10 @@ override env var. Stock homebrew `zig` 0.16.0 fails because Ghostty's
 
 Pre-existing `Resources/shell-integration/cmux-zsh-integration.zsh` is untouched.
 
-## Current state and known limitations
+## Current state
 
-The full feature surface, architecture, tests, and tech-stack
-notes live in
-`~/.claude/plans/crystalline-seeking-firefly.md` §1–§4. This
-file's job is the upstream-touch ledger (above) plus the deferred
-known-issues catalog and design-invariant checklist below.
+Branch `agent-inspector` is synced with `upstream/main` (last merge: 76 upstream commits; `vendor/bonsplit` pinned to `ddb21d5`). **Tests:** 141 passing in the AgentInspector subset.
 
-For agent workflow guidance — LSP vs grep, when to delegate to
-`Explore`, Apple/Swift doc-source priority (Xcode DocC →
-`developer.apple.com` via `/browse-url` skill → swift-evolution →
-source), and the verify-before-trust checklist — see
-`AGENT_WORKFLOW.md` in this directory. Read it before any
-non-trivial inspector work.
+For everything else — feature surface, architecture, tests, open issues, design invariants, doc layout — see `~/.claude/plans/crystalline-seeking-firefly.md` (canonical handover). For agent process — LSP vs grep, doc-source priority, verify-before-trust checklist — see `AGENT_WORKFLOW.md` in this directory.
 
-Branch `agent-inspector` is synced with `upstream/main` (last
-merge: 76 upstream commits; `vendor/bonsplit` pinned to `ddb21d5`).
-**Tests:** 141 passing in the AgentInspector subset.
-
-### Known issues deferred to follow-up
-
-The cross-validated catalog with full root-cause + repro lives in
-`~/.claude/plans/crystalline-seeking-firefly.md` §5. Headlines:
-
-1. **Blank screens on bulk-collapse and on at-bottom-band crossing
-   (PRIMARY OPEN BUG)** — `LazyVStack` reports `contentHeight`
-   with estimated heights for off-screen rows, which lag reality
-   after rows shrink. Every scroll-clamp primitive (`proxy.scrollTo`,
-   `.scrollPosition(id:)`, `.defaultScrollAnchor(.bottom)`,
-   `.onScrollGeometryChange`) reads the same stale total. Mitigation
-   shipped: deferred-async `scrollToBottom` on
-   `panel.bulkState` collapse-direction handler in
-   `AgentInspectorPanelView.swift:179-184`. Reduces but does not
-   eliminate the symptom. Proposed next step: `NSViewRepresentable`
-   wrapping `NSScrollView`+`NSTableView`. See plan §5.A and
-   `DECISIONS.md` "Don't-re-walk list" for the full attempted-and-
-   reverted approaches.
-2. **Filter ping-pong hysteresis** — `recomputeVisibleTurnFilter`
-   can churn at the stay-band boundary on fast scrolls. Not
-   user-reported; revisit if dogfood shows flicker.
-3. **`makeExpandable` overflow flag false-positive** when truncation
-   removed nothing meaningful — cosmetic.
-4. **Terminal-stage button feedback** — `Collapse` / `Expand`
-   buttons don't visually disable at terminal stages. Click is a
-   no-op but UI gives no signal.
-5. **Initial freeze on first at-bottom-band crossing** —
-   `ChunkRowSnapshot.from(...)` cost (`makeExpandable` +
-   word-count splits per visible chunk) for ~200 chunks of long
-   content can pause the first transition. Plan §7.3 / §7.4 for
-   memoization + word-count-on-chunk proposals.
-
-### Design invariants enforced (not in README)
-
-Cross-validated against the code; rationale and code refs in
-`~/.claude/plans/crystalline-seeking-firefly.md` §6.
-
-1. **Snapshot-boundary policy** — rows below the LazyVStack hold
-   no observable references. Value types + stable closures only.
-   Custom `Equatable` for SwiftUI diff skipping. See
-   `Render/ChunkRowView.swift:28-32`.
-2. **No state mutation in view-body computations** (CLAUDE.md).
-3. **Snap-back-first bulk semantics** — first bulk click reverts
-   user's manual fiddles in the OPPOSITE direction; subsequent
-   clicks advance. Direction-aware and asymmetric.
-4. **Stepped expand/collapse** — each click advances exactly one
-   stage; terminal-stage clicks are true no-ops.
-5. **Cascade-free row updates** — bulk action publishes ONCE; every
-   row updates SYNCHRONOUSLY in the same body pass.
-6. **Universal pixel-offset clamp model** (verbal spec, NOT
-   shipped) — see plan §6.6.
-7. **Tagged debug builds only** —
-   `./scripts/reload.sh --tag agent-inspector`.
+This file's only job is the upstream-touch ledger above. Re-apply on each upstream pull.

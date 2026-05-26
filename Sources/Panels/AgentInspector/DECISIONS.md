@@ -4,8 +4,8 @@ Active design models, hard-won lessons, and don't-re-walk lists.
 Settled phase-by-phase narratives live in git history (`git log
 --oneline cmuxTests/AgentInspector/ Sources/Panels/AgentInspector/`)
 and are not duplicated here. The canonical handover is
-`~/.claude/plans/crystalline-seeking-firefly.md`; FORK_NOTES.md has
-the upstream-touch ledger and the user-facing summary.
+`~/.claude/plans/crystalline-seeking-firefly.md`. `FORK_NOTES.md`
+holds the upstream-touch ledger only.
 
 ---
 
@@ -80,17 +80,9 @@ view computations).
 
 ### Universal pixel-offset clamp model (verbal spec, NOT shipped)
 
-> If after a state change `offset + viewport > contentHeight`,
-> snap to chunks' bottom. Else leave the user's offset alone.
+> If after a state change `offset + viewport > contentHeight`, snap to chunks' bottom. Else leave the user's offset alone.
 
-This is the user's stated correctness model for blank-screen
-avoidance. It needs an accurate `contentHeight`, which `LazyVStack`
-does not provide (see "Scroll model attempted (reverted)" below).
-Every native and explicit clamp primitive failed against the same
-height-estimation race. The proposed next step is replacing
-`LazyVStack` with an `NSViewRepresentable` wrapping `NSScrollView`
-+ `NSTableView` so heights are real instead of estimated; not yet
-implemented.
+User's stated correctness model for blank-screen avoidance. Needs an accurate `contentHeight`, which `LazyVStack` does not provide ("Hard-won lessons → LazyVStack height estimation is unreliable") and which AppKit could provide but has been ruled out (don't-re-walk #4). The model **won't ship** in its full form; the partial mitigation in "Mitigations currently shipped" is the practical compromise.
 
 ---
 
@@ -174,30 +166,9 @@ stale after row-shrink).
    `panel.expansionOverrides`, `panel.rewindVisibility`** with
    per-event handlers — the user's stated correctness model.
    Failed for the same reason as (1) — stale `contentHeight`.
-8. **Unconditional `proxy.scrollTo(lastChunkId, anchor: .bottom)`
-   on collapse** (this session, kept as partial mitigation —
-   see "Mitigations currently shipped"). The unconditional
-   target swap (no stale-height predicate gating) reduces the
-   blank-screen frequency substantially but does not eliminate
-   it. Residual case: collapses originating mid-way between
-   `.fullyExpanded` and `.topLevelExpanded` while the inspector
-   has been scrolled / fiddled enough that off-screen geometry
-   has drifted out of sync — `ScrollViewReader.scrollTo(rowId,
-   anchor:)` resolves the target row's frame from the same lazy
-   layout, so it inherits the accumulated drift. Verifies
-   empirically that targeting a specific row does not escape
-   the documented "geometry only calculated for subviews as
-   they become visible" trade-off.
+8. **Unconditional `proxy.scrollTo(lastChunkId, anchor: .bottom)` on collapse** (this session, kept as partial mitigation — see "Mitigations currently shipped"). Reduces blank-screen frequency substantially but does not eliminate it. Residual: collapses originating mid-`.fullyExpanded → .topLevelExpanded` after enough scroll/fiddle that off-screen geometry has drifted. Confirms empirically that targeting a specific row does not escape the documented "geometry only calculated for subviews as they become visible" trade-off — `ScrollViewReader.scrollTo(rowId, anchor:)` resolves the target's frame from the same lazy layout.
 
-For Apple-doc citations consult `developer.apple.com` directly
-(JSON DocC endpoint at
-`developer.apple.com/tutorials/data/documentation/<path>.json` —
-same renderJSON Xcode parses; see `AGENT_WORKFLOW.md`'s source-
-priority section). The previously-cached
-`docs/apple-swiftui-scroll/` summary file made one stale claim
-(`.defaultScrollAnchor(.bottom)` is "the systematic fix") that
-contradicts this list — corrected in the same change as the
-mitigation ship.
+For Apple-doc citations consult `developer.apple.com` directly via the JSON DocC endpoint (`developer.apple.com/tutorials/data/documentation/<path>.json`); see `AGENT_WORKFLOW.md` source-priority section. The `docs/apple-swiftui-scroll/` snapshot folder is stale-reference-only.
 
 ---
 
@@ -213,7 +184,7 @@ re-derive the visible chunk set live inside the closure. Future
 `.onChange` handlers must read panel state directly, not capture
 body projections.
 
-### Snapshot-boundary boundary
+### Snapshot-boundary policy
 
 Any `ObservableObject` reference held below the LazyVStack
 re-invalidates every row on any orthogonal `@Published` change and
@@ -239,77 +210,12 @@ doesn't depend on `contentHeight`.
 
 ### Unconditional `proxy.scrollTo(lastChunkId, anchor: .bottom)` on collapse
 
-**File**: `Sources/Panels/AgentInspector/AgentInspectorPanelView.swift`,
-`scrollToBottom(proxy:)` + helper `visibleLastSnapshotId()`.
+**File**: `Sources/Panels/AgentInspector/AgentInspectorPanelView.swift` — `scrollToBottom(proxy:)` + `visibleLastSnapshotId()` helper. Shipped in `c9e7c7146`.
 
-The bulk-collapse-direction handler (`.onChange(of: panel.bulkState)`
-where `lastDirection == .collapse`) and the live-tail follow handler
-(`.onChange(of: panel.stream.lineCount)`) call
-`proxy.scrollTo(visibleLastSnapshotId(), anchor: .bottom)` rather
-than targeting the LazyVStack's container `.id(...)` sentinel.
-`visibleLastSnapshotId()` mirrors `isFollowingLiveTail()`'s visibility
-projection (read live from `panel` state inside the closure to
-avoid closure-staleness, per "Hard-won lessons → Closure-staleness").
+The bulk-collapse-direction handler and the live-tail follow handler call `proxy.scrollTo(visibleLastSnapshotId(), anchor: .bottom)` instead of targeting the LazyVStack container's `.id(...)` sentinel. `visibleLastSnapshotId()` mirrors `isFollowingLiveTail()`'s visibility projection, read live from `panel` state inside the closure (closure-staleness rule, above).
 
-**Why**: the LazyVStack container's reported bottom is computed
-from total `contentSize.height`, which Apple documents as
-trading "some degree of layout correctness for performance,
-because the system only calculates the geometry for subviews as
-they become visible." Targeting a specific row by id asks
-`ScrollViewReader` to position THAT row at the viewport bottom,
-sidestepping the global-content-size calculation.
+**Why**: targeting the container's bottom asks SwiftUI to compute the LazyVStack's total `contentSize.height` — which carries the documented layout-correctness trade-off. Targeting a specific row asks `ScrollViewReader` to position THAT row at the viewport bottom, sidestepping the global calculation.
 
-**Outcome**: blank-screen-on-collapse appears **much less
-frequently**. Specifically, transition `→ .fullyCollapsed` did
-not reproduce the bug across user dogfood sweeps post-mitigation.
-Transition `→ .topLevelExpanded` still occasionally blanks,
-particularly when starting "mid-way between `.fullyExpanded` and
-`.topLevelExpanded`" after the user has scrolled / fiddled
-enough that off-screen rows' geometry has drifted out of sync.
-This is consistent with `ScrollViewReader.scrollTo(rowId, anchor:)`
-resolving the target's frame from the same lazy layout — it
-benefits from the lazy-stack's local correctness near the
-target, but inherits the same drift when accumulated off-screen
-churn is large.
+**Outcome**: blank-screen-on-collapse appears **much less frequently**. `→ .fullyCollapsed` did not reproduce in user dogfood. `→ .topLevelExpanded` still occasionally blanks, particularly mid-`.fullyExpanded → .topLevelExpanded` after accumulated scroll/fiddle (see don't-re-walk #8). **Accepted as ship state until user-impact escalates.**
 
-**Status**: **partial fix, accepted as the current ship state**.
-Until user-impact escalates, no further escalation. If the
-residual becomes more frequent or more disruptive, the next
-candidates are:
-
-- `.id(...)` remount of the LazyVStack on collapse-direction
-  publishes — heavier (full re-mount of ~200 rows, brief flash,
-  scroll position lost) but eliminates accumulated drift by
-  construction. Out of scope right now per user direction.
-- Some other reset that forces SwiftUI to re-walk the lazy
-  stack from scratch.
-
-AppKit migration remains ruled out per don't-re-walk #4
-(unacceptable initial-render lag).
-
----
-
-## Open / left-over decisions
-
-Tracked in plan §7. Summary:
-
-1. **Replace `LazyVStack` with `NSViewRepresentable`** wrapping
-   `NSScrollView` + `NSTableView`? **Ruled out** — see
-   don't-re-walk #4. The eager-measurement lag from `List(.plain)`
-   was unacceptable, and a hand-rolled representable would
-   inherit the same `NSHostingView.intrinsicContentSize` per
-   row cost.
-2. **Snapshot caching** keyed by `(chunk-id, expansion-resolved-state)`
-   to eliminate the at-bottom-band-crossing freeze, OR move
-   word counts onto `AgentChunk` model fields so they compute
-   once at ingest.
-3. **`makeExpandable` overflow flag tightening** — drop the
-   cosmetic false-positive when truncation removes only trailing
-   whitespace.
-4. **Terminal-stage button feedback** — `Collapse` / `Expand`
-   buttons don't visually disable at terminal stages; surface a
-   tooltip update or `.disabled(...)` modifier.
-5. **`.id(...)` remount on collapse** — only revisit if the
-   blank-screen residual (don't-re-walk #8) becomes more
-   frequent or more disruptive. Heavier than the current
-   mitigation but more authoritative.
+**Escalation**: `.id(...)` remount of the LazyVStack on collapse-direction publishes — out of scope right now per user direction. AppKit migration permanently ruled out per don't-re-walk #4.
