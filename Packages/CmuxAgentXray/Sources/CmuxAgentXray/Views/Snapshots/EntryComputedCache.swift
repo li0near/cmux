@@ -1,4 +1,4 @@
-public import Foundation
+import Foundation
 
 /// Per-entry pre-computed display fields, cached by entry id and
 /// invalidated on content change.

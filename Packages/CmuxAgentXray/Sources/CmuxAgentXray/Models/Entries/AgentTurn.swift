@@ -215,6 +215,39 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     public enum Status: Equatable, Sendable {
         case pending, ok, error
     }
+
+    // MARK: - Body section conventions
+
+    /// Tool body sections are constructed in this order by the
+    /// transcript builder:
+    ///   sections[0]            — `.text([input], .normal)`
+    ///   sections[1] (optional) — `.text([result], .normal/.error)`
+    ///   trailing `.subentries` (optional) — sub-agent transcript
+    /// The accessors below project that convention into per-slot
+    /// values for detail-tab resolution and tests, without committing
+    /// to a new field on the struct.
+
+    /// Inline text content for the tool's input slot.
+    public var inputDetail: String? {
+        guard case .text(let blocks, _) = body.sections.first else { return nil }
+        return blocks.joined(separator: "\n")
+    }
+
+    /// Inline text content for the tool's result slot, if any.
+    public var resultDetail: String? {
+        guard body.sections.count >= 2,
+              case .text(let blocks, _) = body.sections[1] else { return nil }
+        return blocks.joined(separator: "\n")
+    }
+
+    /// Sub-agent transcript carried on the tool, if any. Walks
+    /// `body.sections` for the first `.subentries(...)` payload.
+    public var sidechainTranscript: [Entry]? {
+        for section in body.sections {
+            if case .subentries(let entries) = section { return entries }
+        }
+        return nil
+    }
 }
 
 /// Final assistant-text projection of a turn. Body is empty
