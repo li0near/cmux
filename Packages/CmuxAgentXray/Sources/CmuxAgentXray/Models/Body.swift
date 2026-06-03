@@ -54,3 +54,31 @@ public enum TextStyle: Equatable, Sendable {
     // Future cases (deferred until corresponding feature lands; tracked
     // in plan §16): diffAdded, diffRemoved, codeMonospace.
 }
+
+// MARK: - Convenience accessors
+
+extension Body {
+    /// Concatenated text content from every `.text` section, joined
+    /// by `"\n"`. Sub-entry sections are not traversed (use
+    /// `subentriesContent` for that). Returns "" when the body is
+    /// header-only or contains only sub-entries.
+    public var textContent: String {
+        var parts: [String] = []
+        for section in sections {
+            if case .text(let blocks, _) = section {
+                parts.append(contentsOf: blocks)
+            }
+        }
+        return parts.joined(separator: "\n")
+    }
+
+    /// First `.subentries` section's children, or `[]` if none.
+    public var subentriesContent: [Entry] {
+        for section in sections {
+            if case .subentries(let entries) = section {
+                return entries
+            }
+        }
+        return []
+    }
+}
