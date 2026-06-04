@@ -88,12 +88,27 @@ CMUX_ZIG=/opt/homebrew/opt/zig@0.15/bin/zig \
 
 ## Status
 
-This package landed in cmux on **2026-06-04**. Phases 1–11 and 13–15 are
-complete; Phase 9 wires the package into the cmux app target end-to-end
-(`xcodebuild` succeeds, package tests 21/21 green). Phase 16 audit
-produced an exhaustive side-by-side gap list against the predecessor
-implementation. Phase 17 is in progress — finishing the gap-closure
-work to reach parity.
+This package landed in cmux on **2026-06-04**. **All migration phases
+are complete** — phases 1–15 plus 17pre / 17a / 17b / 17c / 17d. The
+parity punch-list (`PARITY_PUNCH_LIST.md`) is fully ✅ closed across
+its 5 groups (Group 1 behavioural correctness, Group 2 visual parity,
+Group 3 per-row layout, Group 4 detail-mode chrome, Group 5 polish).
+Phase 12 (AsyncStream focus pipeline) closed via 17d.
+
+**Current state:** dogfood iterations against the spike-parity bar
+landed on top of the migration commits — see `git log` on the
+`agentxray` branch for `Dogfood pass` commits and the audit-pass
+fixes that followed.
+
+**Deferred-by-policy items** still tracked in `MIGRATION_PLAN.md` §16:
+- A. TextStyle diff cases (speculative future feature)
+- B. Inline sub-agent transcript rendering (future UX evolution)
+- C. ToolEntry shape evolution (speculative)
+- G. xcstrings → .strings SPM build-time pre-compile (no current
+     test consumer needs the localized lookup output)
+
+These stay deferred per CLAUDE.md "don't pre-solve hypothetical
+future requirements" — none block current functionality.
 
 **For the next session resuming this work, read in this order:**
 
@@ -101,12 +116,11 @@ work to reach parity.
    (§1), progress log (§14), bug-fix ledger (§15), deferred-task
    ledger (§16), origin cross-reference (§18).
 2. `PARITY_PUNCH_LIST.md` (sibling file) — canonical 87-finding
-   checklist of every behavioural / visual gap. Recommended
-   execution order at the bottom.
-3. `VISUAL_PASS_REVIEW.md` (sibling file) — user-signed-off spec for
-   the next visual-parity commit (icons, `Layout.swift` /
-   `Typography.swift` tokens, `HoverBars` modifier, file moves,
-   renames). Lands as one batch.
+   checklist of every behavioural / visual gap. All ✅ closed.
+3. `VISUAL_PASS_REVIEW.md` (sibling file) — historical user-signed-off
+   spec for the visual-parity commit (icons, `Theme.swift` tokens,
+   `HoverHighlight` modifier, file moves, renames). Reflects landed
+   state.
 
 Upstream-touch surface is tracked in `FORK_NOTES.md` (sibling file).
 The `AttachStage` feature (status-bar attach-progress labels) and the
