@@ -66,6 +66,12 @@ public enum TrailingItem: Equatable, Sendable {
     case duration(String)
     /// Pre-formatted word-count string (e.g. "120 words").
     case wordCount(String)
+    /// Tap-to-toggle token-count pill. Renders the compact total
+    /// (e.g. "32.9k tokens") by default; clicking flips to the
+    /// per-bucket breakdown (e.g. "12.0k in · 1.5k out · 19.4k cr").
+    /// Carries the raw counts (via ``AgentEntry/TokenUsage``) so the
+    /// renderer can format both states.
+    case tokenPill(AgentEntry.TokenUsage)
 }
 
 /// Color discriminator for a `statusDot` trailing item. Mirrors

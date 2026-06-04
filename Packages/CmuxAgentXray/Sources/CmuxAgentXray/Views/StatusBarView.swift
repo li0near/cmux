@@ -184,7 +184,6 @@ public struct StatusBarView: View {
             )
         }
         .buttonStyle(.plain)
-        .hoverBars(palette: palette)
     }
 
     // MARK: - Control buttons

@@ -102,14 +102,14 @@ public struct TranscriptView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: Theme.Padding.topLevelEntryGap) {
-                            ForEach(Array(entries.enumerated()), id: \.element.id.stableString) { _, entry in
-                                if case .user(let u) = entry {
-                                    boundaryDivider(id: beforeTurnBoundaryID(u.id.stableString))
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(entries.enumerated()), id: \.element.id.stableString) { index, entry in
+                                if index > 0, case .user(let u) = entry {
+                                    boundaryDivider(id: beforeTurnBoundaryID(u.id.stableString), palette: palette)
                                 }
                                 entryRow(for: entry, palette: palette)
                             }
-                            boundaryDivider(id: tailBoundaryID(for: panel.entriesFilter))
+                            boundaryDivider(id: tailBoundaryID(for: panel.entriesFilter), palette: palette)
                         }
                         .padding(.vertical, 6)
                         .id("cmux-agentxray-layout-\(panel.bulkState.layoutRevision)")
@@ -160,7 +160,8 @@ public struct TranscriptView: View {
     }
 
     /// Top-level entry dispatcher. AgentEntry takes the specialized
-    /// per-kind path; everything else routes through the generic
+    /// per-kind path; synthesized branch-link entries take a compact
+    /// sub-row style; everything else routes through the generic
     /// `EntryView`. Both paths attach an anchor preference for
     /// viewport-top tracking.
     @ViewBuilder
@@ -178,6 +179,8 @@ public struct TranscriptView: View {
                     onToggleExpansion: { panel.toggleExpansion($0) },
                     onOpenDetail: { panel.openDetail(request: $0) }
                 )
+            case .synthesized(let syn):
+                synthesizedEntryRow(entry: syn, palette: palette)
             default:
                 genericEntryView(entry: entry, palette: palette)
             }
@@ -190,8 +193,32 @@ public struct TranscriptView: View {
         }
     }
 
+    /// Per-kind dispatch for `SynthesizedEntry`. Branch links render as
+    /// a compact sub-row (predecessor parity, PARITY §3.15 / §5b);
+    /// PR links render via the generic `EntryView` since they're a
+    /// header-only external link.
+    @ViewBuilder
+    private func synthesizedEntryRow(entry: SynthesizedEntry, palette: HudPalette) -> some View {
+        switch entry.kind {
+        case .branchLink(let rootUUID, let rewindIndex, let totalRewinds, let entryCount, let firstPromptPreview):
+            BranchLinkEntryRow(
+                rewindIndex: rewindIndex,
+                totalRewinds: totalRewinds,
+                entryCount: entryCount,
+                firstPromptPreview: firstPromptPreview,
+                palette: palette,
+                onOpenDetail: {
+                    panel.openDetail(request: .abandonedBranch(branchRootUuid: rootUUID))
+                }
+            )
+            .id(entry.id.stableString)
+        case .prLink:
+            genericEntryView(entry: .synthesized(entry), palette: palette)
+        }
+    }
+
     /// Generic dispatcher for non-agent entries (User, System, Compact,
-    /// Synthesized). Goes through the unified `EntryView`.
+    /// Synthesized.prLink). Goes through the unified `EntryView`.
     private func genericEntryView(entry: Entry, palette: HudPalette) -> some View {
         let computed = panel.computedCache.compute(for: entry, displayMode: .compact)
         let entryID = entry.id.stableString
@@ -211,13 +238,13 @@ public struct TranscriptView: View {
         .id(entryID)
     }
 
-    /// Boundary-id'd divider used as `proxy.scrollTo(...)` target. The
-    /// id makes the position discoverable; the visual is just an
-    /// invisible spacer (no rendering — predecessor parity, no
-    /// per-row hairlines).
-    private func boundaryDivider(id: String) -> some View {
-        Color.clear
-            .frame(height: 0)
+    /// Visible turn-boundary divider (predecessor parity per
+    /// PARITY §1.7 + #2 dogfood feedback). 1pt SwiftUI `Divider()`
+    /// with foreground@0.06 background — visible-but-subtle hairline
+    /// that doubles as the `proxy.scrollTo(...)` target.
+    private func boundaryDivider(id: String, palette: HudPalette) -> some View {
+        Divider()
+            .background(Color(nsColor: appearance.foregroundColor).opacity(Theme.Opacity.bgWash))
             .id(id)
     }
 
@@ -474,5 +501,80 @@ private struct EntryAnchorsKey: PreferenceKey {
         nextValue: () -> [String: Anchor<CGRect>]
     ) {
         value.merge(nextValue()) { _, new in new }
+    }
+}
+
+// MARK: - Branch-link sub-row
+
+/// Rewind / abandoned-branch link rendered as a compact sub-row
+/// (predecessor parity per PARITY §3.15 / dogfood #5b). Indented
+/// under the parent agent turn with a `↳` lead-in glyph + branch
+/// icon + smaller font. Click → `onOpenDetail(.abandonedBranch(...))`
+/// — the subtree expands in a sibling detail tab, not inline.
+@available(macOS 15, *)
+private struct BranchLinkEntryRow: View {
+    let rewindIndex: Int
+    let totalRewinds: Int
+    let entryCount: Int
+    let firstPromptPreview: String?
+    let palette: HudPalette
+    let onOpenDetail: () -> Void
+
+    var body: some View {
+        Button(action: onOpenDetail) {
+            HStack(spacing: Theme.Spacing.subRowIconText) {
+                // Tangent leading glyph — `↳` in the parent's icon
+                // column so the sub-row visually nests under the
+                // turn it abandons.
+                Color.clear
+                    .frame(width: Theme.Metric.rowIconWidth, height: 12)
+                    .overlay(alignment: .trailing) {
+                        Text("↳")
+                            .font(Theme.SubRow.summary)
+                            .foregroundStyle(palette.dim)
+                            .fixedSize()
+                    }
+                Image(systemName: EntryIcon.branchLink.collapsed)
+                    .font(Theme.SubRow.icon)
+                    .foregroundStyle(palette.dim)
+                Text(titleText)
+                    .font(Theme.SubRow.name)
+                    .foregroundStyle(palette.dim)
+                    .lineLimit(1)
+                Text(subtitleText)
+                    .font(Theme.SubRow.summary)
+                    .foregroundStyle(palette.dim.opacity(Theme.Opacity.detail))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, Theme.Indent.subRow)
+            .padding(.horizontal, Theme.Padding.horizontal)
+            .padding(.vertical, Theme.Spacing.verticalStack)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverBars(palette: palette)
+    }
+
+    private var titleText: String {
+        String(
+            localized: "agentXray.entry.branchLink.title",
+            defaultValue: "Rewind \(rewindIndex) of \(totalRewinds)",
+            bundle: .module
+        )
+    }
+
+    private var subtitleText: String {
+        let countText = String(
+            localized: "agentXray.entry.branchLink.subtitle.count",
+            defaultValue: "\(entryCount) entries",
+            bundle: .module
+        )
+        if let preview = firstPromptPreview, !preview.isEmpty {
+            return "\(countText) · \(preview)"
+        }
+        return countText
     }
 }

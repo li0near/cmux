@@ -785,13 +785,13 @@ struct ClaudeTranscriptBuilder {
                 defaultValue: "Claude",
                 bundle: .module
             )
-            let tokenTotal = formatTokenCounts(pending.usage)
             var trailing: [TrailingItem] = []
-            if pending.usage.inputTokens
+            let totalTokens = pending.usage.inputTokens
                 + pending.usage.outputTokens
                 + pending.usage.cacheReadTokens
-                + pending.usage.cacheCreationTokens > 0 {
-                trailing.append(.pill("\(tokenTotal) tokens"))
+                + pending.usage.cacheCreationTokens
+            if totalTokens > 0 {
+                trailing.append(.tokenPill(pending.usage))
             }
 
             entries.append(.agent(AgentEntry(

@@ -94,6 +94,11 @@ extension EntryIcon {
             return EntryIcon(collapsed: "apple.terminal", expanded: "apple.terminal.fill")
         case "Grep":
             return EntryIcon(
+                collapsed: "text.magnifyingglass",
+                expanded: "text.magnifyingglass.fill"
+            )
+        case "ToolSearch":
+            return EntryIcon(
                 collapsed: "magnifyingglass.circle",
                 expanded: "magnifyingglass.circle.fill"
             )
