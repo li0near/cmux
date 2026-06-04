@@ -111,7 +111,7 @@ public struct TranscriptView: View {
                             }
                             boundaryDivider(id: tailBoundaryID(for: panel.entriesFilter), palette: palette)
                         }
-                        .padding(.vertical, Theme.Padding.transcriptVertical)
+                        .padding(.vertical, 6)
                         .id("cmux-agentxray-layout-\(panel.bulkState.layoutRevision)")
                     }
                     .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -378,8 +378,8 @@ public struct TranscriptView: View {
                 .font(Theme.Row.summary)
                 .foregroundStyle(palette.dim)
         }
-        .padding(.horizontal, Theme.Padding.panelEdgeHorizontal)
-        .padding(.vertical, Theme.Padding.panelEdgeVertical)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -449,8 +449,8 @@ public struct TranscriptView: View {
                 detailBodyText(content.body, palette: palette)
             }
         }
-        .padding(.horizontal, Theme.Padding.panelEdgeHorizontal)
-        .padding(.vertical, Theme.Padding.panelEdgeVertical)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: appearance.contentBackgroundColor))
     }
@@ -516,7 +516,7 @@ public struct TranscriptView: View {
                     detailEntryRow(entry: entry, palette: palette)
                 }
             }
-            .padding(.vertical, Theme.Padding.transcriptVertical)
+            .padding(.vertical, 6)
         }
         .scrollIndicators(.never)
     }

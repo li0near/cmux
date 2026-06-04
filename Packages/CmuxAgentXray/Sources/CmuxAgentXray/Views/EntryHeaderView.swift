@@ -116,7 +116,7 @@ private struct MetadataPill: View {
             .font(Theme.SubRow.meta)
             .foregroundStyle(palette.dim)
             .padding(.horizontal, Theme.Padding.pillHorizontal)
-            .padding(.vertical, Theme.Padding.pillVertical)
+            .frame(height: Theme.Height.pill)
             .background(
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                     .fill(palette.expandedBackground)
@@ -147,7 +147,7 @@ private struct TokenPillView: View {
                 .font(Theme.SubRow.meta)
                 .foregroundStyle(palette.dim)
                 .padding(.horizontal, Theme.Padding.pillHorizontal)
-                .padding(.vertical, Theme.Padding.pillVertical)
+                .frame(height: Theme.Height.pill)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                         .fill(palette.expandedBackground)

@@ -36,26 +36,26 @@ public enum Theme {
     // MARK: - Layout — Padding
 
     /// Padding tokens applied with `.padding(.<edge>, ...)`.
+    /// **Vertical-centering paddings on fixed-height containers
+    /// (status bar, pill, icon button) are deliberately absent** —
+    /// those use `Theme.Height.*` plus SwiftUI's default centering
+    /// instead of explicit `.padding(.vertical, …)`.
+    ///
+    /// **Single-call-site chrome (empty-panel outer padding,
+    /// transcript-list outer padding) stays as literals at the call
+    /// site** — extracting tokens for one-off layout doesn't earn
+    /// its weight.
     public enum Padding {
         /// Outer container left/right padding (12pt).
         public static let horizontal: CGFloat = 12
         /// Inside each pill (token / word-count / scroll-mode); 6pt L/R.
         public static let pillHorizontal: CGFloat = 6
-        /// Inside each pill — top/bottom padding (2pt).
-        public static let pillVertical: CGFloat = 2
         /// Inside the gray expanded body block (8pt around content).
         public static let expandedBodyBlock: CGFloat = 8
         /// `LazyVStack(spacing:)` between consecutive entries (4pt).
         /// Composed at the parent — entries have intrinsic height so
         /// this is the list's `spacing`, not a per-row padding.
         public static let topLevelEntryGap: CGFloat = 4
-        /// Vertical breathing room around the LazyVStack inside the
-        /// ScrollView (6pt).
-        public static let transcriptVertical: CGFloat = 6
-        /// Empty / detail panel outer left-right padding (16pt).
-        public static let panelEdgeHorizontal: CGFloat = 16
-        /// Empty / detail panel outer top-bottom padding (12pt).
-        public static let panelEdgeVertical: CGFloat = 12
     }
 
     // MARK: - Layout — Metric
