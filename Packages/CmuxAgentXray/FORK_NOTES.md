@@ -31,10 +31,10 @@ Last verified against `upstream/main` at `81e409c35` on **2026-06-04**.
 
 | File | Current change | Risk |
 |---|---|---|
-| `cmux.xcodeproj/project.pbxproj` | adds `Packages/CmuxAgentXray` SPM dependency on the cmux.app target + 6 file refs for `Sources/Panels/AgentXray/*` | merge-pain hotspot; UIDs prefixed `AAAAAAAAAGENTX` (package wiring) and `AGNTRY` (app-side files) to be distinctive |
+| `cmux.xcodeproj/project.pbxproj` | adds `Packages/CmuxAgentXray` SPM dependency on the cmux.app target + 3 file refs for `Sources/Panels/AgentXray/*` Swift files | merge-pain hotspot; UIDs prefixed `AAAAAAAAAGENTX` (package wiring) and `AGNTRY` (app-side files) to be distinctive |
 | `Sources/Panels/Panel.swift` | adds `case agentXray` to `PanelType` + Codable decode fallback for legacy `agentInspector` raw values | low; isolated enum addition |
-| `Sources/Panels/PanelContentView.swift` | render arm for `.agentXray` (`CmuxAgentXrayPanelView`); `.agentXray` opted into the pane drop-target overlay | low |
-| `Sources/Workspace.swift` | adds `static let agentXray` to `enum SurfaceKind`; `.agentXray` arms in 3 exhaustive switches (snapshot encoding, restoration, surfaceKind(for:)); `requestFlash(panelId:reason:)` fileprivate helper | low; surgical arm additions only |
+| `Sources/Panels/PanelContentView.swift` | render arm for `.agentXray` (`CmuxAgentXrayPanelView`) casting `panel as? AgentXrayPanelAdapter`; `.agentXray` opted into the pane drop-target overlay | low |
+| `Sources/Workspace.swift` | adds `static let agentXray` to `enum SurfaceKind`; `.agentXray` arms in 3 exhaustive switches (snapshot encoding, restoration, surfaceKind(for:)); `requestFlash(panelId:reason:)` fileprivate helper; `_agentXrayWorkspaceHost: AnyObject?` stored property + `agentXrayWorkspaceHostLazy()` accessor | low; surgical additions only |
 | `Sources/CmuxLifecycleEventPublishing.swift` | `.agentXray` arm returning `"agent_xray"` event kind | trivial |
 | `Sources/Search/GlobalSearchDocuments.swift` | `.agentXray` bundled with the title-only group | trivial |
 | `Sources/TerminalPaneDropTargetView.swift` | `.agentXray` arm returning `nil` (no special drop targeting) | trivial |
@@ -42,7 +42,7 @@ Last verified against `upstream/main` at `81e409c35` on **2026-06-04**.
 | `Sources/ClosedItemHistory.swift` | `.agentXray` arm with the recently-closed label | trivial |
 | `Sources/cmuxApp.swift` | one Debug-menu `Button` invoking `AgentXrayDebugMenu.openAgentXrayInFocusedWorkspace()` | trivial; `#if DEBUG` already wraps the menu |
 
-**Net non-pbxproj surface: 9 files, mostly single-line `case .agentXray:` additions.** The pbxproj itself carries the bulk of the change but is mechanical and pre-merge-resolution-friendly.
+**Net non-pbxproj surface: 9 files**, mostly single-line `case .agentXray:` additions plus the new `agentXrayWorkspaceHostLazy()` accessor on `Workspace`. The pbxproj itself carries the bulk of the change but is mechanical and pre-merge-resolution-friendly.
 
 ---
 
@@ -53,12 +53,12 @@ are NEW files (not edits to upstream), so they don't appear in the
 upstream-touch table above.
 
 ```
-Sources/Panels/AgentXray/AgentXrayPanelHost.swift          # Panel-protocol wrapper
-Sources/Panels/AgentXray/AgentXrayWorkspaceHost.swift      # AgentXrayHost adapter
-Sources/Panels/AgentXray/WorkspaceFocusObserver.swift      # focus-tracking observer
-Sources/Panels/AgentXray/WorkspaceScrollbarBridge.swift    # scrollbar bridge
-Sources/Panels/AgentXray/Workspace+AgentXray.swift         # Workspace factory + detail routing
-Sources/Panels/AgentXray/cmuxApp+AgentXrayDebugMenu.swift  # Debug-menu entry point
+Sources/Panels/AgentXray/AgentXrayPanelAdapter.swift     # cmux Panel-protocol wrapper (per-panel)
+Sources/Panels/AgentXray/AgentXrayWorkspaceHost.swift    # AgentXrayHost conformer (per-workspace);
+                                                         # composes focus/scrollbar/anchor pipelines
+                                                         # + per-panel routing registry
+Sources/Panels/AgentXray/Workspace+AgentXray.swift       # Workspace factories + detail-tab routing
+Sources/Panels/AgentXray/README.md                       # seam architecture doc
 ```
 
 ---

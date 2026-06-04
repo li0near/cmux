@@ -111,7 +111,7 @@ struct PanelContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         case .agentXray:
-            if #available(macOS 15, *), let agentXrayHost = panel as? AgentXrayPanelHost {
+            if #available(macOS 15, *), let agentXrayHost = panel as? AgentXrayPanelAdapter {
                 TranscriptView(
                     panel: agentXrayHost.xrayPanel,
                     appearance: HostAppearance(

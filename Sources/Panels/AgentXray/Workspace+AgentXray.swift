@@ -5,23 +5,28 @@ import Foundation
 
 /// Workspace-side factory methods + detail-tab routing for AgentX-ray
 /// panels.
+///
+/// All factories instantiate `AgentXrayPanelAdapter` (which lazy-binds
+/// to the workspace's shared `AgentXrayWorkspaceHost`). The detail
+/// routing helper is invoked by the host's `openDetailTab(...)` method
+/// — kept here as an extension on `Workspace` because it does Workspace
+/// bookkeeping (panels dictionary, surface-id mapping, bonsplit tab
+/// creation) that's natural to express on the Workspace itself.
 @available(macOS 15, *)
 extension Workspace {
 
-    /// Open a new live AgentX-ray panel as a tab in the given pane.
-    /// Returns the host-wrapper panel; nil on tab creation failure.
-    /// Split a pane and place a new live AgentX-ray panel in the
-    /// new sibling. Mirrors `splitPaneWithMarkdown`'s shape. Used by
-    /// the Debug-menu entry so the AgentX-ray panel sits side-by-side
-    /// with the focused terminal across multiple terminal-tab
-    /// switches in the original pane.
+    /// Split a pane and place a new live AgentX-ray panel in the new
+    /// sibling. Mirrors `splitPaneWithMarkdown`'s shape. Used by the
+    /// Debug-menu entry so the AgentX-ray panel sits side-by-side with
+    /// the focused terminal across multiple terminal-tab switches in
+    /// the original pane.
     @discardableResult
     func splitPaneWithAgentXray(
         targetPane paneId: PaneID,
         orientation: SplitOrientation,
         insertFirst: Bool
-    ) -> AgentXrayPanelHost? {
-        let panel = AgentXrayPanelHost(workspace: self)
+    ) -> AgentXrayPanelAdapter? {
+        let panel = AgentXrayPanelAdapter(workspace: self)
         panels[panel.id] = panel
         panelTitles[panel.id] = panel.displayTitle
 
@@ -72,10 +77,10 @@ extension Workspace {
         inPane paneId: PaneID,
         focus: Bool? = nil,
         targetIndex: Int? = nil
-    ) -> AgentXrayPanelHost? {
+    ) -> AgentXrayPanelAdapter? {
         let shouldFocusNewTab = focus ?? (bonsplitController.focusedPaneId == paneId)
 
-        let panel = AgentXrayPanelHost(workspace: self)
+        let panel = AgentXrayPanelAdapter(workspace: self)
         panels[panel.id] = panel
         panelTitles[panel.id] = panel.displayTitle
 
@@ -132,15 +137,14 @@ extension Workspace {
     }
 
     /// Detail-tab routing path. Called by `AgentXrayWorkspaceHost
-    /// .openDetailTab` when a row's `↗ Open detail` link fires. Opens
-    /// a sibling AgentX-ray tab in the same pane as the source live
-    /// panel, in `.detail` mode.
+    /// .openDetailTab(content:fromPanelID:)` when a row's `↗ Open
+    /// detail` link fires. Opens a sibling AgentX-ray tab in the same
+    /// pane as the source live panel, in `.detail` mode.
     @discardableResult
     func openAgentXrayDetail(
         content: DetailContent,
-        fromPanelID: UUID,
-        originPanelHost: AgentXrayPanelHost
-    ) -> AgentXrayPanelHost? {
+        fromPanelID: UUID
+    ) -> AgentXrayPanelAdapter? {
         // Find the pane that hosts the source panel.
         guard let sourceTabId = surfaceIdFromPanelId(fromPanelID),
               let paneId = bonsplitController.allPaneIds.first(where: { paneId in
@@ -149,7 +153,7 @@ extension Workspace {
             return nil
         }
 
-        let detailPanel = AgentXrayPanelHost(workspace: self, detail: content)
+        let detailPanel = AgentXrayPanelAdapter(workspace: self, detail: content)
         panels[detailPanel.id] = detailPanel
         panelTitles[detailPanel.id] = detailPanel.displayTitle
 

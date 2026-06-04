@@ -3,24 +3,26 @@ import CmuxAgentXray
 import Combine
 import Foundation
 
-/// App-target Panel-protocol wrapper around a package-side
+/// App-target `Panel`-protocol wrapper around a package-side
 /// `CmuxAgentXray.AgentXrayPanel`.
 ///
 /// Why a wrapper exists: cmux's `Panel` protocol requires
 /// `ObservableObject` conformance (Combine). The package's
 /// `AgentXrayPanel` deliberately uses `@Observable` (the Observation
 /// framework, not Combine). The two patterns don't cross-conform, so
-/// the cmux-side adapter holds a strong reference to the package
-/// panel and forwards every Panel-protocol method onto it. Title
-/// changes are bridged via a Task-loop on `withObservationTracking`
-/// that bumps a `@Published` tick so cmux's tab bar redraws.
+/// this adapter holds a strong reference to the package panel and
+/// forwards every `Panel`-protocol method onto it. Title changes are
+/// bridged via a Task-loop on `withObservationTracking` that bumps a
+/// `@Published` tick so cmux's tab bar redraws.
 ///
-/// Lifetime: `Workspace` owns the wrapper; the wrapper owns the
-/// package panel. `close()` runs the package teardown plus cancels
-/// the title-observation Task.
+/// Lifetime: `Workspace` owns the adapter via its `panels` dictionary;
+/// the adapter borrows the workspace-scoped `AgentXrayWorkspaceHost`
+/// (lazy-init on first AgentX-ray panel in the workspace). On `init`,
+/// the adapter registers itself with the host's per-panel registry; on
+/// `close()`, it deregisters.
 @MainActor
 @available(macOS 15, *)
-final class AgentXrayPanelHost: Panel, ObservableObject {
+final class AgentXrayPanelAdapter: Panel, ObservableObject {
 
     // MARK: - Panel protocol
 
@@ -48,33 +50,33 @@ final class AgentXrayPanelHost: Panel, ObservableObject {
 
     private var titleObservationTask: Task<Void, Never>?
 
-    // MARK: - Init / deinit
-
-    /// Per-panel `AgentXrayHost` adapter. Owned by this wrapper so
-    /// teardown happens in lockstep with the panel.
-    let workspaceHost: AgentXrayWorkspaceHost
+    /// Workspace-scoped host that this panel adapter borrows. Strong
+    /// reference because Workspace holds the host weakly through its
+    /// own storage; the adapter keeps it alive for the panel's
+    /// lifetime.
+    private let workspaceHost: AgentXrayWorkspaceHost
 
     // MARK: - Init / deinit
 
     init(workspace: Workspace) {
         self.workspace = workspace
-        let host = AgentXrayWorkspaceHost(workspace: workspace)
+        let host = workspace.agentXrayWorkspaceHostLazy()
         self.workspaceHost = host
         let panel = AgentXrayPanel(host: host)
         self.xrayPanel = panel
         self.id = panel.id
-        host.bind(panelHost: self)
+        host.register(panel: self)
         startTitleObservation()
     }
 
     init(workspace: Workspace, detail: DetailContent) {
         self.workspace = workspace
-        let host = AgentXrayWorkspaceHost(workspace: workspace)
+        let host = workspace.agentXrayWorkspaceHostLazy()
         self.workspaceHost = host
         let panel = AgentXrayPanel(host: host, detail: detail)
         self.xrayPanel = panel
         self.id = panel.id
-        host.bind(panelHost: self)
+        host.register(panel: self)
         // Detail panels don't change title — no observation needed.
     }
 
@@ -114,6 +116,7 @@ final class AgentXrayPanelHost: Panel, ObservableObject {
     func close() {
         titleObservationTask?.cancel()
         titleObservationTask = nil
+        workspaceHost.deregister(panelID: id)
         xrayPanel.close()
     }
 

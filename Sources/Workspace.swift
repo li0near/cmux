@@ -10489,6 +10489,12 @@ final class Workspace: Identifiable, ObservableObject {
     @Published var listeningPorts: [Int] = []
     @Published private(set) var activeRemoteTerminalSessionCount: Int = 0
     var surfaceTTYNames: [UUID: String] = [:]
+    /// Workspace-scoped `AgentXrayWorkspaceHost` (lazy-initialized on
+    /// first AgentX-ray panel open). Stored as `AnyObject?` so the
+    /// stored property doesn't need an `@available(macOS 15, *)`
+    /// annotation; the lazy accessor casts it back. nil when no
+    /// AgentX-ray panel has been opened in this workspace.
+    private var _agentXrayWorkspaceHost: AnyObject?
     private var remoteSessionController: WorkspaceRemoteSessionController?
     private var pendingRemoteForegroundAuthToken: String?
     fileprivate var activeRemoteSessionControllerID: UUID?
@@ -11669,6 +11675,21 @@ final class Workspace: Identifiable, ObservableObject {
         case .agentXray:
             return SurfaceKind.agentXray
         }
+    }
+
+    /// Returns the workspace-scoped `AgentXrayWorkspaceHost`, creating
+    /// it lazily on first call. All AgentX-ray panel adapters in this
+    /// workspace share this single host (one focus pipeline, one
+    /// scrollbar pipeline, one anchor subscription). Lifetime ends
+    /// with the workspace's lifetime.
+    @available(macOS 15, *)
+    func agentXrayWorkspaceHostLazy() -> AgentXrayWorkspaceHost {
+        if let existing = _agentXrayWorkspaceHost as? AgentXrayWorkspaceHost {
+            return existing
+        }
+        let host = AgentXrayWorkspaceHost(workspace: self)
+        _agentXrayWorkspaceHost = host
+        return host
     }
 
     private func resolvedPanelTitle(panelId: UUID, fallback: String) -> String {
