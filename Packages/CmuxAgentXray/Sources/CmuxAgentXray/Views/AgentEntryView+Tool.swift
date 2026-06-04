@@ -76,7 +76,7 @@ extension AgentEntryView {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .hoverBars(palette: palette)
+            .hoverHighlight(palette: palette)
 
             if isExpanded {
                 let inputDetail = tool.inputDetail ?? ""

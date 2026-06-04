@@ -194,7 +194,10 @@ public struct StatusBarView: View {
             systemName: EntryIcon.branchLink.collapsed,
             color: visible ? palette.cyan : palette.dim,
             action: onCycleRewindVisibility,
-            disabled: false
+            disabled: false,
+            tooltip: visible
+                ? "Hide rewind / abandoned-branch links"
+                : "Show rewind / abandoned-branch links"
         )
     }
 
@@ -204,7 +207,10 @@ public struct StatusBarView: View {
             systemName: "arrow.up.left.and.arrow.down.right",
             color: on ? palette.cyan : palette.dim,
             action: onCycleExpansionMode,
-            disabled: false
+            disabled: false,
+            tooltip: on
+                ? "Auto-expand new entries — click to switch to manual"
+                : "Auto-expand new entries (currently off)"
         )
     }
 
@@ -213,7 +219,8 @@ public struct StatusBarView: View {
             systemName: "rectangle.compress.vertical",
             color: palette.dim,
             action: onCollapseAll,
-            disabled: !canCollapse
+            disabled: !canCollapse,
+            tooltip: "Collapse all entries"
         )
     }
 
@@ -222,7 +229,8 @@ public struct StatusBarView: View {
             systemName: "rectangle.expand.vertical",
             color: palette.dim,
             action: onExpandAll,
-            disabled: !canExpand
+            disabled: !canExpand,
+            tooltip: "Expand all entries"
         )
     }
 
@@ -230,7 +238,8 @@ public struct StatusBarView: View {
         systemName: String,
         color: Color,
         action: @escaping () -> Void,
-        disabled: Bool
+        disabled: Bool,
+        tooltip: String?
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
@@ -241,6 +250,6 @@ public struct StatusBarView: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled)
-        .hoverBars(palette: palette)
+        .hoverHighlight(palette: palette, tooltip: tooltip)
     }
 }

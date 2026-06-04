@@ -22,7 +22,7 @@ extension AgentEntryView {
                     .underline(true, color: palette.claude.opacity(Theme.Opacity.dim))
             }
             .buttonStyle(.plain)
-            .hoverBars(palette: palette)
+            .hoverHighlight(palette: palette)
             Spacer(minLength: 0)
         }
         .padding(.leading, Theme.Indent.subRow)

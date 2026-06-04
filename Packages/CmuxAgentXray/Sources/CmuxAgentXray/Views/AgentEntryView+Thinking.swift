@@ -32,7 +32,7 @@ extension AgentEntryView {
                 .padding(.leading, Theme.Indent.subRow)
             }
             .buttonStyle(.plain)
-            .hoverBars(palette: palette)
+            .hoverHighlight(palette: palette)
 
             if isExpanded {
                 Text(body)

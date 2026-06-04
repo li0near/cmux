@@ -104,8 +104,8 @@ public struct TranscriptView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(Array(entries.enumerated()), id: \.element.id.stableString) { index, entry in
-                                if index > 0, case .user(let u) = entry {
-                                    boundaryDivider(id: beforeTurnBoundaryID(u.id.stableString), palette: palette)
+                                if index > 0 {
+                                    boundaryDivider(id: dividerID(before: entry), palette: palette)
                                 }
                                 entryRow(for: entry, palette: palette)
                             }
@@ -218,10 +218,13 @@ public struct TranscriptView: View {
     }
 
     /// Generic dispatcher for non-agent entries (User, System, Compact,
-    /// Synthesized.prLink). Goes through the unified `EntryView`.
+    /// Synthesized.prLink). Goes through the unified `EntryView`, with
+    /// the per-kind detail-open handler wired through
+    /// ``defaultDetailRequest(for:)``.
     private func genericEntryView(entry: Entry, palette: HudPalette) -> some View {
         let computed = panel.computedCache.compute(for: entry, displayMode: .compact)
         let entryID = entry.id.stableString
+        let detailRequest = defaultDetailRequest(for: entry)
         return EntryView(
             entry: entry,
             computed: computed,
@@ -232,20 +235,67 @@ public struct TranscriptView: View {
             onToggleExpansion: {
                 panel.toggleExpansion(.entry(id: entryID))
             },
-            onOpenDetail: {},
+            onOpenDetail: {
+                if let detailRequest {
+                    panel.openDetail(request: detailRequest)
+                }
+            },
             renderSubEntry: { _ in AnyView(EmptyView()) }
         )
         .id(entryID)
     }
 
+    /// Per-kind detail surface mapping. Drives the "↗ Open detail"
+    /// link rendered by `EntryBodyView` when an entry's inline body
+    /// overflows its caps. Returns nil for entries that have no
+    /// detail surface (e.g. PR-link external URL — opening is
+    /// handled separately).
+    private func defaultDetailRequest(for entry: Entry) -> DetailRequest? {
+        let id = entry.id.stableString
+        switch entry {
+        case .user:
+            return .userPrompt(entryID: id)
+        case .system(let sys):
+            switch sys.subType {
+            case .skill:           return .skillBody(entryID: id)
+            case .systemReminder:  return .systemReminderBody(entryID: id)
+            case .recap:           return .recapBody(entryID: id)
+            case .slashCmdInput,
+                 .slashCmdOutput:  return .slashCommandBody(entryID: id)
+            case .localCommand,
+                 .contextUsage,
+                 .planMode,
+                 .editedTextFile,
+                 .other:
+                return .systemOutput(entryID: id)
+            }
+        case .compact:
+            return .systemOutput(entryID: id)
+        case .synthesized, .agent:
+            return nil
+        }
+    }
+
     /// Visible turn-boundary divider (predecessor parity per
-    /// PARITY §1.7 + #2 dogfood feedback). 1pt SwiftUI `Divider()`
+    /// PARITY §1.7 + dogfood feedback). 1pt SwiftUI `Divider()`
     /// with foreground@0.06 background — visible-but-subtle hairline
     /// that doubles as the `proxy.scrollTo(...)` target.
     private func boundaryDivider(id: String, palette: HudPalette) -> some View {
         Divider()
             .background(Color(nsColor: appearance.foregroundColor).opacity(Theme.Opacity.bgWash))
             .id(id)
+    }
+
+    /// Pick the divider id placed BEFORE `entry`. User entries get
+    /// the `beforeTurnBoundaryID` (the canonical turn-boundary scroll
+    /// target); other entries get a derived `before:<entry-id>`
+    /// marker so `proxy.scrollTo(...)` can still target the slot
+    /// even though it's not a turn boundary.
+    private func dividerID(before entry: Entry) -> String {
+        if case .user(let u) = entry {
+            return beforeTurnBoundaryID(u.id.stableString)
+        }
+        return "__cmux_agentxray_before_entry__:\(entry.id.stableString)"
     }
 
     private func visibleEntries() -> [Entry] {
@@ -555,7 +605,7 @@ private struct BranchLinkEntryRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverBars(palette: palette)
+        .hoverHighlight(palette: palette)
     }
 
     private var titleText: String {
