@@ -20,6 +20,10 @@ extension AgentEntryView {
         let isError = tool.status == .error
         let isPending = tool.status == .pending
         let durationText: String? = tool.durationMs.map { "\($0) ms" }
+        /// Shared 3-state accent for icon + name. Predecessor coloured
+        /// only the icon by status (name stayed primary), but per
+        /// dogfood feedback we keep them symmetric: `.error` → red,
+        /// `.pending` → yellow (icon also pulses), `.ok` → green.
         let statusAccent: Color = {
             switch tool.status {
             case .error:   return palette.red
@@ -27,7 +31,6 @@ extension AgentEntryView {
             case .ok:      return palette.green
             }
         }()
-        let nameColor: Color = isError ? palette.red : palette.primary
 
         VStack(alignment: .leading, spacing: 2) {
             Button {
@@ -46,7 +49,7 @@ extension AgentEntryView {
                     }
                     Text(toolName)
                         .font(Theme.Row.name)
-                        .foregroundStyle(nameColor)
+                        .foregroundStyle(statusAccent)
                         .lineLimit(1)
                     if let chip = tool.subagentType, !chip.isEmpty {
                         Text(chip)
