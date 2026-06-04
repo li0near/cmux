@@ -25,6 +25,7 @@ public final class TranscriptStream {
     public private(set) var error: String?
 
     @ObservationIgnored private var tail: JSONLTail?
+    @ObservationIgnored private var remoteStream: RemoteJSONLStream?
     @ObservationIgnored private var claudeBuilder: ClaudeTranscriptBuilder
     @ObservationIgnored private var codexBuilder: CodexTranscriptBuilder
     @ObservationIgnored private var codexStamps: CodexSyntheticTimestamps?
@@ -39,6 +40,7 @@ public final class TranscriptStream {
 
     deinit {
         tail?.stop()
+        remoteStream?.stop()
     }
 
     /// Switch to a new transcript file. Resets internal state and
@@ -47,10 +49,19 @@ public final class TranscriptStream {
     /// session's entries to the new session's entries with no
     /// intermediate empty-state flash; the async tail then only
     /// watches for appends past the current offset.
+    ///
+    /// Local sessions stream via `JSONLTail` (DispatchSource vnode
+    /// watch on the local file). Remote sessions stream via
+    /// `RemoteJSONLStream` (`ssh exec tail -F` over the existing
+    /// SSH ControlMaster socket); the initial-fill content arrives
+    /// over the wire as part of the same `tail -n +1 -F` stream
+    /// rather than being read synchronously.
     public func attach(session: ResolvedAgentSession?) {
         guard let session, let path = session.transcriptPath, !path.isEmpty else {
             tail?.stop()
             tail = nil
+            remoteStream?.stop()
+            remoteStream = nil
             entries = []
             lineCount = 0
             error = nil
@@ -59,8 +70,13 @@ public final class TranscriptStream {
         }
 
         tail?.stop()
+        tail = nil
+        remoteStream?.stop()
+        remoteStream = nil
         claudeBuilder.reset()
         codexBuilder.reset()
+        entries = []
+        lineCount = 0
         error = nil
         currentKind = session.agentKind
         if session.agentKind == .codex {
@@ -69,6 +85,17 @@ public final class TranscriptStream {
             codexBuilder.stampForIndex = { idx in stamps.stamp(for: idx) }
         }
 
+        switch session.transport {
+        case .local:
+            attachLocal(path: path)
+        case .remote(let sshTransport):
+            attachRemote(path: path, transport: sshTransport)
+        }
+    }
+
+    // MARK: - Local transport
+
+    private func attachLocal(path: String) {
         // Synchronously ingest current content (~few ms on main).
         let initialBytes = (try? Data(contentsOf: URL(fileURLWithPath: path))) ?? Data()
         let initialText = String(data: initialBytes, encoding: .utf8) ?? ""
@@ -92,6 +119,25 @@ public final class TranscriptStream {
         }
         tail = nextTail
         nextTail.start()
+    }
+
+    // MARK: - Remote transport
+
+    private func attachRemote(path: String, transport: SSHTransport) {
+        // Remote initial fill arrives via the same stream as appends
+        // (`tail -n +1 -F` re-emits from the start). No synchronous
+        // round-trip on main.
+        let stream = RemoteJSONLStream(
+            transport: transport,
+            remotePath: path,
+            logger: logger
+        ) { [weak self] lines in
+            Task { @MainActor [weak self] in
+                self?.ingest(lines)
+            }
+        }
+        remoteStream = stream
+        stream.start()
     }
 
     private func ingest(_ rawLines: [String]) {

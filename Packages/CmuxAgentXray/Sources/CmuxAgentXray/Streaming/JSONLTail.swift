@@ -22,8 +22,9 @@ public final class JSONLTail: @unchecked Sendable {
     private nonisolated(unsafe) var watchSource: (any DispatchSourceFileSystemObject)?
     private nonisolated(unsafe) var watchedFD: Int32 = -1
     private nonisolated(unsafe) var offset: UInt64 = 0
-    /// Holds a partial last line if the file ended without a newline.
-    private nonisolated(unsafe) var carry: String = ""
+    /// Holds partial-line and partial-UTF-8-codepoint bytes carried
+    /// across drains. See `JSONLLineFramer` for the safety argument.
+    private nonisolated(unsafe) var framer = JSONLLineFramer()
     private nonisolated(unsafe) var debouncing = false
     /// Counts consecutive open() failures. Exponential-backoff retries
     /// cap at `maxOpenRetries` to avoid an infinite asyncAfter chain
@@ -92,7 +93,7 @@ public final class JSONLTail: @unchecked Sendable {
         }
         openRetryAttempts = 0
         watchedFD = fd
-        carry = ""
+        framer.reset()
         drainAppendedBytes()
         installVnodeWatch(fd: fd)
     }
@@ -172,22 +173,7 @@ public final class JSONLTail: @unchecked Sendable {
             return
         }
 
-        guard let chunkText = String(data: buffer, encoding: .utf8) else {
-            return
-        }
-
-        var working = carry + chunkText
-        carry = ""
-        while let nlIdx = working.firstIndex(of: "\n") {
-            let line = String(working[..<nlIdx])
-            working = String(working[working.index(after: nlIdx)...])
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                emitted.append(trimmed)
-            }
-        }
-        carry = working
-
+        emitted = framer.ingest(buffer)
         if !emitted.isEmpty {
             onLines(emitted)
         }

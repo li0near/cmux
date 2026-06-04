@@ -492,6 +492,29 @@ extension Workspace {
         guard let panel = panels[panelId] else { return }
         panel.triggerFlash(reason: reason)
     }
+
+    /// Build an `SSHTransport` from the workspace's
+    /// `WorkspaceRemoteConfiguration` for AgentX-ray's remote tail
+    /// pipeline. Returns nil for local workspaces and for remote
+    /// workspaces whose configuration lacks a usable destination.
+    ///
+    /// The ControlPath is reused so the AgentX-ray `ssh exec tail -F`
+    /// piggybacks on the same multiplexed connection cmux uses for
+    /// terminals — no fresh auth round-trip.
+    fileprivate func agentXraySSHTransport() -> SSHTransport? {
+        guard let config = remoteConfiguration else { return nil }
+        let dest = config.destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !dest.isEmpty else { return nil }
+        return SSHTransport(
+            destination: dest,
+            port: config.port,
+            identityFile: config.identityFile,
+            controlPath: nil  // ControlPath template is computed lazily
+                              // inside the SSH invocation; SSH resolves
+                              // %C tokens at exec time. Future enhancement:
+                              // surface the resolved path here.
+        )
+    }
 }
 
 // MARK: - Logger adapter

@@ -12,6 +12,7 @@ public struct ResolvedAgentSession: Equatable, Sendable {
     public let surfaceID: String
     public let cwd: String?
     public let transcriptPath: String?
+    public let transport: SessionTransport
 
     public enum AgentKind: String, Equatable, Sendable {
         case claude
@@ -24,7 +25,8 @@ public struct ResolvedAgentSession: Equatable, Sendable {
         workspaceID: String,
         surfaceID: String,
         cwd: String?,
-        transcriptPath: String?
+        transcriptPath: String?,
+        transport: SessionTransport = .local
     ) {
         self.agentKind = agentKind
         self.sessionID = sessionID
@@ -32,6 +34,46 @@ public struct ResolvedAgentSession: Equatable, Sendable {
         self.surfaceID = surfaceID
         self.cwd = cwd
         self.transcriptPath = transcriptPath
+        self.transport = transport
+    }
+}
+
+/// Where a `ResolvedAgentSession`'s transcript bytes live and how to
+/// stream them.
+public enum SessionTransport: Equatable, Sendable {
+    /// Transcript file is on the local filesystem; stream via
+    /// `JSONLTail` (DispatchSource vnode watch).
+    case local
+
+    /// Transcript file is on a remote SSH host; stream via
+    /// `RemoteJSONLStream` (`ssh exec tail -F` over the existing
+    /// SSH ControlMaster socket).
+    case remote(SSHTransport)
+}
+
+/// Subset of cmux's `WorkspaceRemoteConfiguration` that the package
+/// needs to spawn an `ssh` subprocess. Carried in
+/// `SessionTransport.remote(_:)` so the package never imports cmux
+/// types.
+public struct SSHTransport: Equatable, Sendable {
+    public let destination: String
+    public let port: Int?
+    public let identityFile: String?
+    /// Path to the SSH ControlMaster socket (e.g.
+    /// `/tmp/cmux-ssh-501-12345-%C`). Reused so the remote tail
+    /// doesn't pay another auth round-trip.
+    public let controlPath: String?
+
+    public init(
+        destination: String,
+        port: Int? = nil,
+        identityFile: String? = nil,
+        controlPath: String? = nil
+    ) {
+        self.destination = destination
+        self.port = port
+        self.identityFile = identityFile
+        self.controlPath = controlPath
     }
 }
 
