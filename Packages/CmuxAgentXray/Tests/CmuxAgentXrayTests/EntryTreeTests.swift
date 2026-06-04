@@ -16,10 +16,10 @@ struct EntryTreeTests {
         )
     }
 
-    private func makeAgent(id: String = "a1") -> AgentTurn {
+    private func makeAgent(id: String = "a1") -> AgentEntry {
         let thinking = ThinkingEntry(
             id: .derived(parent: id, kind: "thinking"),
-            parentTurnID: .fromJSONL(id),
+            parentEntryID: .fromJSONL(id),
             timestamp: nil,
             header: Header(icon: .thinking, name: "Thinking"),
             body: Body(sections: [.text(["I should..."], style: .thinking)])
@@ -32,12 +32,12 @@ struct EntryTreeTests {
             toolName: "Read",
             status: .ok
         )
-        return AgentTurn(
+        return AgentEntry(
             id: .fromJSONL(id),
             timestamp: Date(timeIntervalSince1970: 1_001),
             header: Header(icon: .agent, name: "Claude", label: "Sonnet 4.5"),
             body: Body(sections: [.subentries([])]),
-            usage: AgentTurn.TokenUsage(inputTokens: 100, outputTokens: 50),
+            usage: AgentEntry.TokenUsage(inputTokens: 100, outputTokens: 50),
             stopReason: "end_turn",
             subEntries: [.thinking(thinking), .tool(tool)]
         )
@@ -67,9 +67,9 @@ struct EntryTreeTests {
         #expect(transcript[1].id.stableString == "a1")
     }
 
-    // MARK: - AgentTurn sub-entries
+    // MARK: - AgentEntry sub-entries
 
-    @Test("AgentTurn.SubEntry dispatches id and header")
+    @Test("AgentEntry.SubEntry dispatches id and header")
     func subEntryDispatch() {
         let turn = makeAgent()
         #expect(turn.subEntries.count == 2)

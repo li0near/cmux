@@ -17,8 +17,8 @@ public struct TurnAnchor: Identifiable, Equatable, Sendable {
     public let userEntryID: String
     /// Agent turn id paired with this user prompt. Nil while the
     /// assistant response hasn't started streaming yet. Updated once
-    /// the trailing `AgentTurn` first becomes visible in the stream.
-    public var agentTurnID: String?
+    /// the trailing `AgentEntry` first becomes visible in the stream.
+    public var agentEntryID: String?
     /// Terminal `total` scrollback rows at user-prompt observation
     /// time. Read from the host's scrollbar snapshot at the moment the
     /// user entry first appears in the stream, OR delivered exactly via
@@ -38,13 +38,13 @@ public struct TurnAnchor: Identifiable, Equatable, Sendable {
 
     public init(
         userEntryID: String,
-        agentTurnID: String? = nil,
+        agentEntryID: String? = nil,
         terminalRowAtSubmit: UInt64,
         totalAtCapture: UInt64,
         capturedAt: Date
     ) {
         self.userEntryID = userEntryID
-        self.agentTurnID = agentTurnID
+        self.agentEntryID = agentEntryID
         self.terminalRowAtSubmit = terminalRowAtSubmit
         self.totalAtCapture = totalAtCapture
         self.capturedAt = capturedAt

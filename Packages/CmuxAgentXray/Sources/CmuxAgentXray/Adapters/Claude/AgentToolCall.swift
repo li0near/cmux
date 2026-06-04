@@ -5,7 +5,7 @@ import Foundation
 /// lines. Converted to a public `ToolEntry` at flush time, with the
 /// `Header` and `Body` constructed from these fields.
 ///
-/// Kept internal: callers consume the final `AgentTurn.subEntries`
+/// Kept internal: callers consume the final `AgentEntry.subEntries`
 /// list. The accumulator's "incremental" shape (separate `result` and
 /// `inputDetail` strings, mutable `isError` and `durationMs`) is a
 /// builder convenience and not part of the public model.

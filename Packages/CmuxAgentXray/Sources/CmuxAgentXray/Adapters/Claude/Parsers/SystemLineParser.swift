@@ -8,7 +8,7 @@ import Foundation
 /// System entry so they never silently disappear.
 ///
 /// `turn_duration` is a special case: the line is consumed by
-/// `ClaudeTurnDurationResolver` for `AgentTurn` header stamping; no
+/// `ClaudeTurnDurationResolver` for `AgentEntry` header stamping; no
 /// entry is emitted.
 enum SystemLineParser {
     static func parse(

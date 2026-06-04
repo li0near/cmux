@@ -62,14 +62,14 @@ extension AgentXrayPanel {
     }
 
     /// Walk the entries once to pair every recorded user-entry anchor
-    /// with its first following AgentTurn. Idempotent.
-    func pairTurnAnchorsToAgentTurns() {
+    /// with its first following AgentEntry. Idempotent.
+    func pairTurnAnchorsToAgentEntries() {
         guard case .live = mode else { return }
         let entries = stream.entries
         guard !entries.isEmpty else { return }
         var lastUnpairedUserID: String? = {
             for anchor in turnAnchorStore.orderedAnchors.reversed() {
-                if anchor.agentTurnID == nil { return anchor.userEntryID }
+                if anchor.agentEntryID == nil { return anchor.userEntryID }
             }
             return nil
         }()
@@ -81,9 +81,9 @@ extension AgentXrayPanel {
                 }
             case .agent(let turn):
                 if let userID = lastUnpairedUserID {
-                    turnAnchorStore.pairAgentTurn(
+                    turnAnchorStore.pairAgentEntry(
                         userEntryID: userID,
-                        agentTurnID: turn.id.stableString
+                        agentEntryID: turn.id.stableString
                     )
                     lastUnpairedUserID = nil
                 }

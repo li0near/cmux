@@ -10,7 +10,7 @@ public import SwiftUI
 /// closures) — never an `@ObservedObject` reference. Callers from
 /// the panel layer are responsible for passing immutable snapshots.
 ///
-/// Recursion: `.subentries` sections (AgentTurn body, branch-link
+/// Recursion: `.subentries` sections (AgentEntry body, branch-link
 /// body, tool sidechains) call back into this view via the
 /// `renderSubEntry` closure provided by the parent panel view. The
 /// closure isolates SwiftUI's view identity tracking so the parent

@@ -7,7 +7,7 @@
 ///   background. The `style` discriminator drives per-section visual
 ///   treatment (italic for thinking, red for errors, future diff colors).
 /// - `.subentries(...)` — nested children. The renderer policy decides
-///   whether to render them inline (current behavior for `AgentTurn`) or
+///   whether to render them inline (current behavior for `AgentEntry`) or
 ///   as a single "open detail" link (current behavior for tool sidechains
 ///   and abandoned-branch link). The data shape is the same in both
 ///   cases.
@@ -38,7 +38,7 @@ public enum Section: Equatable, Sendable {
     /// drives per-section visual treatment (italic, error red, etc.).
     case text([String], style: TextStyle)
     /// Nested entries. Rendering policy is decided by the variant
-    /// (inline for `AgentTurn`; link-to-detail for tool sidechains and
+    /// (inline for `AgentEntry`; link-to-detail for tool sidechains and
     /// abandoned-branch synthesizer rows).
     case subentries([Entry])
 }

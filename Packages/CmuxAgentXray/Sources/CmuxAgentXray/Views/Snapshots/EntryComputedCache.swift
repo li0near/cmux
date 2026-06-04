@@ -129,7 +129,7 @@ public final class EntryComputedCache {
     /// Resolve the right `RenderCaps.Section` for a given entry +
     /// section pair. Heuristic: pick caps based on the entry's
     /// variant case + the section's position. Sub-entry-only entries
-    /// (like AgentTurn body) defer to per-sub-entry caps at the View
+    /// (like AgentEntry body) defer to per-sub-entry caps at the View
     /// layer — this resolver returns `.standard` for any
     /// uncategorised text body.
     private func capsForBlock(entry: Entry, section: Section) -> RenderSectionCaps {
@@ -137,7 +137,7 @@ public final class EntryComputedCache {
         case .user:
             return RenderCaps.caps(for: .userPrompt)
         case .agent:
-            // AgentTurn's body is .subentries(...); per-sub-entry caps
+            // AgentEntry's body is .subentries(...); per-sub-entry caps
             // apply at the SubEntry's computed-cache call site.
             return RenderCaps.caps(for: .userPrompt)
         case .compact:

@@ -27,16 +27,18 @@ after every phase completes so a fresh session can resume mid-migration.
 | 14 Documentation finalization | ✅ done | `agentxray` @ `7335f5b61` | FORK_NOTES.md upstream-touch table populated (10 rows + new-files inventory); README status section refreshed |
 | 15 Cleanup — retire spike branch references | ✅ done | `agentxray` @ `7335f5b61` | PHASE_9_HANDOVER.md removed (superseded by Phase 9 commit + FORK_NOTES); remaining spike-references are intentional lineage notes in code comments |
 | 17 Parity punch-list completion | ⏳ in progress | see `Packages/CmuxAgentXray/PARITY_PUNCH_LIST.md` | Exhaustive side-by-side audit produced 87 findings (42 ✅ / 38 ⚠️ / 7 ❌). Punch-list is the canonical execution order to reach parity. |
-| 17a Visual-parity pass | ⏳ ready to land | see `Packages/CmuxAgentXray/VISUAL_PASS_REVIEW.md` | User-signed-off spec for the visual-parity commit (icons, layout tokens, typography groups, hover bars, file moves, renames). Lands as one batch. |
+| 17pre `AgentTurn → AgentEntry` rename | ✅ done | this commit | Mechanical sweep — type decl, file rename, nested types, anchor field (`agentTurnID` → `agentEntryID`), store method (`pairAgentTurn` → `pairAgentEntry`), child field (`parentTurnID` → `parentEntryID`), doc-comment type references. Conversational "turn" prose preserved (`per-turn`, `this turn`, `the turn's subEntries`, etc.). Verification: `git grep -wn "AgentTurn"` → 0 hits in code; build + tests 21/21 green. The fabricated §17 "AgentRow vs AgentTurn" Q&A line was deleted. |
+| 17a Visual-parity pass | ⏳ blocked on 17pre | see `Packages/CmuxAgentXray/VISUAL_PASS_REVIEW.md` | User-signed-off spec for the visual-parity commit (icons, layout tokens, typography groups, hover bars, file moves, renames). Lands as one batch. |
 | 17b AttachStage feature | ⏳ follow-up | (no doc yet) | Separate commit after 17a — derives `AttachStage` enum from panel state, drives the status-bar yellow-state label + streaming-error rendering. Stages: idle → awaitingSession → sessionHooked → locatingTranscript → streamingNoEntries → streaming(turns, tokens). |
 | 17c Behavioural correctness batch | ⏳ blocked on 17a/17b | see `PARITY_PUNCH_LIST.md` Group 1 | Final batch — `scrollForFilter` cross-band routing, `InspectorRowAnchorsKey` aggregation, bulk-collapse / bulk-expand handlers, `layoutRevision` remount, session-change scroll handler, boundary-id `.id(...)` on row dividers, detail-mode entries-list rendering. |
+| 17d Forward-looking deferrals beyond parity | 📋 tracked | see §16 deferred-task ledger | Items A, B, C, F, G, H — go beyond predecessor parity (TextStyle diff-cases, inline sub-agent transcripts, ToolEntry shape evolution, branchLink defaultValue cleanup, xcstrings SPM-build-time pre-compile, AsyncStream focus pipeline). Each is a distinct mini-spec when picked up; not a single batch. |
 
 ---
 
 ## §2 Goals
 
 1. Migrate `Sources/Panels/AgentInspector/` → self-contained SPM package `Packages/CMUXAgentXray`.
-2. Replace umbrella vocabulary: `Row → Entry`, `AgentChunk → AgentTurn`, `ChunkBuilder → TranscriptBuilder`. Drop `Inspector*` prefixes inside the package. Drop residual `AI` legacy in favour of `Agent`.
+2. Replace umbrella vocabulary: `Row → Entry`, `AgentChunk → AgentEntry`, `ChunkBuilder → TranscriptBuilder`. Drop `Inspector*` prefixes inside the package. Drop residual `AI` legacy in favour of `Agent`.
 3. Reshape data model around `Entry { scalars + Header + Body }`; `Body.sections: [Section]` with `case text([String], style: TextStyle)` or `case subentries([Entry])`.
 4. Layer-first directory structure: `Models/`, `Streaming/`, `Adapters/`, `Behavior/`, `Views/`, `Panel/`, `Host/`, `Resources/`.
 5. Adopt `@Observable` for the panel ViewModel (replaces `ObservableObject` + `@Published`).
@@ -62,8 +64,8 @@ after every phase completes so a fresh session can resume mid-migration.
 
 | Today | Tomorrow |
 |---|---|
-| `InspectorRow` (enum, 8 cases) | `Entry` (enum, **5 top-level cases** — sub-entries collapse into `AgentTurn.SubEntry`) |
-| `AgentChunk` | `AgentTurn` |
+| `InspectorRow` (enum, 8 cases) | `Entry` (enum, **5 top-level cases** — sub-entries collapse into `AgentEntry.SubEntry`) |
+| `AgentChunk` | `AgentEntry` |
 | `Row` (protocol) | `EntryProtocol` (or just keep on `Entry` enum if protocol no longer needed) |
 | `TextRow` (protocol) | `BodyEntry` (refinement marker; entries with inline text body) |
 | `RowType` enum | merged into per-variant case (no longer needed once enum-discriminator collapses) |
@@ -130,9 +132,9 @@ after every phase completes so a fresh session can resume mid-migration.
 | Today | Tomorrow |
 |---|---|
 | `chunks` (in TranscriptStream, builders) | `entries` |
-| `subrows: [InspectorRow]` (in AgentChunk) | `subEntries: [AgentTurn.SubEntry]` |
+| `subrows: [InspectorRow]` (in AgentChunk) | `subEntries: [AgentEntry.SubEntry]` |
 | `sidechainTranscript: [InspectorRow]?` | now embedded in `body.sections` as `.subentries(...)` |
-| `streamingInspectorRowId` | `streamingTurnID` (only AgentTurn streams) |
+| `streamingInspectorRowId` | `streamingTurnID` (only AgentEntry streams) |
 | `pairInspectorRowsToTurnAnchors` | `pairEntriesToTurnAnchors` |
 | `flushPendingInspectorRow`, `mergeIntoPendingInspectorRow`, `PendingInspectorRow` | `flushPendingEntry`, `mergeIntoPendingTurn`, `PendingEntry` |
 | `recomputeStreamingInspectorRowId` | `recomputeStreamingTurnID` |
@@ -156,7 +158,7 @@ Detailed in §6. All `Sources/Panels/AgentInspector/**/*.swift` files migrate to
 // MARK: - Entry umbrella (5 top-level cases)
 public enum Entry: Identifiable, Equatable, Sendable {
     case user(UserEntry)
-    case agent(AgentTurn)
+    case agent(AgentEntry)
     case system(SystemEntry)
     case compact(CompactEntry)
     case synthesized(SynthesizedEntry)
@@ -220,7 +222,7 @@ public struct UserEntry: Equatable, Sendable {
     public let isQueuedPending: Bool
 }
 
-public struct AgentTurn: Equatable, Sendable {
+public struct AgentEntry: Equatable, Sendable {
     public let id: EntryID
     public let timestamp: Date?
     public let header: Header
@@ -248,7 +250,7 @@ public struct AgentTurn: Equatable, Sendable {
 }
 
 public struct ThinkingEntry: Equatable, Sendable {
-    public let id: EntryID; public let parentTurnID: EntryID
+    public let id: EntryID; public let parentEntryID: EntryID
     public let timestamp: Date?; public let header: Header; public let body: Body  // text style: .thinking
 }
 
@@ -267,7 +269,7 @@ public struct ToolEntry: Equatable, Sendable {
 }
 
 public struct AssistantTextEntry: Equatable, Sendable {
-    public let id: EntryID; public let parentTurnID: EntryID
+    public let id: EntryID; public let parentEntryID: EntryID
     public let timestamp: Date?; public let header: Header
     public let body: Body              // empty sections → Variant A header-only link
     public let fullBody: String        // detail-tab payload
@@ -340,7 +342,7 @@ Packages/CMUXAgentXray/
 │   │   ├── ClaudeAnchorPayload.swift         # types only (algorithm moves to Behavior)
 │   │   └── Entries/
 │   │       ├── UserEntry.swift
-│   │       ├── AgentTurn.swift               # AgentTurn + nested SubEntry, ThinkingEntry, ToolEntry, AssistantTextEntry, TokenUsage
+│   │       ├── AgentEntry.swift               # AgentEntry + nested SubEntry, ThinkingEntry, ToolEntry, AssistantTextEntry, TokenUsage
 │   │       ├── SystemEntry.swift             # + nested SubType + PlanModePhase
 │   │       ├── CompactEntry.swift
 │   │       └── SynthesizedEntry.swift        # + nested Kind
@@ -535,7 +537,7 @@ Port + reshape `Sources/Panels/AgentInspector/Model/AgentChunk.swift` (kitchen s
 
 **Order of work:**
 1. `Header.swift`, `Body.swift`, `Section.swift`, `TextStyle.swift`, `EntryID.swift` — primitives first.
-2. Per-variant entry types (`UserEntry`, `AgentTurn`, `SystemEntry`, `CompactEntry`, `SynthesizedEntry`) one file each.
+2. Per-variant entry types (`UserEntry`, `AgentEntry`, `SystemEntry`, `CompactEntry`, `SynthesizedEntry`) one file each.
 3. `Entry` umbrella enum.
 4. `Models/{ScrollMode,ExpansionMode,RewindVisibility,TurnAnchor,ClaudeAnchorPayload}.swift`.
 5. Models tests: round-trip equality, ID dispatch, header builder helpers.
@@ -544,7 +546,7 @@ Port + reshape `Sources/Panels/AgentInspector/Model/AgentChunk.swift` (kitchen s
 
 ### Phase 3 — Adapters (Claude + Codex)
 
-Port adapters into `Adapters/Claude/` and `Adapters/Codex/`. Apply renames (`ClaudeChunkBuilder → ClaudeTranscriptBuilder`, `chunks → entries`, `AgentChunk → AgentTurn`, etc.).
+Port adapters into `Adapters/Claude/` and `Adapters/Codex/`. Apply renames (`ClaudeChunkBuilder → ClaudeTranscriptBuilder`, `chunks → entries`, `AgentChunk → AgentEntry`, etc.).
 
 **Sub-phases:**
 - 3a: Pure-function resolvers (Branch, TurnDuration, QueuedPrompt, SkillCommand) — easiest tier.
@@ -684,7 +686,7 @@ the package never imports cmux types.
 - Upstream-touch policy: every cmux-app-side change supporting AgentX-ray
   (enum arm, switch case, debug menu wiring) goes in
   `Packages/CMUXAgentXray/FORK_NOTES.md`. Aim: minimal.
-- Vocabulary: `Entry` (umbrella, 5 cases) / `AgentTurn` (the only container) /
+- Vocabulary: `Entry` (umbrella, 5 cases) / `AgentEntry` (the only container) /
   `Transcript = [Entry]` / `Header { name, label, title, timestamp, trailing }` /
   `Body { sections: [Section] }` where `Section = .text(..., style:) | .subentries(...)`.
   Never use `Row` or `Chunk` in this package.
@@ -718,7 +720,7 @@ with bulk expand/collapse, snap-mode viewport sync, and detail-tab routing.
 ## Data model
 - Transcript = [Entry]
 - Entry: 5 top-level cases (user, agent, system, compact, synthesized)
-- AgentTurn carries SubEntry list (thinking, tool, assistantText)
+- AgentEntry carries SubEntry list (thinking, tool, assistantText)
 - Every entry: Header + Body (sections)
 
 ## Host integration
@@ -787,12 +789,12 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
     Sync/ClaudeAnchorPayload.swift types → Models/ClaudeAnchorPayload.swift (pairing algorithm moves to Behavior in Phase 5)
   Vocabulary applied:
     InspectorRow → Entry (5 cases: user/agent/system/compact/synthesized)
-    AgentChunk → AgentTurn (with nested SubEntry / ThinkingEntry / ToolEntry / AssistantTextEntry / TokenUsage)
+    AgentChunk → AgentEntry (with nested SubEntry / ThinkingEntry / ToolEntry / AssistantTextEntry / TokenUsage)
     UserRow/SystemRow/CompactRow/SynthesizedRow → UserEntry/SystemEntry/CompactEntry/SynthesizedEntry
     SystemSubType → SystemEntry.SubType (nested)
     SynthesizedKind → SynthesizedEntry.Kind (nested)
     PlanModePhase → SystemEntry.PlanModePhase (nested)
-    AgentTokenUsage → AgentTurn.TokenUsage (nested)
+    AgentTokenUsage → AgentEntry.TokenUsage (nested)
     AgentTokenUsage.zero static still available
     InspectorIcon → EntryIcon (moved from Render/ to Models/, since Header references it)
   New types introduced (refactor):
@@ -812,9 +814,9 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
     CodexChunkBuilder       → CodexTranscriptBuilder
     snapshot()              → transcript()
     chunks: [InspectorRow]  → entries: [Entry]
-    AgentChunk              → AgentTurn (with subEntries instead of subrows)
+    AgentChunk              → AgentEntry (with subEntries instead of subrows)
     UserRow/SystemRow/CompactRow/SynthesizedRow → *Entry
-    ToolRow/ThinkingRow/AssistantTextRow → AgentTurn.SubEntry
+    ToolRow/ThinkingRow/AssistantTextRow → AgentEntry.SubEntry
     ClaudeBuilderConsts     → ClaudeRenderConsts
     AgentInspectorJSON      → AgentXrayJSON
     ClaudeHookSessionRecord → AgentHookSessionRecord (shared by Codex too)
@@ -822,7 +824,7 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
     Header carries icon/name/label/title/trailing/timestamp
     Body.sections = [.text(blocks, style:) | .subentries([Entry])]
     Variant-A entries (assistantText, prLink) build Body.empty
-    Variant-C entries (branchLink, agentTurn body) carry .subentries(...)
+    Variant-C entries (branchLink, agentEntry body) carry .subentries(...)
   Localization: every "agentInspector.*" key migrated to "agentXray.*" with
     bundle: .module. Resources/Localizable.xcstrings still empty — keys
     resolve to defaultValue at runtime; Phase 11 fills the bundle.
@@ -860,12 +862,12 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
     bulk algorithm. EntriesFilter + computeEntriesFilter +
     entriesForFilter + scrollTarget + boundary id helpers
     (beforeTurnBoundaryID / tailBoundaryID). TurnAnchorStore
-    (@MainActor; setSurface, recordTurnStart, pairAgentTurn,
+    (@MainActor; setSurface, recordTurnStart, pairAgentEntry,
     anchor(forEntryID:), orderedAnchors). AnchorPairing
     (pairClaudeAnchorsToUserEntries with both queue-overload
     variants).
   Vocabulary: VisibleTurnFilter → EntriesFilter; pairInspectorRow →
-    pairAgentTurn; agentChunkId → agentTurnID; userChunkId →
+    pairAgentEntry; agentChunkId → agentEntryID; userChunkId →
     userEntryID throughout.
   ScrollbarSnapshot value type promoted to Models/ for reuse by
     TurnAnchorStore + computeEntriesFilter; replaces the GhosttyScrollbar
@@ -915,11 +917,11 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
     visibleTurnFilter         → entriesFilter
     streamingInspectorRowId   → streamingEntryID
     cachedRowCollection       → cachedEntryCollection
-    pairInspectorRowsToTurnAnchors → pairTurnAnchorsToAgentTurns
+    pairInspectorRowsToTurnAnchors → pairTurnAnchorsToAgentEntries
     DerivedRowID.make(parent:kind:)
                               → EntryID.derived(parent:kind:).stableString
     ExpansionToggle.agentHeader/chunkBody/thinking/tool
-                              → entryChevron/thinking(parentTurnID:)/tool(toolID:)
+                              → entryChevron/thinking(parentEntryID:)/tool(toolID:)
   Host abstraction landed (originally Phase 9 surface; pulled into
     Phase 8 because Panel can't compile without it):
     Host/AgentXrayHost.swift   # protocol surface (focus/scrollbar/anchor
@@ -1091,6 +1093,43 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
     + app-side adapter are intentional lineage notes in code
     comments — no orphan docs, no dangling test fixtures, no leftover
     typealiases pointing at the old vocabulary.
+
+[Doc polish] 2026-06-04 -> agentxray @ 9ce8d7fb0 + 43c7af259
+  Two follow-up doc-only commits not tied to a numbered phase:
+    9ce8d7fb0 — README/in-tree docs made self-contained for in-repo
+                workflow (no external project pointers).
+    43c7af259 — source-comment scrub of remaining external/lineage
+                pointers (predecessor archaeology cross-refs live in
+                §18 only, never inline).
+  No code changes; build + tests unchanged.
+
+[Phase 17pre] 2026-06-04 -> agentxray @ 17pre commit (see "Phase 17pre: rename AgentTurn → AgentEntry")
+  AgentTurn → AgentEntry rename. Mechanical sweep across the package
+    + tests + docs. Restores symmetry with the user's original
+    Phase-2 "everything derives from Entry" instruction. The
+    asymmetric naming was a unilateral deviation logged in the
+    prior §17 as a fabricated Q&A entry (now deleted).
+  Type/field/method renames:
+    AgentTurn (struct)              → AgentEntry
+    Models/Entries/AgentTurn.swift  → AgentEntry.swift
+    AgentTurn.SubEntry / .TokenUsage / .SubEntry.Status → AgentEntry.*
+    Entry.agent(AgentTurn)          → Entry.agent(AgentEntry)
+    TurnAnchor.agentTurnID          → TurnAnchor.agentEntryID
+    TurnAnchorStore.pairAgentTurn(...)
+                                    → pairAgentEntry(userEntryID:agentEntryID:)
+    AgentXrayPanel+Anchors.pairTurnAnchorsToAgentTurns()
+                                    → pairTurnAnchorsToAgentEntries()
+    ThinkingEntry.parentTurnID      → parentEntryID
+    AssistantTextEntry.parentTurnID → parentEntryID
+  What stayed "Turn" — by design, the conversational turn is a
+    distinct semantic concept from the data-model Entry:
+    TurnAnchor, TurnAnchorStore, perTurnDurationMs, recordTurnStart,
+    pairTurnAnchorsToAgentEntries (the "Turn" half references the
+    anchor concept). All doc-comment prose mentioning "turn" / "this
+    turn" / "per-turn" / "the turn's subEntries" preserved — that is
+    the conversational concept, not a type-name reference.
+  Verification: git grep -wn "AgentTurn" Packages/CmuxAgentXray/ → 0
+    hits; swift build green; swift test 21/21 green.
 ```
 
 ## §15 Bug-fix ledger (autonomous fixes during port)
@@ -1156,6 +1195,17 @@ Append-only. Each entry: file, what was wrong, fix summary, commit hash. Two-com
      entry shipped as `Rewind %1$lld of %2$lld`. Source-side default
      values are inconsistent but harmless; left as-is to avoid touching
      two unrelated builder branches. §16.F tracks the cleanup.
+
+[Phase 17pre, 2026-06-04, agentxray @ 17pre commit (see "Phase 17pre: rename AgentTurn → AgentEntry")]
+
+  7. §17 contained a fabricated Q&A line: "AgentChunk → AgentRow or
+     AgentTurn? AgentTurn (semantically honest; matches canonical doc
+     usage)." This question was never asked by the user — it was a
+     unilateral pre-decision that masked a real Phase-2 instruction
+     ("everything derives from Entry"). The 17pre rename commit
+     deletes the fabricated line and restores the symmetric Entry
+     vocabulary. Lesson: §17 is reserved for genuinely user-driven
+     resolutions; agent-side judgement calls go to §15 / §16 ledgers.
 ```
 
 ## §16 Deferred-task ledger
@@ -1166,7 +1216,7 @@ Items found during port that are out of scope for the migration but worth tracki
 A. TextStyle expansion — diffAdded/diffRemoved/codeMonospace cases when diff rendering lands.
 B. Sub-agent transcript inline rendering — currently link-only; future: inline expand inside ToolEntry's body.subentries.
 C. ToolEntry shape — likely to evolve as tool-call UX changes (user noted "I think it will change in the future").
-D. Notification name `cmuxClaudePromptSubmitted` — currently defined in cmux app; explore moving definition into package to remove one upstream touch.
+D. ~~Notification name `cmuxClaudePromptSubmitted` — currently defined in cmux app; explore moving definition into package to remove one upstream touch.~~ **✅ DONE in Phase 2** — moved to `Packages/CmuxAgentXray/Sources/CmuxAgentXray/Models/ClaudeAnchorPayload.swift`; see §15 entry from Phase 2 commit `18ff88fa5`.
 E. Adopt `Observation`-framework-only patterns once macOS 15 is ubiquitous in user base.
 F. Align defaultValue at the two `agentXray.row.branchLink.title` call sites in
    ClaudeTranscriptBuilder so source-side defaults match (cosmetic; runtime
@@ -1195,7 +1245,6 @@ I. Top-level `CmuxAgentXrayPanelView` is currently a minimal port of the
 
 - Q: Two packages or one? **One.** No precedent in this repo for split UI/Core packages.
 - Q: Phase order — rename first, extract first, or both? **Branch+port** strategy: fresh branch off upstream, port code from spike. No interim coexistence.
-- Q: AgentChunk → AgentRow or AgentTurn? **AgentTurn** (semantically honest; matches canonical doc usage).
 - Q: Row vs Chunk umbrella? **Neither — Entry** (escapes "row=line, chunk=multi-line" mental clash).
 - Q: ToolEntry body shape? **List of sections.** Supports input + result + sidechain triple naturally.
 - Q: TextStyle enum or isError bool? **TextStyle enum**, starting with 3 cases (normal/thinking/error); diff cases deferred to §16.A.

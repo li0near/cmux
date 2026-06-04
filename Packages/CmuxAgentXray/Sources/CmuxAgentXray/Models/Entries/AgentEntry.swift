@@ -9,7 +9,7 @@ public import Foundation
 /// content, normally `[thinking?, ...tools, assistantText?]`. The body's
 /// `.subentries(...)` section mirrors `subEntries` so the renderer can
 /// walk children uniformly via `body.sections` regardless of variant.
-public struct AgentTurn: Identifiable, Equatable, Sendable {
+public struct AgentEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
     public let timestamp: Date?
     public let header: Header
@@ -71,7 +71,7 @@ public struct AgentTurn: Identifiable, Equatable, Sendable {
     }
 
     /// Type-system-narrowed child kinds. These three variants only ever
-    /// appear inside an `AgentTurn` — they never exist as top-level
+    /// appear inside an `AgentEntry` — they never exist as top-level
     /// transcript entries.
     public enum SubEntry: Identifiable, Equatable, Sendable {
         case thinking(ThinkingEntry)
@@ -143,20 +143,20 @@ public struct AgentTurn: Identifiable, Equatable, Sendable {
 /// section with `style: .thinking`.
 public struct ThinkingEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
-    public let parentTurnID: EntryID
+    public let parentEntryID: EntryID
     public let timestamp: Date?
     public let header: Header
     public let body: Body
 
     public init(
         id: EntryID,
-        parentTurnID: EntryID,
+        parentEntryID: EntryID,
         timestamp: Date?,
         header: Header,
         body: Body
     ) {
         self.id = id
-        self.parentTurnID = parentTurnID
+        self.parentEntryID = parentEntryID
         self.timestamp = timestamp
         self.header = header
         self.body = body
@@ -256,7 +256,7 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
 /// detail tab renders; `wordCount` is the pre-counted "N words" pill.
 public struct AssistantTextEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
-    public let parentTurnID: EntryID
+    public let parentEntryID: EntryID
     public let timestamp: Date?
     public let header: Header
     public let body: Body  // always empty by convention; carried for protocol uniformity
@@ -265,14 +265,14 @@ public struct AssistantTextEntry: Identifiable, Equatable, Sendable {
 
     public init(
         id: EntryID,
-        parentTurnID: EntryID,
+        parentEntryID: EntryID,
         timestamp: Date?,
         header: Header,
         fullBody: String,
         wordCount: Int
     ) {
         self.id = id
-        self.parentTurnID = parentTurnID
+        self.parentEntryID = parentEntryID
         self.timestamp = timestamp
         self.header = header
         self.body = .empty

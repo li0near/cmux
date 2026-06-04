@@ -52,7 +52,7 @@ extension AgentXrayPanel {
             turnAnchorStore.setSurface(workspaceID: nil, surfaceID: nil)
         }
         drainPendingClaudeAnchors()
-        pairTurnAnchorsToAgentTurns()
+        pairTurnAnchorsToAgentEntries()
         // Recompute the visible-entry filter SYNCHRONOUSLY against the
         // new session's entries. Without this, the first re-render
         // after the session swap uses the stale filter from the
@@ -142,7 +142,7 @@ extension AgentXrayPanel {
     func handleStreamTick() {
         cachedEntryCollection = nil
         drainPendingClaudeAnchors()
-        pairTurnAnchorsToAgentTurns()
+        pairTurnAnchorsToAgentEntries()
         recomputeEntriesFilter()
         autoExpandNewEntries()
         recomputeStreamingEntryID()

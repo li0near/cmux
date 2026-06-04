@@ -206,7 +206,7 @@ struct ClaudeTranscriptBuilder {
                 header: Header(
                     icon: .recap,
                     name: String(
-                        localized: "agentXray.row.recap.title",
+                        localized: "agentXray.entry.recap.title",
                         defaultValue: "Recap",
                         bundle: .module
                     ),
@@ -225,7 +225,7 @@ struct ClaudeTranscriptBuilder {
                 header: Header(
                     icon: .prLink,
                     title: String(
-                        localized: "agentXray.row.prLink.title",
+                        localized: "agentXray.entry.prLink.title",
                         defaultValue: "PR #\(prNumber) · \(prRepository)",
                         bundle: .module
                     ),
@@ -267,12 +267,12 @@ struct ClaudeTranscriptBuilder {
                 if b.isEmpty { return }
                 let label = isStderr
                     ? String(
-                        localized: "agentXray.row.slashCmd.stderr",
+                        localized: "agentXray.entry.slashCmd.stderr",
                         defaultValue: "Slash command stderr",
                         bundle: .module
                       )
                     : String(
-                        localized: "agentXray.row.slashCmd.output",
+                        localized: "agentXray.entry.slashCmd.output",
                         defaultValue: "Slash command output",
                         bundle: .module
                       )
@@ -294,7 +294,7 @@ struct ClaudeTranscriptBuilder {
                     header: Header(
                         icon: .systemReminder,
                         name: String(
-                            localized: "agentXray.row.systemReminder.title",
+                            localized: "agentXray.entry.systemReminder.title",
                             defaultValue: "System reminder",
                             bundle: .module
                         ),
@@ -312,7 +312,7 @@ struct ClaudeTranscriptBuilder {
                     header: Header(
                         icon: .skill,
                         name: String(
-                            localized: "agentXray.row.skill.title",
+                            localized: "agentXray.entry.skill.title",
                             defaultValue: "Skill: \(name)",
                             bundle: .module
                         ),
@@ -331,7 +331,7 @@ struct ClaudeTranscriptBuilder {
                     header: Header(
                         icon: .contextInfo,
                         name: String(
-                            localized: "agentXray.row.contextUsage.title",
+                            localized: "agentXray.entry.contextUsage.title",
                             defaultValue: "Context usage",
                             bundle: .module
                         ),
@@ -350,7 +350,7 @@ struct ClaudeTranscriptBuilder {
                 header: Header(
                     icon: .systemReminder,
                     name: String(
-                        localized: "agentXray.row.systemReminder.title",
+                        localized: "agentXray.entry.systemReminder.title",
                         defaultValue: "System reminder",
                         bundle: .module
                     ),
@@ -384,19 +384,19 @@ struct ClaudeTranscriptBuilder {
                 switch phase {
                 case .entered:
                     return String(
-                        localized: "agentXray.row.planMode.entered",
+                        localized: "agentXray.entry.planMode.entered",
                         defaultValue: "Plan mode entered",
                         bundle: .module
                     )
                 case .exited:
                     return String(
-                        localized: "agentXray.row.planMode.exited",
+                        localized: "agentXray.entry.planMode.exited",
                         defaultValue: "Plan mode exited",
                         bundle: .module
                     )
                 case .reentered:
                     return String(
-                        localized: "agentXray.row.planMode.reentered",
+                        localized: "agentXray.entry.planMode.reentered",
                         defaultValue: "Plan mode resumed",
                         bundle: .module
                     )
@@ -432,7 +432,7 @@ struct ClaudeTranscriptBuilder {
                 header: Header(
                     icon: .editedTextFile,
                     name: String(
-                        localized: "agentXray.row.externalEdit.title",
+                        localized: "agentXray.entry.externalEdit.title",
                         defaultValue: "External edit · \(basename)",
                         bundle: .module
                     ),
@@ -467,13 +467,13 @@ struct ClaudeTranscriptBuilder {
     private func userRoleLabel(isQueued: Bool, isQueuedPending: Bool) -> String {
         if isQueuedPending {
             return String(
-                localized: "agentXray.row.user.queuedLabel",
+                localized: "agentXray.entry.user.queuedLabel",
                 defaultValue: "Queued",
                 bundle: .module
             )
         }
         return String(
-            localized: "agentXray.row.user.label",
+            localized: "agentXray.entry.user.label",
             defaultValue: "User",
             bundle: .module
         )
@@ -566,7 +566,7 @@ struct ClaudeTranscriptBuilder {
 
     private func buildSystemEntry(from line: ClaudeJSONLLine) -> SystemEntry? {
         let label = String(
-            localized: "agentXray.row.system.localCommand",
+            localized: "agentXray.entry.system.localCommand",
             defaultValue: "System",
             bundle: .module
         )
@@ -599,7 +599,7 @@ struct ClaudeTranscriptBuilder {
 
     private func buildCompactEntry(from line: ClaudeJSONLLine) -> CompactEntry {
         let label = String(
-            localized: "agentXray.row.compact.label",
+            localized: "agentXray.entry.compact.label",
             defaultValue: "Compacted",
             bundle: .module
         )
@@ -626,17 +626,17 @@ struct ClaudeTranscriptBuilder {
         timestamp: Date
     ) -> SynthesizedEntry {
         let preview = branch.firstPromptPreview ?? String(
-            localized: "agentXray.row.branchLink.noPrompt",
+            localized: "agentXray.entry.branchLink.noPrompt",
             defaultValue: "(no prompt)",
             bundle: .module
         )
         let title = String(
-            localized: "agentXray.row.branchLink.title",
+            localized: "agentXray.entry.branchLink.title",
             defaultValue: "Rewind \(branch.rewindIndex) of \(totalRewinds)",
             bundle: .module
         )
         let subtitle = String(
-            localized: "agentXray.row.branchLink.subtitle",
+            localized: "agentXray.entry.branchLink.subtitle",
             defaultValue: "\(branch.entryCount) entries · \(preview)",
             bundle: .module
         )
@@ -700,19 +700,19 @@ struct ClaudeTranscriptBuilder {
             }
 
             // Build subEntries: [thinking?, ...tools, assistantText?]
-            var subEntries: [AgentTurn.SubEntry] = []
+            var subEntries: [AgentEntry.SubEntry] = []
             let trimmedThinking = pending.thinkingText.trimmingCharacters(
                 in: .whitespacesAndNewlines
             )
             if !trimmedThinking.isEmpty {
                 subEntries.append(.thinking(ThinkingEntry(
                     id: .derived(parent: pending.id, kind: "thinking"),
-                    parentTurnID: .fromJSONL(pending.id),
+                    parentEntryID: .fromJSONL(pending.id),
                     timestamp: pending.startTime,
                     header: Header(
                         icon: .thinking,
                         name: String(
-                            localized: "agentXray.row.thinking.label",
+                            localized: "agentXray.entry.thinking.label",
                             defaultValue: "Thinking",
                             bundle: .module
                         ),
@@ -760,12 +760,12 @@ struct ClaudeTranscriptBuilder {
                 let words = trimmedAssistant.split { $0.isWhitespace || $0.isNewline }.count
                 subEntries.append(.assistantText(AssistantTextEntry(
                     id: .derived(parent: pending.id, kind: "assistantText"),
-                    parentTurnID: .fromJSONL(pending.id),
+                    parentEntryID: .fromJSONL(pending.id),
                     timestamp: pending.lastTimestamp ?? pending.startTime,
                     header: Header(
                         icon: .agent,
                         name: String(
-                            localized: "agentXray.row.assistantText.label",
+                            localized: "agentXray.entry.assistantText.label",
                             defaultValue: "Assistant",
                             bundle: .module
                         ),
@@ -781,7 +781,7 @@ struct ClaudeTranscriptBuilder {
                 ? []
                 : [.subentries(subEntries.map(Self.subEntryToTopLevel))]
             let agentLabel = String(
-                localized: "agentXray.row.agent.label.claude",
+                localized: "agentXray.entry.agent.label.claude",
                 defaultValue: "Claude",
                 bundle: .module
             )
@@ -794,7 +794,7 @@ struct ClaudeTranscriptBuilder {
                 trailing.append(.pill("\(tokenTotal) tokens"))
             }
 
-            entries.append(.agent(AgentTurn(
+            entries.append(.agent(AgentEntry(
                 id: .fromJSONL(pending.id),
                 timestamp: pending.startTime,
                 header: Header(
@@ -818,13 +818,13 @@ struct ClaudeTranscriptBuilder {
 
         /// Project a turn's `SubEntry` to a top-level `Entry` for the
         /// body's `.subentries(...)` mirror. Only the renderer's own
-        /// per-turn subview consumes this; AgentTurn.subEntries is the
+        /// per-turn subview consumes this; AgentEntry.subEntries is the
         /// structurally-typed source of truth.
-        static func subEntryToTopLevel(_ s: AgentTurn.SubEntry) -> Entry {
+        static func subEntryToTopLevel(_ s: AgentEntry.SubEntry) -> Entry {
             // SubEntry types aren't top-level Entry cases, so we wrap
             // them into a SystemEntry with subType: .other for the
             // body's recursive [.subentries(...)] mirror. The renderer
-            // resolves them via AgentTurn.subEntries; this projection
+            // resolves them via AgentEntry.subEntries; this projection
             // is only present so Body.sections is uniform across all
             // entries.
             switch s {
@@ -868,17 +868,17 @@ struct ClaudeTranscriptBuilder {
                 emittedDivergencePoints.insert(branch.branchRootUuid)
                 let branchEntries = abandonedBranchEntriesByRoot[branch.branchRootUuid] ?? []
                 let preview = branch.firstPromptPreview ?? String(
-                    localized: "agentXray.row.branchLink.noPrompt",
+                    localized: "agentXray.entry.branchLink.noPrompt",
                     defaultValue: "(no prompt)",
                     bundle: .module
                 )
                 let title = String(
-                    localized: "agentXray.row.branchLink.title",
+                    localized: "agentXray.entry.branchLink.title",
                     defaultValue: "Rewind \(branch.rewindIndex) of \(resolution.totalRewinds)",
                     bundle: .module
                 )
                 let subtitle = String(
-                    localized: "agentXray.row.branchLink.subtitle",
+                    localized: "agentXray.entry.branchLink.subtitle",
                     defaultValue: "\(branch.entryCount) entries · \(preview)",
                     bundle: .module
                 )
@@ -916,7 +916,7 @@ struct ClaudeTranscriptBuilder {
         var toolCallOrder: [String] = []
         var toolStartedAt: [String: Date] = [:]
         var model: String?
-        var usage: AgentTurn.TokenUsage = .zero
+        var usage: AgentEntry.TokenUsage = .zero
         var countedUsageMessageIds: Set<String> = []
         var stopReason: String?
 
@@ -1269,9 +1269,9 @@ struct ClaudeTranscriptBuilder {
             .count
     }
 
-    /// Human-readable token total for an AgentTurn's `[X.YM tokens]`
+    /// Human-readable token total for an AgentEntry's `[X.YM tokens]`
     /// trailing pill. Returns `"123"`, `"12.3k"`, `"4.2M"`, etc.
-    static func formatTokenTotal(_ usage: AgentTurn.TokenUsage) -> String {
+    static func formatTokenTotal(_ usage: AgentEntry.TokenUsage) -> String {
         let total = usage.inputTokens
             + usage.outputTokens
             + usage.cacheReadTokens

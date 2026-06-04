@@ -76,7 +76,7 @@ extension AgentXrayPanel {
         }
     }
 
-    /// Set `streamingEntryID` to the trailing AgentTurn's id when that
+    /// Set `streamingEntryID` to the trailing AgentEntry's id when that
     /// turn is still being written to (per `streamingFreshnessWindow`),
     /// nil otherwise. Schedules a one-shot recheck after the freshness
     /// window so the pulse settles even if no further entries land.

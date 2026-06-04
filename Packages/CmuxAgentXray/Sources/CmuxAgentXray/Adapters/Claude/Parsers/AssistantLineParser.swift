@@ -5,10 +5,10 @@ import Foundation
 /// Drops synthetic assistant lines (`model: "<synthetic>"`) — Claude
 /// Code fabricates these for interrupt stubs (`"No response
 /// requested."`), API-error envelopes, and partial-response cutoffs;
-/// they are noise and should not produce an `AgentTurn`.
+/// they are noise and should not produce an `AgentEntry`.
 ///
 /// All non-synthetic assistant lines on the active branch fold into
-/// the pending `AgentTurn`. Sidechain handling sits in
+/// the pending `AgentEntry`. Sidechain handling sits in
 /// `ClaudeLineDispatcher.route` upstream so this parser only sees
 /// main-branch assistant lines.
 enum AssistantLineParser {

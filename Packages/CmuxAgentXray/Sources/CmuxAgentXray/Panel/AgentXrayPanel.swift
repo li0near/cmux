@@ -79,7 +79,7 @@ public final class AgentXrayPanel {
     ///     no anchor (pre-panel zone, free scroll within history)
     public internal(set) var entriesFilter: EntriesFilter = .all
 
-    /// Id of the trailing AgentTurn while it's still streaming. Drives
+    /// Id of the trailing AgentEntry while it's still streaming. Drives
     /// the pulsing icon glyph in the agent header. Cleared when no
     /// agent turn is the latest, or when the latest agent turn's
     /// `endTime` is more than `streamingFreshnessWindow` in the past.
@@ -134,7 +134,7 @@ public final class AgentXrayPanel {
     ///
     /// Default-expansion (branches yes, leaves no) is materialised at
     /// observation time by `autoExpandNewEntries()`: every newly
-    /// observed branch (AgentTurn) gets inserted; leaves get inserted
+    /// observed branch (AgentEntry) gets inserted; leaves get inserted
     /// only when the auto-expand pill is on and the entry is post-
     /// attach.
     public internal(set) var currentExpanded: Set<String> = []
@@ -190,7 +190,7 @@ public final class AgentXrayPanel {
     @ObservationIgnored
     var streamingFreshnessTimer: Timer?
 
-    /// AgentTurns whose `endTime` is within this many seconds of "now"
+    /// AgentEntries whose `endTime` is within this many seconds of "now"
     /// are considered actively streaming. Picked to be loose enough
     /// that inter-line gaps during a turn don't stutter the pulse,
     /// tight enough that the pulse settles soon after the turn ends.

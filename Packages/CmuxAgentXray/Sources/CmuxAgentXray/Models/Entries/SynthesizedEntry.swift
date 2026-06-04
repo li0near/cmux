@@ -3,9 +3,9 @@ public import Foundation
 /// Cmux-invented entry — has no JSONL counterpart. Two kinds today:
 /// - `branchLink`: appears at a divergence point in the active branch,
 ///   pointing at the abandoned branch's transcript. The body carries
-///   `.subentries(...)` with the abandoned chunks; the renderer treats
+///   `.subentries(...)` with the abandoned entries; the renderer treats
 ///   this as a header-only link that opens the subtree in a detail tab.
-/// - `prLink`: external GitHub PR reference detected in chunk text. The
+/// - `prLink`: external GitHub PR reference detected in entry text. The
 ///   body is empty; click opens the PR URL externally.
 public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID

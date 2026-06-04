@@ -127,7 +127,7 @@ struct CodexTranscriptBuilder {
             header: Header(
                 icon: .user,
                 name: String(
-                    localized: "agentXray.row.user.label",
+                    localized: "agentXray.entry.user.label",
                     defaultValue: "User",
                     bundle: .module
                 ),
@@ -146,19 +146,19 @@ struct CodexTranscriptBuilder {
         var assistantText: String = ""
         var model: String?
 
-        func finalize() -> AgentTurn {
-            var subEntries: [AgentTurn.SubEntry] = []
+        func finalize() -> AgentEntry {
+            var subEntries: [AgentEntry.SubEntry] = []
             let trimmed = assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 let words = trimmed.split { $0.isWhitespace || $0.isNewline }.count
                 subEntries.append(.assistantText(AssistantTextEntry(
                     id: .derived(parent: id, kind: "assistantText"),
-                    parentTurnID: .fromJSONL(id),
+                    parentEntryID: .fromJSONL(id),
                     timestamp: startTime,
                     header: Header(
                         icon: .agent,
                         name: String(
-                            localized: "agentXray.row.assistantText.label",
+                            localized: "agentXray.entry.assistantText.label",
                             defaultValue: "Assistant",
                             bundle: .module
                         ),
@@ -169,13 +169,13 @@ struct CodexTranscriptBuilder {
                     wordCount: words
                 )))
             }
-            return AgentTurn(
+            return AgentEntry(
                 id: .fromJSONL(id),
                 timestamp: startTime,
                 header: Header(
                     icon: .agent,
                     name: String(
-                        localized: "agentXray.row.agent.label.codex",
+                        localized: "agentXray.entry.agent.label.codex",
                         defaultValue: "Agent",
                         bundle: .module
                     ),

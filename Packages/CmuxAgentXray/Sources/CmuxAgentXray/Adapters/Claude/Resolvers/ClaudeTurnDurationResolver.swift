@@ -1,4 +1,4 @@
-/// Per-turn timing stamp paired with an `AgentTurn` at flush time.
+/// Per-turn timing stamp paired with an `AgentEntry` at flush time.
 /// Source: `system, subtype:turn_duration` JSONL lines, where
 /// `parentUuid` points at the assistant message the turn ended on.
 struct TurnDurationStamp: Equatable {
@@ -15,7 +15,7 @@ struct TurnDurationStamp: Equatable {
 ///
 /// `turn_duration` lines are written by Claude Code at the END of each
 /// turn (after the final assistant message lands), so by the time the
-/// per-line dispatch loop reaches them, the corresponding `AgentTurn`
+/// per-line dispatch loop reaches them, the corresponding `AgentEntry`
 /// has already been flushed. Pre-pass collection keys the duration by
 /// `parentUuid` (the assistant message the turn ended on); the
 /// transcript builder picks it up at flush time.

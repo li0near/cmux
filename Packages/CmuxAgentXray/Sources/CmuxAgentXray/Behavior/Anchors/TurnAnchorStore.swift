@@ -53,7 +53,7 @@ public final class TurnAnchorStore {
         if anchors[userEntryID] != nil { return }
         let anchor = TurnAnchor(
             userEntryID: userEntryID,
-            agentTurnID: nil,
+            agentEntryID: nil,
             terminalRowAtSubmit: terminalRow,
             totalAtCapture: totalAtCapture,
             capturedAt: date
@@ -65,9 +65,9 @@ public final class TurnAnchorStore {
     /// Pair an agent turn id with the most recent user entry's
     /// turn anchor. No-op if the user entry has no anchor or already
     /// has an agent pairing.
-    public func pairAgentTurn(userEntryID: String, agentTurnID: String) {
-        guard var existing = anchors[userEntryID], existing.agentTurnID == nil else { return }
-        existing.agentTurnID = agentTurnID
+    public func pairAgentEntry(userEntryID: String, agentEntryID: String) {
+        guard var existing = anchors[userEntryID], existing.agentEntryID == nil else { return }
+        existing.agentEntryID = agentEntryID
         anchors[userEntryID] = existing
     }
 
@@ -75,7 +75,7 @@ public final class TurnAnchorStore {
     /// agent-turn id.
     public func anchor(forEntryID entryID: String) -> TurnAnchor? {
         if let direct = anchors[entryID] { return direct }
-        return anchors.values.first(where: { $0.agentTurnID == entryID })
+        return anchors.values.first(where: { $0.agentEntryID == entryID })
     }
 
     /// Find the anchor whose `terminalRowAtSubmit` is the largest

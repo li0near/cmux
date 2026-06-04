@@ -36,9 +36,9 @@ JSONL file
 - **Entry** — umbrella enum for every transcript item. Five top-level cases:
   `user`, `agent`, `system`, `compact`, `synthesized`.
 - **Transcript** — a `[Entry]` document.
-- **AgentTurn** — the only container Entry; carries `subEntries: [SubEntry]`
+- **AgentEntry** — the only container Entry; carries `subEntries: [SubEntry]`
   where `SubEntry` is one of `thinking`, `tool`, `assistantText`. These three
-  types only ever appear inside an AgentTurn.
+  types only ever appear inside an AgentEntry.
 - **Header** — every Entry's display contract: `name + label + title +
   trailing + timestamp + icon`. Replaces the older `name`/`summary`/per-row
   `icon` scatter.

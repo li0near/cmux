@@ -8,7 +8,7 @@ import Foundation
 ///
 /// `queued_command` is the exception: it carries `attachment.prompt`,
 /// the text the user typed while the assistant was mid-turn. Without
-/// surfacing it, two `AgentTurn`s appear back-to-back with no
+/// surfacing it, two `AgentEntry`s appear back-to-back with no
 /// `UserEntry` between them, breaking Claude's user/assistant
 /// alternation invariant. The plan-mode family + `edited_text_file`
 /// are also user-visible session events.

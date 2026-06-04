@@ -11,7 +11,7 @@ import SwiftUI
 /// Recursion: a `.subentries(...)` section calls back into `EntryView`
 /// for each child, which calls back into `EntryBodyView` for grand-
 /// children. Recursion is bounded by the JSONL data shape (one level
-/// of sub-entries inside AgentTurn; sidechain transcripts add at most
+/// of sub-entries inside AgentEntry; sidechain transcripts add at most
 /// one more level for sub-agent calls).
 @available(macOS 15, *)
 struct EntryBodyView: View {

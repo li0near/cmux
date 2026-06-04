@@ -10,8 +10,8 @@ public import Foundation
 /// - `.synthesized` — cmux-invented row (branch link, PR link).
 ///
 /// Sub-entries (`thinking`, `tool`, `assistantText`) live inside
-/// `AgentTurn.subEntries` and never appear at the top level. They are
-/// represented as `AgentTurn.SubEntry`, not as cases of `Entry` —
+/// `AgentEntry.subEntries` and never appear at the top level. They are
+/// represented as `AgentEntry.SubEntry`, not as cases of `Entry` —
 /// the Swift type system enforces "sub-entries are turn-internal."
 ///
 /// Every variant carries the same display contract: `header: Header`
@@ -19,7 +19,7 @@ public import Foundation
 /// system subtype, etc.) live on the inner struct.
 public enum Entry: Identifiable, Equatable, Sendable {
     case user(UserEntry)
-    case agent(AgentTurn)
+    case agent(AgentEntry)
     case system(SystemEntry)
     case compact(CompactEntry)
     case synthesized(SynthesizedEntry)

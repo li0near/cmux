@@ -27,7 +27,7 @@ public struct CmuxAgentXrayPanelView: View {
     }
 
     /// Sub-row indent — first-level (thinking / tool / assistantText
-    /// rows under an AgentTurn).
+    /// rows under an AgentEntry).
     private static let expandedIndent: CGFloat = 22
 
     public var body: some View {
@@ -185,8 +185,8 @@ public struct CmuxAgentXrayPanelView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(entries.enumerated()), id: \.element.id.stableString) { index, entry in
-                            if index > 0 { rowDivider }
-                            rowView(for: entry, palette: palette)
+                            if index > 0 { entryDivider }
+                            entryView(for: entry, palette: palette)
                         }
                     }
                     .padding(.vertical, 6)
@@ -200,23 +200,23 @@ public struct CmuxAgentXrayPanelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Top-level entry row. Specializes on AgentTurn so its sub-entries
+    /// Top-level entry row. Specializes on AgentEntry so its sub-entries
     /// (thinking / tool / assistantText) render with their per-kind
     /// chrome instead of going through the generic `EntryBodyView`
     /// recursion path.
     @ViewBuilder
-    private func rowView(for entry: Entry, palette: HudPalette) -> some View {
+    private func entryView(for entry: Entry, palette: HudPalette) -> some View {
         switch entry {
-        case .agent(let turn):
-            agentTurnRow(turn: turn, palette: palette)
+        case .agent(let entry):
+            agentEntryView(entry: entry, palette: palette)
         default:
-            standardRow(entry: entry, palette: palette)
+            genericEntryView(entry: entry, palette: palette)
         }
     }
 
     /// Generic dispatcher for non-agent entries (User, System, Compact,
     /// Synthesized). Goes through the unified EntryView.
-    private func standardRow(entry: Entry, palette: HudPalette) -> some View {
+    private func genericEntryView(entry: Entry, palette: HudPalette) -> some View {
         let computed = panel.computedCache.compute(for: entry, displayMode: .compact)
         let entryID = entry.id.stableString
         return EntryView(
@@ -237,10 +237,10 @@ public struct CmuxAgentXrayPanelView: View {
         .id(entryID)
     }
 
-    /// Specialized AgentTurn renderer. Header through EntryHeaderView;
+    /// Specialized AgentEntry renderer. Header through EntryHeaderView;
     /// sub-entries dispatch on their typed kind.
-    private func agentTurnRow(turn: AgentTurn, palette: HudPalette) -> some View {
-        let entryID = turn.id.stableString
+    private func agentEntryView(entry: AgentEntry, palette: HudPalette) -> some View {
+        let entryID = entry.id.stableString
         let isExpanded = panel.currentExpanded.contains(entryID)
         let isStreaming = panel.streamingEntryID == entryID
         return VStack(alignment: .leading, spacing: 4) {
@@ -248,7 +248,7 @@ public struct CmuxAgentXrayPanelView: View {
                 panel.toggleExpansion(.entryChevron(entryID: entryID))
             }) {
                 EntryHeaderView(
-                    header: turn.header,
+                    header: entry.header,
                     palette: palette,
                     pulseIcon: isStreaming,
                     accentColor: palette.claude,
@@ -257,8 +257,8 @@ public struct CmuxAgentXrayPanelView: View {
             }
             .buttonStyle(.plain)
             if isExpanded {
-                ForEach(turn.subEntries, id: \.id.stableString) { sub in
-                    subEntryRow(sub: sub, parentTurnID: entryID, palette: palette)
+                ForEach(entry.subEntries, id: \.id.stableString) { sub in
+                    subEntryView(sub: sub, parentEntryID: entryID, palette: palette)
                 }
             }
         }
@@ -267,36 +267,36 @@ public struct CmuxAgentXrayPanelView: View {
         .id(entryID)
     }
 
-    /// Dispatch on the typed AgentTurn.SubEntry so each kind gets its
+    /// Dispatch on the typed AgentEntry.SubEntry so each kind gets its
     /// own per-kind layout.
     @ViewBuilder
-    private func subEntryRow(
-        sub: AgentTurn.SubEntry,
-        parentTurnID: String,
+    private func subEntryView(
+        sub: AgentEntry.SubEntry,
+        parentEntryID: String,
         palette: HudPalette
     ) -> some View {
         switch sub {
         case .thinking(let t):
-            thinkingRow(thinking: t, parentTurnID: parentTurnID, palette: palette)
+            thinkingEntryView(thinking: t, parentEntryID: parentEntryID, palette: palette)
         case .tool(let tool):
-            toolRow(tool: tool, palette: palette)
+            toolEntryView(tool: tool, palette: palette)
         case .assistantText(let a):
-            assistantResponseRow(assistantText: a, palette: palette)
+            assistantTextEntryView(assistantText: a, palette: palette)
         }
     }
 
-    private func thinkingRow(
+    private func thinkingEntryView(
         thinking: ThinkingEntry,
-        parentTurnID: String,
+        parentEntryID: String,
         palette: HudPalette
     ) -> some View {
-        let key = EntryID.derived(parent: parentTurnID, kind: "thinking").stableString
+        let key = EntryID.derived(parent: parentEntryID, kind: "thinking").stableString
         let isExpanded = panel.currentExpanded.contains(key)
         let body = thinking.body.textContent
         let lineCount = body.split(separator: "\n", omittingEmptySubsequences: false).count
         return VStack(alignment: .leading, spacing: 2) {
             Button(action: {
-                panel.toggleExpansion(.thinking(parentTurnID: parentTurnID))
+                panel.toggleExpansion(.thinking(parentEntryID: parentEntryID))
             }) {
                 HStack(spacing: 6) {
                     Image(systemName: "brain")
@@ -326,7 +326,7 @@ public struct CmuxAgentXrayPanelView: View {
         }
     }
 
-    private func toolRow(tool: ToolEntry, palette: HudPalette) -> some View {
+    private func toolEntryView(tool: ToolEntry, palette: HudPalette) -> some View {
         let key = tool.id.stableString
         let isExpanded = panel.currentExpanded.contains(key)
         let toolName = tool.toolName
@@ -398,7 +398,7 @@ public struct CmuxAgentXrayPanelView: View {
         }
     }
 
-    private func assistantResponseRow(
+    private func assistantTextEntryView(
         assistantText: AssistantTextEntry,
         palette: HudPalette
     ) -> some View {
@@ -407,7 +407,7 @@ public struct CmuxAgentXrayPanelView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(palette.claude)
             Button(action: {
-                panel.openDetail(request: .assistantResponse(entryID: assistantText.parentTurnID.stableString))
+                panel.openDetail(request: .assistantResponse(entryID: assistantText.parentEntryID.stableString))
             }) {
                 Text("↗ assistant response · \(assistantText.wordCount) words")
                     .font(.system(size: 11, design: .monospaced))
@@ -421,7 +421,7 @@ public struct CmuxAgentXrayPanelView: View {
         .padding(.vertical, 1)
     }
 
-    private var rowDivider: some View {
+    private var entryDivider: some View {
         Divider()
             .background(Color(nsColor: appearance.foregroundColor).opacity(0.06))
     }

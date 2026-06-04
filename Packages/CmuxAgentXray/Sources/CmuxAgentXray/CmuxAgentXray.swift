@@ -21,7 +21,7 @@ import Foundation
 /// - **Entry** — umbrella for every transcript item (5 top-level cases:
 ///   user, agent, system, compact, synthesized).
 /// - **Transcript** — a `[Entry]` document.
-/// - **AgentTurn** — the only container Entry; carries `subEntries`.
+/// - **AgentEntry** — the only container Entry; carries `subEntries`.
 /// - **Header** / **Body** — every Entry's display contract.
 ///
 /// The package never imports cmux types. All cmux integration runs

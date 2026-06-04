@@ -10,7 +10,7 @@ extension AgentXrayPanel {
         /// Top-level entry chevron (or agent-turn header).
         case entryChevron(entryID: String)
         /// Agent turn's thinking sub-entry (derived id).
-        case thinking(parentTurnID: String)
+        case thinking(parentEntryID: String)
         /// Tool sub-entry inside an agent turn (mirrored JSONL id).
         case tool(toolID: String)
 
@@ -102,7 +102,7 @@ extension AgentXrayPanel {
     /// Walk `stream.entries` for any id new since the last call. For
     /// each new id, materialise the entry's default expansion in
     /// `currentExpanded`:
-    ///   - Branches (AgentTurn) are always inserted (default-expanded).
+    ///   - Branches (AgentEntry) are always inserted (default-expanded).
     ///   - Leaves are inserted only when the auto-expand pill is on
     ///     (post-attach forward-only).
     func autoExpandNewEntries() {

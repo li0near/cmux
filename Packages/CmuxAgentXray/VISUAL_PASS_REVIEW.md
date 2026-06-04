@@ -4,6 +4,40 @@ This is the agreed-on spec for the visual-parity commit. Every section here is s
 
 ---
 
+## §0 — PREREQUISITE: rename `AgentTurn` → `AgentEntry` (✅ landed as its own commit)
+
+**Status:** ✅ done (commit `17pre`).
+
+The user's original instruction during Phase 2 was that **everything derives from "Entry"** — `User, System, Agent, etc.` — but the implementation shipped `UserEntry` / `SystemEntry` / `CompactEntry` / `SynthesizedEntry` alongside `AgentTurn`. The asymmetry was a unilateral deviation (logged in the prior MIGRATION_PLAN.md §17 as a fabricated Q&A) that contradicted the user's explicit umbrella instruction. Fixed mechanically before the visual-pass commit so all the new view files land under the correct name.
+
+**Sweep — `AgentTurn` → `AgentEntry` everywhere:**
+
+| Site | Old | New |
+|---|---|---|
+| File | `Models/Entries/AgentTurn.swift` | `Models/Entries/AgentEntry.swift` |
+| Struct decl | `public struct AgentTurn` | `public struct AgentEntry` |
+| Umbrella case | `Entry.agent(AgentTurn)` | `Entry.agent(AgentEntry)` |
+| Nested types | `AgentTurn.SubEntry`, `AgentTurn.TokenUsage`, `AgentTurn.SubEntry.Status` | `AgentEntry.*` (same nested names; parent renamed) |
+| `TurnAnchor.agentTurnID` field | `var agentTurnID: String?` | `var agentEntryID: String?` |
+| `TurnAnchorStore.pairAgentTurn(...)` | method name | `pairAgentEntry(userEntryID:agentEntryID:)` |
+| `Panel/AgentXrayPanel+Anchors.swift` `pairTurnAnchorsToAgentTurns()` | method name | `pairTurnAnchorsToAgentEntries()` |
+| `ThinkingEntry.parentTurnID` / `AssistantTextEntry.parentTurnID` | field name | `parentEntryID` |
+| Doc set (`MIGRATION_PLAN.md`, README, this file) | type-name references | replace `AgentTurn` → `AgentEntry`; the §17 "AgentRow vs AgentTurn" Q&A line was deleted (it was a fabrication, not a real user decision) |
+
+**Doc-comment prose intentionally NOT renamed:** "agent turn" as the conversational concept (one back-and-forth in a Claude session) stays as "turn" — only the **type-name** `AgentTurn` flipped. Phrases like "per-turn aggregate", "this turn", "(in-progress) turns", "the turn's subEntries", "stop_reason from the last assistant message folded into this turn" all preserve the semantic meaning.
+
+**What legitimately stays "Turn":**
+- `TurnAnchor` (struct) — a turn-anchor records the conversational *turn boundary* (user-prompt + agent-response pairing). "Turn" here is the conversational concept, not a type name.
+- `TurnAnchorStore` — same.
+- `pairTurnAnchorsToAgentEntries` — "Turn" for the anchor concept, "Entry" for the type.
+- `perTurnDurationMs` / `recordTurnStart` — conversational-turn semantics, not type references.
+
+**Already-correct (no change):** `streamingEntryID` on `AgentXrayPanel` already follows the entry naming; leave alone.
+
+**Verification:** after the rename commit, `git grep -wn "AgentTurn"` returns zero hits in code; build green; tests 21/21 green.
+
+---
+
 ## §1 — Status glyph (3 mutually-exclusive states)
 
 `circle.fill` SF symbol, three colors, top-down precedence:

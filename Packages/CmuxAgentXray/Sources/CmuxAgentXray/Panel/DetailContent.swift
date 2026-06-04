@@ -360,7 +360,7 @@ extension DetailContent {
 
 // MARK: - Tool sub-entry lookup
 
-extension Array where Element == AgentTurn.SubEntry {
+extension Array where Element == AgentEntry.SubEntry {
     /// Find the `.tool(...)` sub-entry whose id matches `toolID`.
     public func toolEntry(withID toolID: String) -> ToolEntry? {
         for sub in self {

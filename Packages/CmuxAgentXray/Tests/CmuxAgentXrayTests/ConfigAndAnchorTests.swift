@@ -88,16 +88,16 @@ struct TurnAnchorTests {
         #expect(anchor.id == "u-1")
     }
 
-    @Test("agentTurnID is mutable")
-    func mutableAgentTurnID() {
+    @Test("agentEntryID is mutable")
+    func mutableAgentEntryID() {
         var anchor = TurnAnchor(
             userEntryID: "u-1",
             terminalRowAtSubmit: 10,
             totalAtCapture: 100,
             capturedAt: Date()
         )
-        #expect(anchor.agentTurnID == nil)
-        anchor.agentTurnID = "a-1"
-        #expect(anchor.agentTurnID == "a-1")
+        #expect(anchor.agentEntryID == nil)
+        anchor.agentEntryID = "a-1"
+        #expect(anchor.agentEntryID == "a-1")
     }
 }

@@ -56,7 +56,7 @@ enum UserLineParser {
     /// classification of its inner text.
     ///
     /// `tool_result` blocks ride on `isMeta=true` user lines too — those
-    /// must keep folding into the pending `AgentTurn` so the parent
+    /// must keep folding into the pending `AgentEntry` so the parent
     /// tool call gets its result attached.
     private static func routingForMetaUser(_ line: ClaudeJSONLLine) -> ClaudeLineRouting {
         if let content = line.message?.content,
