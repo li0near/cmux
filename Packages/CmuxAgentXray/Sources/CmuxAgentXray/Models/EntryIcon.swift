@@ -26,9 +26,12 @@ public struct EntryIcon: Equatable, Sendable, Hashable {
 
 extension EntryIcon {
     /// Generic user prompt.
-    public static let user = EntryIcon(collapsed: "person.crop.circle")
+    public static let user = EntryIcon(collapsed: "person", expanded: "person.fill")
     /// Queued user prompt — pulses while pending.
-    public static let queuedUser = EntryIcon(collapsed: "person.badge.plus")
+    public static let queuedUser = EntryIcon(
+        collapsed: "person.badge.plus",
+        expanded: "person.badge.plus.fill"
+    )
     /// Agent turn (Claude / Codex).
     public static let agent = EntryIcon(collapsed: "microbe", expanded: "microbe.fill")
     /// System line (local-command output, generic).

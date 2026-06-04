@@ -4,9 +4,7 @@ Self-contained Swift package providing the **AgentX-ray** feature for cmux: a
 side-by-side companion panel that mirrors the Claude Code or Codex session
 running in the workspace's currently focused terminal.
 
-This package is a fork-side feature in `manaflow-ai/cmux`. It evolved from the
-spike branch `agent-inspector-swiftui-spike` (whose final state is preserved as
-historical reference); the production form lives here.
+This package is a fork-side feature in `manaflow-ai/cmux`.
 
 ## What it does
 

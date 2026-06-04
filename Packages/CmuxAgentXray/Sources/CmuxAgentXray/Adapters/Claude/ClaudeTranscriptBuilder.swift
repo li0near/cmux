@@ -488,12 +488,19 @@ struct ClaudeTranscriptBuilder {
         isQueuedPending: Bool
     ) -> UserEntry {
         let icon: EntryIcon = wasQueued ? .queuedUser : .user
+        let preview = Self.userPromptPreview(text)
+        let wordCount = Self.wordCount(text)
+        let trailing: [TrailingItem] = wordCount > 0
+            ? [.wordCount("\(wordCount) words")]
+            : []
         return UserEntry(
             id: .fromJSONL(id),
             timestamp: timestamp,
             header: Header(
                 icon: icon,
                 name: userRoleLabel(isQueued: wasQueued, isQueuedPending: isQueuedPending),
+                title: preview.isEmpty ? nil : preview,
+                trailing: trailing,
                 timestamp: timestamp
             ),
             body: .text([text]),
@@ -504,12 +511,19 @@ struct ClaudeTranscriptBuilder {
     }
 
     private func buildPendingUserEntry(_ p: ClaudePendingPrompt) -> UserEntry {
-        UserEntry(
+        let preview = Self.userPromptPreview(p.text)
+        let wordCount = Self.wordCount(p.text)
+        let trailing: [TrailingItem] = wordCount > 0
+            ? [.wordCount("\(wordCount) words")]
+            : []
+        return UserEntry(
             id: .fromJSONL(p.id),
             timestamp: p.timestamp,
             header: Header(
                 icon: .queuedUser,
                 name: userRoleLabel(isQueued: true, isQueuedPending: true),
+                title: preview.isEmpty ? nil : preview,
+                trailing: trailing,
                 timestamp: p.timestamp
             ),
             body: .text([p.text]),
@@ -771,6 +785,14 @@ struct ClaudeTranscriptBuilder {
                 defaultValue: "Claude",
                 bundle: .module
             )
+            let tokenTotal = ClaudeTranscriptBuilder.formatTokenTotal(pending.usage)
+            var trailing: [TrailingItem] = []
+            if pending.usage.inputTokens
+                + pending.usage.outputTokens
+                + pending.usage.cacheReadTokens
+                + pending.usage.cacheCreationTokens > 0 {
+                trailing.append(.pill("\(tokenTotal) tokens"))
+            }
 
             entries.append(.agent(AgentTurn(
                 id: .fromJSONL(pending.id),
@@ -779,6 +801,7 @@ struct ClaudeTranscriptBuilder {
                     icon: .agent,
                     name: agentLabel,
                     label: pending.model.flatMap(ClaudeModelNameMap.friendlyName(for:)),
+                    trailing: trailing,
                     timestamp: pending.startTime
                 ),
                 body: Body(sections: bodySections),
@@ -1225,5 +1248,40 @@ struct ClaudeTranscriptBuilder {
 
     private static func truncated(_ s: String, max: Int) -> String {
         s.count <= max ? s : String(s.prefix(max - 1)) + "…"
+    }
+
+    /// Whitespace-collapsed prompt preview used as `Header.title` for
+    /// `UserEntry`. Single-line summary suitable for inline display in
+    /// the row header.
+    static func userPromptPreview(_ text: String) -> String {
+        let collapsed = text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return truncated(collapsed, max: 120)
+    }
+
+    /// Approximate word count used in the `[12 words]` trailing pill.
+    static func wordCount(_ text: String) -> Int {
+        text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .count
+    }
+
+    /// Human-readable token total for an AgentTurn's `[X.YM tokens]`
+    /// trailing pill. Returns `"123"`, `"12.3k"`, `"4.2M"`, etc.
+    static func formatTokenTotal(_ usage: AgentTurn.TokenUsage) -> String {
+        let total = usage.inputTokens
+            + usage.outputTokens
+            + usage.cacheReadTokens
+            + usage.cacheCreationTokens
+        if total < 1000 { return "\(total)" }
+        if total < 1_000_000 {
+            let value = Double(total) / 1000
+            return String(format: "%.1fk", value)
+        }
+        let value = Double(total) / 1_000_000
+        return String(format: "%.1fM", value)
     }
 }

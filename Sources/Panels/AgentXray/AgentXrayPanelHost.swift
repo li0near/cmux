@@ -145,8 +145,7 @@ final class AgentXrayPanelHost: Panel, ObservableObject {
 @available(macOS 15, *)
 extension AgentXrayPanel {
     /// No internal focus state to claim — the row list owns its own
-    /// selection state via SwiftUI focus. Mirrors the spike's
-    /// AgentInspectorPanel.focus() behaviour.
+    /// selection state via SwiftUI focus.
     func focus() {}
     func unfocus() {}
 }

@@ -7,12 +7,6 @@ import Foundation
 /// emits the resolved Claude/Codex session whenever the focused
 /// terminal changes.
 ///
-/// Ported from the spike's `Sources/Panels/AgentInspector/Attach/
-/// FocusedSurfaceObserver.swift`. The original used Combine's
-/// `objectWillChange.sink`; we keep the Combine implementation here
-/// for Phase 9. Phase 12 will replace the publisher with an
-/// `AsyncStream`-based pipeline.
-///
 /// Three notification names drive `recompute()`:
 ///   - `.ghosttyDidFocusSurface` — keyboard focus on a surface
 ///   - `.ghosttyDidFocusTab` — bonsplit selectedTab change (catches
@@ -22,6 +16,10 @@ import Foundation
 /// The store-watcher (Claude hook-session JSON file) catches sessionId
 /// changes that don't shift focus (e.g. /clear creates a new session
 /// entry).
+///
+/// Currently uses Combine's `objectWillChange.debounce(...).sink`
+/// pipeline. A future revision will swap in an `AsyncStream`-based
+/// event pipeline.
 @MainActor
 @available(macOS 15, *)
 final class WorkspaceFocusObserver: ObservableObject {

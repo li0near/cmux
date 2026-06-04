@@ -476,7 +476,25 @@ struct cmuxApp: App {
                         )
                     ) {
                         if #available(macOS 15, *) {
-                            AgentXrayDebugMenu.openAgentXrayInFocusedWorkspace()
+                            cmuxDebugLog("agentXray.debugMenu.click")
+                            guard let workspace = activeTabManager.selectedWorkspace else {
+                                cmuxDebugLog("agentXray.debugMenu.fail reason=no_workspace")
+                                NSSound.beep()
+                                return
+                            }
+                            guard let paneId = workspace.bonsplitController.focusedPaneId
+                                ?? workspace.bonsplitController.allPaneIds.first else {
+                                cmuxDebugLog("agentXray.debugMenu.fail reason=no_pane workspace=\(workspace.id.uuidString.prefix(6))")
+                                NSSound.beep()
+                                return
+                            }
+                            cmuxDebugLog("agentXray.debugMenu.creating workspace=\(workspace.id.uuidString.prefix(6)) pane=\(paneId)")
+                            let panel = workspace.splitPaneWithAgentXray(
+                                targetPane: paneId,
+                                orientation: .horizontal,
+                                insertFirst: false
+                            )
+                            cmuxDebugLog("agentXray.debugMenu.created panel=\(panel?.id.uuidString.prefix(6) ?? "nil")")
                         }
                     }
                     Button("Background Debug…") {

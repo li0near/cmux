@@ -55,8 +55,11 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
     func observeFocusChanges(
         _ handler: @escaping @MainActor () -> Void
     ) -> any AgentXrayCancellable {
+        // First emission is the observer's current value at subscribe
+        // time (no `dropFirst()`); subsequent transitions emit normally
+        // through the same handler path.
         let combineCancellable = focusObserver.$current
-            .dropFirst() // initial value already delivered synchronously
+            .receive(on: DispatchQueue.main)
             .sink { _ in
                 MainActor.assumeIsolated {
                     handler()

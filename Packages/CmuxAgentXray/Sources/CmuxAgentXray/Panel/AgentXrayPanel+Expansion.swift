@@ -14,9 +14,8 @@ extension AgentXrayPanel {
         /// Tool sub-entry inside an agent turn (mirrored JSONL id).
         case tool(toolID: String)
 
-        /// Lookup key into `currentExpanded`. Mirrors the original
-        /// inspector spike's id derivation: thinking is the one
-        /// derived sub-id, all others are direct JSONL ids.
+        /// Lookup key into `currentExpanded`. Thinking is the one
+        /// derived sub-id; all others are direct JSONL ids.
         public var key: String {
             switch self {
             case .entryChevron(let id), .tool(let id):

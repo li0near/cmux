@@ -211,10 +211,6 @@ public final class AgentXrayPanel {
 
     static let rewindVisibilityKey = "agentXray.rewindVisibility"
     static let expansionModeKey = "agentXray.expansionMode"
-    /// Legacy key from the inspector spike. Read once at init for a
-    /// migration window; future writes go to the new key only.
-    static let legacyExpansionModeKey = "agentInspector.expansionMode"
-    static let legacyRewindVisibilityKey = "agentInspector.rewindVisibility"
 
     // MARK: - Init / deinit
 
@@ -278,19 +274,13 @@ public final class AgentXrayPanel {
 
     private func restorePersistedToggles() {
         let defaults = UserDefaults.standard
-        if let raw = defaults.string(forKey: AgentXrayPanel.rewindVisibilityKey)
-            ?? defaults.string(forKey: AgentXrayPanel.legacyRewindVisibilityKey),
+        if let raw = defaults.string(forKey: AgentXrayPanel.rewindVisibilityKey),
            let v = RewindVisibility(rawValue: raw) {
             self.rewindVisibility = v
         }
-        if let raw = defaults.string(forKey: AgentXrayPanel.expansionModeKey)
-            ?? defaults.string(forKey: AgentXrayPanel.legacyExpansionModeKey) {
-            if let v = ExpansionMode(rawValue: raw) {
-                self.expansionMode = v
-            } else if raw == "autoExpandSnap" {
-                // Legacy raw value from before the rename.
-                self.expansionMode = .autoExpand
-            }
+        if let raw = defaults.string(forKey: AgentXrayPanel.expansionModeKey),
+           let v = ExpansionMode(rawValue: raw) {
+            self.expansionMode = v
         }
     }
 
@@ -306,9 +296,12 @@ public final class AgentXrayPanel {
         claudeAnchorSubscription = host.observeClaudeAnchorPayloads { [weak self] payload in
             self?.handleClaudeAnchorPayload(payload)
         }
-        // Synchronously attach to the currently-focused session — the
-        // observation handler only fires on subsequent transitions.
-        handleSessionChange(host.currentFocusedSession())
+        // The host's `observeFocusChanges` contract delivers the
+        // observer's current value to the handler at subscribe time
+        // via `observer.$current.receive(on: .main).sink`. The first
+        // emission is the initial value at subscribe time; subsequent
+        // transitions (focus changes, restoration completing) emit
+        // normally through the same path.
     }
 
     // MARK: - Bulk-action signal

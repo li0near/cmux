@@ -13,9 +13,11 @@ import Foundation
 /// synchronously when it needs to record a turn anchor or convert a
 /// terminal scroll position to an entry.
 ///
-/// Replaces the spike's `ScrollbarStateCache` (which exposed
-/// GhosttyScrollbar directly). The package never sees the cmux-internal
-/// `GhosttyScrollbar` type — it only consumes `ScrollbarSnapshot`.
+/// The package never sees the cmux-internal `GhosttyScrollbar` type —
+/// it only consumes the neutral `ScrollbarSnapshot` value type.
+///
+/// The package never sees the cmux-internal `GhosttyScrollbar` type —
+/// it only consumes the neutral `ScrollbarSnapshot` value type.
 @MainActor
 @available(macOS 15, *)
 final class WorkspaceScrollbarBridge {

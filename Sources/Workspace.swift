@@ -676,10 +676,18 @@ extension Workspace {
         case .extensionBrowser:
             return nil
         case .agentXray:
-            // AgentX-ray panels are session-local; no restoration data
-            // is captured. The panel re-attaches to the focused agent
-            // surface when the workspace re-opens.
-            return nil
+            // AgentX-ray panels carry no per-panel restoration state —
+            // the live panel re-attaches to whatever terminal is focused
+            // on launch. We still emit a SessionPanelSnapshot so the
+            // panel's identity, type, and bonsplit pane geometry survive
+            // app restarts; the restore arm in `createPanel(...)` calls
+            // `newAgentXraySurface(...)` to recreate a fresh live panel.
+            terminalSnapshot = nil
+            browserSnapshot = nil
+            markdownSnapshot = nil
+            filePreviewSnapshot = nil
+            rightSidebarToolSnapshot = nil
+            projectSnapshot = nil
         }
 
         return SessionPanelSnapshot(

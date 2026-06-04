@@ -4,12 +4,69 @@ import CmuxAgentXray
 import Foundation
 
 /// Workspace-side factory methods + detail-tab routing for AgentX-ray
-/// panels. Mirrors the spike's `Workspace+AgentInspector.swift` shape.
+/// panels.
 @available(macOS 15, *)
 extension Workspace {
 
     /// Open a new live AgentX-ray panel as a tab in the given pane.
     /// Returns the host-wrapper panel; nil on tab creation failure.
+    /// Split a pane and place a new live AgentX-ray panel in the
+    /// new sibling. Mirrors `splitPaneWithMarkdown`'s shape. Used by
+    /// the Debug-menu entry so the AgentX-ray panel sits side-by-side
+    /// with the focused terminal across multiple terminal-tab
+    /// switches in the original pane.
+    @discardableResult
+    func splitPaneWithAgentXray(
+        targetPane paneId: PaneID,
+        orientation: SplitOrientation,
+        insertFirst: Bool
+    ) -> AgentXrayPanelHost? {
+        let panel = AgentXrayPanelHost(workspace: self)
+        panels[panel.id] = panel
+        panelTitles[panel.id] = panel.displayTitle
+
+        let newTab = Bonsplit.Tab(
+            title: panel.displayTitle,
+            icon: panel.displayIcon,
+            kind: SurfaceKind.agentXray,
+            isDirty: false,
+            isLoading: false,
+            isPinned: false
+        )
+        surfaceIdToPanelId[newTab.id] = panel.id
+
+        guard bonsplitController.splitPane(
+            paneId,
+            orientation: orientation,
+            withTab: newTab,
+            insertFirst: insertFirst
+        ) != nil else {
+            #if DEBUG
+            cmuxDebugLog("agentXray.split.fail panel=\(panel.id.uuidString.prefix(6))")
+            #endif
+            panels.removeValue(forKey: panel.id)
+            panelTitles.removeValue(forKey: panel.id)
+            surfaceIdToPanelId.removeValue(forKey: newTab.id)
+            return nil
+        }
+
+        bonsplitController.selectTab(newTab.id)
+        focusPanel(panel.id)
+
+        publishCmuxSurfaceCreated(
+            panel.id,
+            paneId: paneId,
+            kind: SurfaceKind.agentXray,
+            origin: "agent_xray_split",
+            focused: true
+        )
+
+        #if DEBUG
+        cmuxDebugLog("agentXray.split.created panel=\(panel.id.uuidString.prefix(6)) tab=\(newTab.id) origin=\(paneId)")
+        #endif
+        return panel
+    }
+
     @discardableResult
     func newAgentXraySurface(
         inPane paneId: PaneID,
@@ -22,6 +79,10 @@ extension Workspace {
         panels[panel.id] = panel
         panelTitles[panel.id] = panel.displayTitle
 
+        #if DEBUG
+        cmuxDebugLog("agentXray.factory.created panel=\(panel.id.uuidString.prefix(6)) title=\(panel.displayTitle) pane=\(paneId)")
+        #endif
+
         guard let newTabId = bonsplitController.createTab(
             title: panel.displayTitle,
             icon: panel.displayIcon,
@@ -32,12 +93,19 @@ extension Workspace {
             isPinned: false,
             inPane: paneId
         ) else {
+            #if DEBUG
+            cmuxDebugLog("agentXray.factory.fail reason=createTab_returned_nil panel=\(panel.id.uuidString.prefix(6))")
+            #endif
             panels.removeValue(forKey: panel.id)
             panelTitles.removeValue(forKey: panel.id)
             return nil
         }
 
         surfaceIdToPanelId[newTabId] = panel.id
+
+        #if DEBUG
+        cmuxDebugLog("agentXray.factory.tab_created tab=\(newTabId) panel=\(panel.id.uuidString.prefix(6))")
+        #endif
 
         if let targetIndex {
             _ = bonsplitController.reorderTab(newTabId, toIndex: targetIndex)
@@ -55,6 +123,9 @@ extension Workspace {
             bonsplitController.focusPane(paneId)
             bonsplitController.selectTab(newTabId)
             panel.focus()
+            #if DEBUG
+            cmuxDebugLog("agentXray.factory.focused tab=\(newTabId)")
+            #endif
         }
 
         return panel
