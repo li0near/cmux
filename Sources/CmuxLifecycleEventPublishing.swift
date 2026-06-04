@@ -218,6 +218,8 @@ extension Workspace {
             return "project"
         case .extensionBrowser:
             return "extension_browser"
+        case .agentXray:
+            return "agent_xray"
         }
     }
 }

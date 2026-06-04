@@ -11,6 +11,7 @@ public enum PanelType: String, Codable, Sendable {
     case rightSidebarTool
     case project
     case extensionBrowser
+    case agentXray
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -25,6 +26,12 @@ public enum PanelType: String, Codable, Sendable {
         }
         if rawValue.lowercased() == Self.rightSidebarTool.rawValue.lowercased() {
             self = .rightSidebarTool
+            return
+        }
+        // Legacy raw value from the spike branch — preserves user tabs
+        // across the rename.
+        if rawValue == "agentInspector" {
+            self = .agentXray
             return
         }
         throw DecodingError.dataCorruptedError(

@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import Bonsplit
 import AppKit
+import CmuxAgentXray
 
 /// View that renders the appropriate panel view based on panel type
 struct PanelContentView: View {
@@ -109,6 +110,17 @@ struct PanelContentView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        case .agentXray:
+            if #available(macOS 15, *), let agentXrayHost = panel as? AgentXrayPanelHost {
+                CmuxAgentXrayPanelView(
+                    panel: agentXrayHost.xrayPanel,
+                    appearance: HostAppearance(
+                        foregroundColor: NSColor.labelColor,
+                        contentBackgroundColor: NSColor.windowBackgroundColor
+                    )
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
@@ -126,7 +138,7 @@ struct PanelContentView: View {
     private var shouldInstallPaneDropTarget: Bool {
         guard isVisibleInUI else { return false }
         switch panel.panelType {
-        case .markdown, .filePreview, .rightSidebarTool, .project, .extensionBrowser:
+        case .markdown, .filePreview, .rightSidebarTool, .project, .extensionBrowser, .agentXray:
             return true
         case .terminal, .browser:
             return false

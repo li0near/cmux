@@ -469,6 +469,16 @@ struct cmuxApp: App {
 
                 Divider()
                 Menu("Debug Windows") {
+                    Button(
+                        String(
+                            localized: "debug.menu.agentXray",
+                            defaultValue: "Agent X-ray (open new panel)…"
+                        )
+                    ) {
+                        if #available(macOS 15, *) {
+                            AgentXrayDebugMenu.openAgentXrayInFocusedWorkspace()
+                        }
+                    }
                     Button("Background Debug…") {
                         BackgroundDebugWindowController.shared.show()
                     }

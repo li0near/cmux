@@ -7,6 +7,6 @@ struct CmuxAgentXraySmokeTests {
     @available(macOS 15, *)
     @Test("module marker is exposed")
     func moduleMarker() {
-        #expect(CmuxAgentXray.moduleName == "CmuxAgentXray")
+        #expect(AgentXrayModule.moduleName == "CmuxAgentXray")
     }
 }

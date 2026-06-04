@@ -675,6 +675,11 @@ extension Workspace {
             )
         case .extensionBrowser:
             return nil
+        case .agentXray:
+            // AgentX-ray panels are session-local; no restoration data
+            // is captured. The panel re-attaches to the focused agent
+            // surface when the workspace re-opens.
+            return nil
         }
 
         return SessionPanelSnapshot(
@@ -1864,6 +1869,15 @@ extension Workspace {
             return projectPanel.id
         case .extensionBrowser:
             return nil
+        case .agentXray:
+            // Restoration: re-create a fresh AgentX-ray panel; no
+            // per-snapshot state is preserved.
+            guard #available(macOS 15, *),
+                  let host = newAgentXraySurface(inPane: paneId, focus: false) else {
+                return nil
+            }
+            applySessionPanelMetadata(snapshot, toPanelId: host.id)
+            return host.id
         }
     }
 
@@ -10659,6 +10673,7 @@ final class Workspace: Identifiable, ObservableObject {
         static let rightSidebarTool = "rightSidebarTool"
         static let project = "project"
         static let extensionBrowser = "extensionBrowser"
+        static let agentXray = "agentXray"
     }
 
     enum PanelShellActivityState: String {
@@ -11643,6 +11658,8 @@ final class Workspace: Identifiable, ObservableObject {
             return SurfaceKind.project
         case .extensionBrowser:
             return SurfaceKind.extensionBrowser
+        case .agentXray:
+            return SurfaceKind.agentXray
         }
     }
 

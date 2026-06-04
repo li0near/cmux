@@ -28,8 +28,11 @@ import Foundation
 /// through `AgentXrayHost`. See `Packages/CmuxAgentXray/README.md` and
 /// `~/.claude/plans/agentxray-migration-2026-06-04.md` for details.
 @available(macOS 15, *)
-public enum CmuxAgentXray {
-    /// Module marker. Phase 1 placeholder; replaced as the package fills
-    /// out across phases 2–10.
+public enum AgentXrayModule {
+    /// Module marker. Phase 1 placeholder kept for the smoke test;
+    /// type renamed from `CmuxAgentXray` → `AgentXrayModule` to avoid
+    /// shadowing the module name (callers spelling
+    /// `CmuxAgentXray.AgentXrayPanel` would otherwise parse as enum
+    /// case access).
     public static let moduleName: String = "CmuxAgentXray"
 }

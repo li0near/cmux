@@ -29,7 +29,7 @@ public protocol AgentXrayHost: AnyObject {
     /// Cancel via the returned token.
     func observeFocusChanges(
         _ handler: @escaping @MainActor () -> Void
-    ) -> any Cancellable
+    ) -> any AgentXrayCancellable
 
     // MARK: Scrollbar state (drives snap-mode visible-turn filter)
 
@@ -42,7 +42,7 @@ public protocol AgentXrayHost: AnyObject {
     /// responsibility.
     func observeScrollbarChanges(
         _ handler: @escaping @MainActor (UUID) -> Void
-    ) -> any Cancellable
+    ) -> any AgentXrayCancellable
 
     // MARK: Live anchor pipeline (cmux fires; package consumes)
 
@@ -50,7 +50,7 @@ public protocol AgentXrayHost: AnyObject {
     /// CLI socket handler. The handler is invoked on the main actor.
     func observeClaudeAnchorPayloads(
         _ handler: @escaping @MainActor (ClaudeAnchorPayload) -> Void
-    ) -> any Cancellable
+    ) -> any AgentXrayCancellable
 
     // MARK: Panel intent → cmux side actions
 

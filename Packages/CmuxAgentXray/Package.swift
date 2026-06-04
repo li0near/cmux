@@ -6,7 +6,7 @@ let package = Package(
     name: "CmuxAgentXray",
     defaultLocalization: "en",
     platforms: [
-        .macOS(.v15),
+        .macOS(.v14),
     ],
     products: [
         .library(

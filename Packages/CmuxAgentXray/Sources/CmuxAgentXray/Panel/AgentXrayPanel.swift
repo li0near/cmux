@@ -199,11 +199,11 @@ public final class AgentXrayPanel {
     // MARK: - Host subscriptions (cancelled in close())
 
     @ObservationIgnored
-    var focusSubscription: (any Cancellable)?
+    var focusSubscription: (any AgentXrayCancellable)?
     @ObservationIgnored
-    var scrollbarSubscription: (any Cancellable)?
+    var scrollbarSubscription: (any AgentXrayCancellable)?
     @ObservationIgnored
-    var claudeAnchorSubscription: (any Cancellable)?
+    var claudeAnchorSubscription: (any AgentXrayCancellable)?
     @ObservationIgnored
     var streamObservationTask: Task<Void, Never>?
 
