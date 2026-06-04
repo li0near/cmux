@@ -26,7 +26,7 @@ import Foundation
 ///
 /// The package never imports cmux types. All cmux integration runs
 /// through `AgentXrayHost`. See `Packages/CmuxAgentXray/README.md` and
-/// `~/.claude/plans/agentxray-migration-2026-06-04.md` for details.
+/// the sibling `MIGRATION_PLAN.md` for details.
 @available(macOS 15, *)
 public enum AgentXrayModule {
     /// Module marker. Phase 1 placeholder kept for the smoke test;

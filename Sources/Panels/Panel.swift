@@ -28,8 +28,8 @@ public enum PanelType: String, Codable, Sendable {
             self = .rightSidebarTool
             return
         }
-        // Legacy raw value from the spike branch — preserves user tabs
-        // across the rename.
+        // Legacy raw value retained for backwards-compat with persisted
+        // panel snapshots from earlier builds — preserves user tabs.
         if rawValue == "agentInspector" {
             self = .agentXray
             return
