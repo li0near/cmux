@@ -21,6 +21,12 @@ public struct TranscriptView: View {
     @Bindable public var panel: AgentXrayPanel
     public let appearance: HostAppearance
 
+    /// Tracks which entry is currently at the viewport top, derived
+    /// from per-entry anchor preferences via `EntryAnchorsKey`. Used
+    /// by the bulk-expand materialize-kick to re-pin the viewport
+    /// after content reflows.
+    @State private var currentTopVisibleID: String?
+
     public init(panel: AgentXrayPanel, appearance: HostAppearance) {
         self.panel = panel
         self.appearance = appearance
@@ -94,18 +100,60 @@ public struct TranscriptView: View {
             if entries.isEmpty {
                 emptyTranscriptView(palette: palette)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: Theme.Padding.topLevelEntryGap) {
-                        ForEach(entries, id: \.id.stableString) { entry in
-                            entryView(for: entry, palette: palette)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: Theme.Padding.topLevelEntryGap) {
+                            ForEach(Array(entries.enumerated()), id: \.element.id.stableString) { _, entry in
+                                if case .user(let u) = entry {
+                                    boundaryDivider(id: beforeTurnBoundaryID(u.id.stableString))
+                                }
+                                entryRow(for: entry, palette: palette)
+                            }
+                            boundaryDivider(id: tailBoundaryID(for: panel.entriesFilter))
+                        }
+                        .padding(.vertical, 6)
+                        .id("cmux-agentxray-layout-\(panel.bulkState.layoutRevision)")
+                    }
+                    .defaultScrollAnchor(.bottom, for: .initialOffset)
+                    .defaultScrollAnchor(.topLeading, for: .alignment)
+                    .defaultScrollAnchor(.bottom, for: .sizeChanges)
+                    .scrollIndicators(.never)
+                    .backgroundPreferenceValue(EntryAnchorsKey.self) { anchors in
+                        GeometryReader { geo in
+                            Color.clear
+                                .onChange(of: Set(anchors.keys)) { _, _ in
+                                    handleEntryAnchorsChange(anchors: anchors, geo: geo)
+                                }
                         }
                     }
-                    .padding(.vertical, 6)
+                    .onChange(of: panel.entriesFilter) { _, _ in
+                        guard panel.scrollMode == .snap else { return }
+                        scrollForFilter(proxy: proxy)
+                    }
+                    .onChange(of: panel.resolvedSession?.sessionID) { _, _ in
+                        scrollForFilter(proxy: proxy)
+                    }
+                    .onChange(of: panel.bulkState) { _, newState in
+                        switch newState.lastDirection {
+                        case .collapse:
+                            DispatchQueue.main.async {
+                                scrollForFilter(proxy: proxy)
+                            }
+                        case .expand:
+                            if let topID = currentTopVisibleID {
+                                DispatchQueue.main.async {
+                                    var tx = Transaction()
+                                    tx.disablesAnimations = true
+                                    withTransaction(tx) {
+                                        proxy.scrollTo(topID, anchor: .top)
+                                    }
+                                }
+                            }
+                        case .none:
+                            break
+                        }
+                    }
                 }
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .defaultScrollAnchor(.topLeading, for: .alignment)
-                .defaultScrollAnchor(.bottom, for: .sizeChanges)
-                .scrollIndicators(.never)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -113,22 +161,32 @@ public struct TranscriptView: View {
 
     /// Top-level entry dispatcher. AgentEntry takes the specialized
     /// per-kind path; everything else routes through the generic
-    /// `EntryView`.
+    /// `EntryView`. Both paths attach an anchor preference for
+    /// viewport-top tracking.
     @ViewBuilder
-    private func entryView(for entry: Entry, palette: HudPalette) -> some View {
-        switch entry {
-        case .agent(let agent):
-            AgentEntryView(
-                entry: agent,
-                palette: palette,
-                isExpanded: panel.currentExpanded.contains(agent.id.stableString),
-                isStreaming: panel.streamingEntryID == agent.id.stableString,
-                isSubEntryExpanded: { panel.currentExpanded.contains($0) },
-                onToggleExpansion: { panel.toggleExpansion($0) },
-                onOpenDetail: { panel.openDetail(request: $0) }
-            )
-        default:
-            genericEntryView(entry: entry, palette: palette)
+    private func entryRow(for entry: Entry, palette: HudPalette) -> some View {
+        let entryID = entry.id.stableString
+        Group {
+            switch entry {
+            case .agent(let agent):
+                AgentEntryView(
+                    entry: agent,
+                    palette: palette,
+                    isExpanded: panel.currentExpanded.contains(entryID),
+                    isStreaming: panel.streamingEntryID == entryID,
+                    isSubEntryExpanded: { panel.currentExpanded.contains($0) },
+                    onToggleExpansion: { panel.toggleExpansion($0) },
+                    onOpenDetail: { panel.openDetail(request: $0) }
+                )
+            default:
+                genericEntryView(entry: entry, palette: palette)
+            }
+        }
+        .transformAnchorPreference(
+            key: EntryAnchorsKey.self,
+            value: .bounds
+        ) { dict, anchor in
+            dict[entryID] = anchor
         }
     }
 
@@ -153,6 +211,16 @@ public struct TranscriptView: View {
         .id(entryID)
     }
 
+    /// Boundary-id'd divider used as `proxy.scrollTo(...)` target. The
+    /// id makes the position discoverable; the visual is just an
+    /// invisible spacer (no rendering — predecessor parity, no
+    /// per-row hairlines).
+    private func boundaryDivider(id: String) -> some View {
+        Color.clear
+            .frame(height: 0)
+            .id(id)
+    }
+
     private func visibleEntries() -> [Entry] {
         let all = panel.stream.entries
         let postFilter: [Entry]
@@ -175,6 +243,50 @@ public struct TranscriptView: View {
         }
         return postFilter
     }
+
+    // MARK: - Scroll routing
+
+    /// Cross-band routing on filter / session-change / bulk-collapse.
+    /// Picks a scroll target — a turn-boundary id or the tail-boundary
+    /// id — and scrolls to it without animation.
+    private func scrollForFilter(proxy: ScrollViewProxy) {
+        let entries = panel.stream.entries
+        guard !entries.isEmpty else { return }
+        let target = scrollTarget(
+            entries: entries,
+            filter: panel.entriesFilter,
+            anchoredUserIDs: panel.anchoredUserEntryIDs
+        )
+        var tx = Transaction()
+        tx.disablesAnimations = true
+        withTransaction(tx) {
+            proxy.scrollTo(target, anchor: .bottom)
+        }
+    }
+
+    // MARK: - Anchor aggregation
+
+    /// Resolve per-entry anchor frames against the scroll-view's
+    /// geometry, find the entry currently at the viewport top, and
+    /// publish it as `currentTopVisibleID`.
+    private func handleEntryAnchorsChange(
+        anchors: [String: Anchor<CGRect>],
+        geo: GeometryProxy
+    ) {
+        var resolved: [(id: String, rect: CGRect)] = []
+        resolved.reserveCapacity(anchors.count)
+        for (id, anchor) in anchors {
+            resolved.append((id: id, rect: geo[anchor]))
+        }
+        resolved.sort { $0.rect.minY < $1.rect.minY }
+        let topVisible = resolved.first(where: { $0.rect.minY >= 0 }) ?? resolved.first
+        let topVisibleID = topVisible?.id
+        if currentTopVisibleID != topVisibleID {
+            currentTopVisibleID = topVisibleID
+        }
+    }
+
+    // MARK: - Empty / detail
 
     private func emptyTranscriptView(palette: HudPalette) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -222,6 +334,11 @@ public struct TranscriptView: View {
 
     // MARK: - Detail view (frozen)
 
+    /// Detail-mode rendering. When `content.entries` is non-nil
+    /// (abandoned-branch or sub-agent transcript), render an entries
+    /// list using the same EntryView dispatcher used for live
+    /// transcripts (in `.fullDetail` mode). Otherwise render the
+    /// plain-text body.
     private func detailView(content: DetailContent) -> some View {
         let palette = HudPalette(foreground: appearance.foregroundColor)
         return VStack(alignment: .leading, spacing: 6) {
@@ -233,18 +350,78 @@ public struct TranscriptView: View {
                     .font(Theme.DetailPanel.subtitle)
                     .foregroundStyle(palette.dim)
             }
-            ScrollView {
-                Text(content.body)
-                    .font(Theme.DetailPanel.body)
-                    .foregroundStyle(palette.primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(Theme.Padding.expandedBodyBlock)
+            if let entries = content.entries, !entries.isEmpty {
+                detailEntriesList(entries: entries, palette: palette)
+            } else {
+                detailBodyText(content.body, palette: palette)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: appearance.contentBackgroundColor))
+    }
+
+    private func detailBodyText(_ body: String, palette: HudPalette) -> some View {
+        ScrollView {
+            Text(body)
+                .font(Theme.DetailPanel.body)
+                .foregroundStyle(palette.primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.Padding.expandedBodyBlock)
+        }
+    }
+
+    /// Render an entries array (abandoned-branch / sub-agent
+    /// transcript) inline using the same EntryView dispatcher used
+    /// for live transcripts. Detail mode shows everything expanded;
+    /// the open-detail link is a no-op (no nested detail tabs).
+    private func detailEntriesList(entries: [Entry], palette: HudPalette) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: Theme.Padding.topLevelEntryGap) {
+                ForEach(entries, id: \.id.stableString) { entry in
+                    detailEntryRow(entry: entry, palette: palette)
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .scrollIndicators(.never)
+    }
+
+    private func detailEntryRow(entry: Entry, palette: HudPalette) -> some View {
+        let computed = panel.computedCache.compute(for: entry, displayMode: .fullDetail)
+        let entryID = entry.id.stableString
+        return EntryView(
+            entry: entry,
+            computed: computed,
+            palette: palette,
+            displayMode: .fullDetail,
+            isExpanded: true,
+            isStreaming: false,
+            onToggleExpansion: {},
+            onOpenDetail: {},
+            renderSubEntry: { _ in AnyView(EmptyView()) }
+        )
+        .id(entryID)
+    }
+}
+
+// MARK: - Anchor preference key
+
+/// Per-entry `Anchor<CGRect>` aggregation key. Each entry view emits
+/// its bounds via `transformAnchorPreference`; the parent
+/// `backgroundPreferenceValue(EntryAnchorsKey.self)` resolves them
+/// against the `GeometryProxy` to find the entry currently at the
+/// viewport top — used as the materialize-kick re-pin target after
+/// bulk-expand reflows the LazyVStack.
+@available(macOS 15, *)
+private struct EntryAnchorsKey: PreferenceKey {
+    static let defaultValue: [String: Anchor<CGRect>] = [:]
+    static func reduce(
+        value: inout [String: Anchor<CGRect>],
+        nextValue: () -> [String: Anchor<CGRect>]
+    ) {
+        value.merge(nextValue()) { _, new in new }
     }
 }

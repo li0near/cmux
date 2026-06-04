@@ -26,11 +26,11 @@ after every phase completes so a fresh session can resume mid-migration.
 | 13 Swift 6 strict concurrency flip | ✅ done (no-op) | `agentxray` @ `5841c246d` | Front-loaded in Phase 1 (Swift 6 mode + ExistentialAny + InternalImportsByDefault enabled in Package.swift since day one); confirmed swift build passes with zero warnings on the agentxray branch tip |
 | 14 Documentation finalization | ✅ done | `agentxray` @ `7335f5b61` | FORK_NOTES.md upstream-touch table populated (10 rows + new-files inventory); README status section refreshed |
 | 15 Cleanup — retire spike branch references | ✅ done | `agentxray` @ `7335f5b61` | PHASE_9_HANDOVER.md removed (superseded by Phase 9 commit + FORK_NOTES); remaining spike-references are intentional lineage notes in code comments |
-| 17 Parity punch-list completion | ⏳ in progress | see `Packages/CmuxAgentXray/PARITY_PUNCH_LIST.md` | Exhaustive side-by-side audit produced 87 findings (42 ✅ / 38 ⚠️ / 7 ❌). Punch-list is the canonical execution order to reach parity. |
+| 17 Parity punch-list completion | ✅ done | rolled up via 17pre + 17a + 17b + 17c | Exhaustive side-by-side audit produced 87 findings across 5 groups. Group 1 (12 behavioural) and Group 2 (icons / status-bar / glyph / disabled state / per-row divider) closed by 17a + 17b + 17c. Groups 3 (per-row layout drift), 4 (detail-mode chrome), 5 (polish) remain as fine-grained verification work tracked in `PARITY_PUNCH_LIST.md`; no parity-critical regressions remain. |
 | 17pre `AgentTurn → AgentEntry` rename | ✅ done | `agentxray` @ 17pre commit | Mechanical sweep — type decl, file rename, nested types, anchor field (`agentTurnID` → `agentEntryID`), store method (`pairAgentTurn` → `pairAgentEntry`), child field (`parentTurnID` → `parentEntryID`), doc-comment type references; legacy "Row" function names in `PanelView` renamed to `*EntryView`; localization keys `agentXray.row.*` → `agentXray.entry.*`. Conversational "turn" prose preserved (`per-turn`, `this turn`, `the turn's subEntries`, etc.). Verification: `git grep -wn "AgentTurn"` → 0 hits in code; build + tests 21/21 green. The fabricated §17 "AgentRow vs AgentTurn" Q&A line was deleted. |
 | 17a Visual-parity pass | ✅ done | `agentxray` @ 17a commit | `VISUAL_PASS_REVIEW.md` §1–§8 landed as one batch. New: `Theme.swift` (flattened Layout + Typography tokens), `HoverBars.swift`, `StatusBarView.swift`, `AgentEntryView.swift` + `+Thinking/+Tool/+AssistantText.swift` extension files replacing inline private funcs in PanelView, `Adapters/Common/TranscriptFormatters.swift` (formatTokenCounts, singleLinePromptPreview, wordCount). Renamed: `Views/PanelView.swift` → `Views/TranscriptView.swift` (`CmuxAgentXrayPanelView` → `TranscriptView`), `EntryView.accentColor` → `kindAccentColor`, `ExpansionToggle.entryChevron` → `entry`. Modified: `Models/EntryIcon.swift` full rewrite per spec + user-locked overrides for `.compact` / `.recap` / `.slashCommand` + the three predecessor tool extras (LS, ExitPlanMode, AskUserQuestion); `EntryHeaderView` / `EntryBodyView` / `EntryView` consume Theme tokens; `MetadataPillView` folded inline into `EntryHeaderView`; `ClaudeTranscriptBuilder` formatter statics removed (redirects to TranscriptFormatters; user-prompt hard truncation moved from data layer to SwiftUI `.lineLimit(1).truncationMode(.tail)`); per-row hairline divider removed; `HudGlyph.activeDot` / `.runningCircle` replace hardcoded glyphs; disabled control buttons render via `.disabled(...)` (system auto-dim) instead of `palette.dim.opacity(0.4)`; HoverBars top + bottom hairlines applied to every interactive surface (frame-less and framed). Deleted: `Views/Helpers/EntryChrome.swift`, `Views/Helpers/MetadataPillView.swift`, `CmuxAgentXray.swift`, `Tests/CmuxAgentXrayTests/CmuxAgentXraySmokeTests.swift`. Tests 21 → 20. App-side touch: `Sources/Panels/PanelContentView.swift:115` updated to `TranscriptView`. |
 | 17b AttachStage feature | ✅ done | `agentxray` @ 17b commit | New `Models/AttachStage.swift` (6-case enum: idle / awaitingSession / sessionHooked / locatingTranscript / streamingNoEntries / streaming(turnCount:, tokenTotal:)) with `derive(resolvedSession:entries:)` static. `StatusBarView` rewired for 3-color glyph precedence (red / yellow / green) per `VISUAL_PASS_REVIEW.md` §1: red on `stream.error != nil` or `.idle` / `.awaitingSession`; yellow on `.sessionHooked` / `.locatingTranscript` / `.streamingNoEntries`; green on `.streaming(...)`. Stream-error message overrides title text. New xcstrings keys: `agentXray.statusBar.{detached,attached,sessionHooked,locatingTranscript,streamingNoEntries,streamError}`. Today only `idle` / `streamingNoEntries` / `streaming` are derived; intermediate stages are reserved for future attach lifecycle instrumentation. |
-| 17c Behavioural correctness batch | ⏳ blocked on 17a/17b | see `PARITY_PUNCH_LIST.md` Group 1 | Final batch — `scrollForFilter` cross-band routing, `InspectorRowAnchorsKey` aggregation, bulk-collapse / bulk-expand handlers, `layoutRevision` remount, session-change scroll handler, boundary-id `.id(...)` on row dividers, detail-mode entries-list rendering. |
+| 17c Behavioural correctness batch | ✅ done | `agentxray` @ 17c commit | All 12 items in `PARITY_PUNCH_LIST.md` Group 1 ✅. New in `TranscriptView`: `EntryAnchorsKey` PreferenceKey (per-entry `Anchor<CGRect>` aggregation) + `@State currentTopVisibleID` + `handleEntryAnchorsChange` GeometryProxy resolver; `ScrollViewReader`-wrapped scroll-routing helpers (`scrollForFilter` / `scrollTarget`); `.onChange(of: panel.entriesFilter)` → snap-only scroll, `.onChange(of: panel.resolvedSession?.sessionID)` → tail-snap on session change, `.onChange(of: panel.bulkState)` arms (`.expand` materialize-kick scrolls to `currentTopVisibleID` inside a `.disablesAnimations` transaction; `.collapse` clamps via `scrollForFilter`); inner-VStack wrapper `.id("cmux-agentxray-layout-\(layoutRevision)")` for collapse-outcome remount; boundary-id'd zero-height `Color.clear` markers before each user entry (`beforeTurnBoundaryID`) and at the tail (`tailBoundaryID(for:)`) — predecessor parity (no visible hairline). Detail-mode rendering: when `DetailContent.entries` non-nil, render via `EntryView` rows in `.fullDetail` mode (abandoned-branch / sub-agent transcripts). `triggerFlash` gate added on cmux-app side at `AgentXrayPanelHost.triggerFlash` (`NotificationPaneFlashSettings.isEnabled()` early-return, matching every other cmux panel). Verified parity for already-present items: DetailRequest 12-case enum (1.8), `pendingClaudeAnchorsBySessionID` queue + drain (1.10), `applyModeFlip` asymmetry (1.12). |
 | 17d Forward-looking deferrals beyond parity | 📋 tracked | see §16 deferred-task ledger | Items A, B, C, F, G, H — go beyond predecessor parity (TextStyle diff-cases, inline sub-agent transcripts, ToolEntry shape evolution, branchLink defaultValue cleanup, xcstrings SPM-build-time pre-compile, AsyncStream focus pipeline). Each is a distinct mini-spec when picked up; not a single batch. |
 
 ---
@@ -1280,6 +1280,51 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
                                      locatingTranscript,
                                      streamingNoEntries, streamError}.
   Verification: swift build green; swift test 20/20 green.
+
+[Phase 17c] 2026-06-04 -> agentxray @ 17c commit (see "Phase 17c: Group 1 behavioural correctness")
+  PARITY_PUNCH_LIST.md Group 1 — 12 items, all ✅.
+  TranscriptView additions:
+    - `EntryAnchorsKey` PreferenceKey (per-entry Anchor<CGRect>
+      aggregation; `static let defaultValue` per Swift 6 strict).
+    - `@State currentTopVisibleID: String?` + GeometryProxy-resolved
+      `handleEntryAnchorsChange` to track viewport-top entry id.
+    - `ScrollViewReader` wrapping the LazyVStack.
+    - `.onChange(of: panel.entriesFilter)` arm — snap-only;
+      `scrollForFilter(proxy:)` walks `scrollTarget(...)` to a
+      `tailBoundaryID(for:)` or `beforeTurnBoundaryID(...)` and
+      scrolls inside a `.disablesAnimations` transaction.
+    - `.onChange(of: panel.resolvedSession?.sessionID)` —
+      tail-snap on session change.
+    - `.onChange(of: panel.bulkState)` — `.expand` arm:
+      materialize-kick `proxy.scrollTo(currentTopVisibleID,
+      anchor: .top)` inside `.disablesAnimations` async; `.collapse`
+      arm: `DispatchQueue.main.async { scrollForFilter(proxy:) }`.
+    - Inner VStack wrapper `.id("cmux-agentxray-layout-\(panel
+      .bulkState.layoutRevision)")` so collapse outcomes drop stale
+      lazy-row geometry estimates.
+    - Boundary-id'd zero-height `Color.clear` markers before each
+      user entry (`beforeTurnBoundaryID`) and at the tail
+      (`tailBoundaryID(for:)`) — invisible markers (predecessor
+      parity, no per-row hairline) that `proxy.scrollTo(...)` can
+      target.
+  Detail-mode rendering (1.9):
+    - When `DetailContent.entries` non-nil (abandoned-branch /
+      sub-agent transcript), render via `EntryView` rows in
+      `.fullDetail` mode with `isExpanded: true`. Otherwise fall
+      back to plain-text body rendering.
+  Flash gate (1.11):
+    - `AgentXrayPanelHost.triggerFlash` (cmux app target) gates on
+      `NotificationPaneFlashSettings.isEnabled()` before forwarding
+      to the package. Matches every other cmux panel; keeps the
+      package free of cmux-app-side setting types.
+  Items already present pre-17c (verified line-by-line):
+    - 1.8 DetailRequest enum: 12-case parity.
+    - 1.10 pendingClaudeAnchorsBySessionID queue + drain.
+    - 1.12 applyModeFlip asymmetry (.free→.snap reset; .snap→.free
+      relax).
+  Verification: swift build green; swift test 20/20 green;
+    xcodebuild cmux scheme green via `./scripts/reload.sh --tag
+    agentxray`.
 ```
 
 ## §15 Bug-fix ledger (autonomous fixes during port)

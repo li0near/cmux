@@ -126,6 +126,7 @@ final class AgentXrayPanelHost: Panel, ObservableObject {
     }
 
     func triggerFlash(reason: WorkspaceAttentionFlashReason) {
+        guard NotificationPaneFlashSettings.isEnabled() else { return }
         // Map cmux flash-reason taxonomy to the package reason.
         let mapped: AttentionFlashReason
         switch reason {
