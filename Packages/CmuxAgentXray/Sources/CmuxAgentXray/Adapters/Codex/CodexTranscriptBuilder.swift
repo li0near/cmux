@@ -175,7 +175,7 @@ struct CodexTranscriptBuilder {
                 header: Header(
                     icon: .agent,
                     name: String(
-                        localized: "agentXray.row.agent.label",
+                        localized: "agentXray.row.agent.label.codex",
                         defaultValue: "Agent",
                         bundle: .module
                     ),

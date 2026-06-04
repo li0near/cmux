@@ -767,7 +767,7 @@ struct ClaudeTranscriptBuilder {
                 ? []
                 : [.subentries(subEntries.map(Self.subEntryToTopLevel))]
             let agentLabel = String(
-                localized: "agentXray.row.agent.label",
+                localized: "agentXray.row.agent.label.claude",
                 defaultValue: "Claude",
                 bundle: .module
             )
