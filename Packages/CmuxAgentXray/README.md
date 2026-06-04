@@ -90,9 +90,13 @@ CMUX_ZIG=/opt/homebrew/opt/zig@0.15/bin/zig \
 
 ## Status
 
-This package is mid-migration as of 2026-06-04. Phase status, open work,
-and bug-fix ledger live in `~/.claude/plans/agentxray-migration-2026-06-04.md`.
-Upstream-touch surface is tracked in `FORK_NOTES.md` (sibling file).
+This package is mid-migration as of 2026-06-04. Phases 1–8, 10, 11, and
+13 are complete (Domain models → Adapters → Streaming → Behavior →
+Snapshots → Views → Panel + Host protocol → Detail-mode resolver →
+Localization). Phase 9 (cmux app integration) and Phases 12/14/15 are
+pending. Phase status, open work, and the autonomous bug-fix ledger
+live in `~/.claude/plans/agentxray-migration-2026-06-04.md`. Upstream-
+touch surface is tracked in `FORK_NOTES.md` (sibling file).
 
 ## Conventions (must read)
 
