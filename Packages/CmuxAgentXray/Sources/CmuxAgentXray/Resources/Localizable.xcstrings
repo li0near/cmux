@@ -539,6 +539,39 @@
           }
         }
       }
+    },
+    "agentXray.entry.branchLink.subtitle.count" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld entries"
+          }
+        }
+      }
+    },
+    "agentXray.empty.attached.detail" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hooked. Run a prompt to see entries here."
+          }
+        }
+      }
+    },
+    "agentXray.placeholder.noSession" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No session yet. Focus a terminal running claude or codex — Agent X-ray follows the focused terminal automatically."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -37,14 +37,17 @@ extension AgentXrayPanel {
     /// Notification entry point from the host's scrollbar observer.
     /// Filters by surface and bails outside `.snap` mode in O(1).
     /// Coalesces multiple events that arrive within one ~16ms display
-    /// frame into a single trailing recompute.
+    /// frame into a single trailing recompute. Uses `Task.sleep`
+    /// (carve-out: bounded frame-coalescing delay) instead of
+    /// `DispatchQueue.asyncAfter` per CLAUDE.md.
     func queueScrollbarUpdate(surfaceID: UUID) {
         guard case .live = mode, scrollMode == .snap else { return }
         guard let pairedSurfaceID = pairedSurfaceUUID(),
               pairedSurfaceID == surfaceID else { return }
         guard !hasPendingScrollbarRecompute else { return }
         hasPendingScrollbarRecompute = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(16)) { [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(16))
             guard let self else { return }
             self.hasPendingScrollbarRecompute = false
             self.recomputeEntriesFilter()

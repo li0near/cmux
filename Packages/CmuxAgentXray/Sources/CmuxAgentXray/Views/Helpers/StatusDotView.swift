@@ -10,7 +10,7 @@ struct StatusDotView: View {
     var body: some View {
         Circle()
             .fill(color)
-            .frame(width: 6, height: 6)
+            .frame(width: Theme.Metric.statusDot, height: Theme.Metric.statusDot)
     }
 
     private var color: Color {

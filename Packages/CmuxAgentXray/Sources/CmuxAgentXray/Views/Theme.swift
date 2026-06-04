@@ -15,6 +15,7 @@ public import SwiftUI
 ///
 /// Views in this package consume these tokens instead of literal
 /// numbers so future visual tweaks land in one place.
+@available(macOS 15, *)
 public enum Theme {
 
     // MARK: - Layout — Spacing
@@ -40,12 +41,21 @@ public enum Theme {
         public static let horizontal: CGFloat = 12
         /// Inside each pill (token / word-count / scroll-mode); 6pt L/R.
         public static let pillHorizontal: CGFloat = 6
+        /// Inside each pill — top/bottom padding (2pt).
+        public static let pillVertical: CGFloat = 2
         /// Inside the gray expanded body block (8pt around content).
         public static let expandedBodyBlock: CGFloat = 8
         /// `LazyVStack(spacing:)` between consecutive entries (4pt).
         /// Composed at the parent — entries have intrinsic height so
         /// this is the list's `spacing`, not a per-row padding.
         public static let topLevelEntryGap: CGFloat = 4
+        /// Vertical breathing room around the LazyVStack inside the
+        /// ScrollView (6pt).
+        public static let transcriptVertical: CGFloat = 6
+        /// Empty / detail panel outer left-right padding (16pt).
+        public static let panelEdgeHorizontal: CGFloat = 16
+        /// Empty / detail panel outer top-bottom padding (12pt).
+        public static let panelEdgeVertical: CGFloat = 12
     }
 
     // MARK: - Layout — Metric
@@ -57,6 +67,8 @@ public enum Theme {
         public static let rowIconWidth: CGFloat = 14
         /// SF Symbol visual width for a sub-entry icon (12pt).
         public static let subRowIconWidth: CGFloat = 12
+        /// Status-dot diameter for the trailing tool-status indicator (6pt).
+        public static let statusDot: CGFloat = 6
     }
 
     // MARK: - Layout — Indent
@@ -66,17 +78,13 @@ public enum Theme {
     public enum Indent {
         /// Sub-row icon aligns with the parent entry's first text
         /// character: `rowIconWidth + rowIconText` = 22pt.
-        public static var subRow: CGFloat {
-            Metric.rowIconWidth + Spacing.rowIconText
-        }
+        public static let subRow: CGFloat = Metric.rowIconWidth + Spacing.rowIconText
         /// Nested content (tool input/result inside the tool sub-row)
         /// aligns just past the row's icon column:
         /// `subRow + rowIconWidth` = 36pt. Predecessor parity
         /// (PARITY_PUNCH_LIST §3.8 — formula
         /// `expandedIndent + iconColumnWidth`).
-        public static var nestedSubRow: CGFloat {
-            subRow + Metric.rowIconWidth
-        }
+        public static let nestedSubRow: CGFloat = Indent.subRow + Metric.rowIconWidth
     }
 
     // MARK: - Layout — Height

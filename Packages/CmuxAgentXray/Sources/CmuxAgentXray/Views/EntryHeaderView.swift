@@ -51,7 +51,6 @@ struct EntryHeaderView: View {
                 Text(name)
                     .font(Theme.Row.name)
                     .foregroundStyle(kindAccentColor ?? palette.primary)
-                    .symbolEffect(.pulse, options: .repeating, isActive: pulseIcon)
             }
             if let label = header.label {
                 Text(label)
@@ -117,7 +116,7 @@ private struct MetadataPill: View {
             .font(Theme.SubRow.meta)
             .foregroundStyle(palette.dim)
             .padding(.horizontal, Theme.Padding.pillHorizontal)
-            .padding(.vertical, 2)
+            .padding(.vertical, Theme.Padding.pillVertical)
             .background(
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                     .fill(palette.expandedBackground)
@@ -148,7 +147,7 @@ private struct TokenPillView: View {
                 .font(Theme.SubRow.meta)
                 .foregroundStyle(palette.dim)
                 .padding(.horizontal, Theme.Padding.pillHorizontal)
-                .padding(.vertical, 2)
+                .padding(.vertical, Theme.Padding.pillVertical)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                         .fill(palette.expandedBackground)
@@ -162,12 +161,8 @@ private struct TokenPillView: View {
         .buttonStyle(.plain)
     }
 
-    private var total: Int {
-        usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheCreationTokens
-    }
-
     private var compactLabel: String {
-        formatTokens(total) + " tokens"
+        formatTokenCounts(usage) + " tokens"
     }
 
     private var breakdownLabel: String {
@@ -177,11 +172,5 @@ private struct TokenPillView: View {
         if usage.cacheReadTokens > 0    { parts.append("\(formatTokens(usage.cacheReadTokens)) cr") }
         if usage.cacheCreationTokens > 0 { parts.append("\(formatTokens(usage.cacheCreationTokens)) cw") }
         return parts.joined(separator: " · ")
-    }
-
-    private func formatTokens(_ n: Int) -> String {
-        if n < 1000 { return "\(n)" }
-        if n < 1_000_000 { return String(format: "%.1fk", Double(n) / 1000) }
-        return String(format: "%.1fM", Double(n) / 1_000_000)
     }
 }

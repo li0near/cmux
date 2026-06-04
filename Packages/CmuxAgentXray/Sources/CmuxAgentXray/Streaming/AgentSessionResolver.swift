@@ -98,18 +98,11 @@ public struct AgentSessionResolver: @unchecked Sendable {
         case (.none, .some(let x)):
             return makeSession(kind: .codex, record: x)
         case (.none, .none):
-            if let resumed = fallbackClaudeResumeForTTY(
+            return fallbackClaudeResumeForTTY(
                 workspaceID: workspaceID,
                 surfaceID: surfaceID,
                 cwdHint: cwdHint,
                 ttyName: ttyName
-            ) {
-                return resumed
-            }
-            return fallbackByMostRecentClaudeTranscript(
-                workspaceID: workspaceID,
-                surfaceID: surfaceID,
-                cwdHint: cwdHint
             )
         }
     }
@@ -146,71 +139,6 @@ public struct AgentSessionResolver: @unchecked Sendable {
             surfaceID: surfaceID,
             cwd: cwdHint,
             transcriptPath: claudeTranscriptPath(sessionID: sessionID, cwdHint: cwdHint)
-        )
-    }
-
-    /// Last-resort fallback when neither the hook store lookup nor the
-    /// TTY-resume scan resolves a session. This commonly fires after a
-    /// cmux app restart: the workspace UUID changes (so old hook
-    /// records are no longer keyed under it) AND `surfaceTTYNames`
-    /// carries a stale TTY name that no longer exists on `/dev/`
-    /// (because the panel restored to a fresh pty but the CLI report
-    /// hasn't fired yet — claude is occupying the shell).
-    ///
-    /// Strategy: walk `~/.claude/projects/<encoded-cwd>/*.jsonl` if
-    /// `cwdHint` is available, otherwise walk all project dirs, and
-    /// pick the file with the newest mtime. Heuristic — picks the
-    /// "most active" running session. May misattribute when multiple
-    /// claudes share a cwd; acceptable trade-off for restoring auto-
-    /// attach after restart.
-    private func fallbackByMostRecentClaudeTranscript(
-        workspaceID: String,
-        surfaceID: String,
-        cwdHint: String?
-    ) -> ResolvedAgentSession? {
-        let projectDirs: [String] = {
-            if let cwd = cwdHint?.trimmingCharacters(in: .whitespacesAndNewlines), !cwd.isEmpty {
-                let encoded = Self.encodeClaudeProjectDir((cwd as NSString).standardizingPath)
-                return [encoded]
-            }
-            return (try? fileManager.contentsOfDirectory(atPath: claudeProjectsRoot)) ?? []
-        }()
-
-        var newest: (path: String, sessionID: String, mtime: Date)?
-        for dir in projectDirs {
-            let dirPath = URL(fileURLWithPath: claudeProjectsRoot, isDirectory: true)
-                .appendingPathComponent(dir, isDirectory: true)
-                .path
-            guard let files = try? fileManager.contentsOfDirectory(atPath: dirPath) else {
-                continue
-            }
-            for file in files where file.hasSuffix(".jsonl") {
-                let sessionID = String(file.dropLast(".jsonl".count))
-                guard Self.claudeSessionIdIsSafeFilename(sessionID) else { continue }
-                let fullPath = URL(fileURLWithPath: dirPath, isDirectory: true)
-                    .appendingPathComponent(file, isDirectory: false)
-                    .path
-                guard let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
-                      let mtime = attrs[.modificationDate] as? Date else { continue }
-                if newest == nil || mtime > newest!.mtime {
-                    newest = (fullPath, sessionID, mtime)
-                }
-            }
-        }
-
-        guard let pick = newest else { return nil }
-        // Treat very-stale transcripts as "not the live session" — if
-        // nothing has been written in the last hour, this is almost
-        // certainly an abandoned session.
-        guard pick.mtime > Date().addingTimeInterval(-3600) else { return nil }
-
-        return .init(
-            agentKind: .claude,
-            sessionID: pick.sessionID,
-            workspaceID: workspaceID,
-            surfaceID: surfaceID,
-            cwd: cwdHint,
-            transcriptPath: pick.path
         )
     }
 

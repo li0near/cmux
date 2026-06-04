@@ -9,6 +9,7 @@ public import SwiftUI
 /// `PanelAppearance` value type — the host adapter passes its
 /// terminal-foreground color directly. The palette lives in the View
 /// layer, NOT Models, since SwiftUI Color is a view-layer concept.
+@available(macOS 15, *)
 public struct HudPalette: Sendable {
     public let foreground: NSColor
 

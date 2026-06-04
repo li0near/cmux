@@ -111,7 +111,7 @@ public struct TranscriptView: View {
                             }
                             boundaryDivider(id: tailBoundaryID(for: panel.entriesFilter), palette: palette)
                         }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, Theme.Padding.transcriptVertical)
                         .id("cmux-agentxray-layout-\(panel.bulkState.layoutRevision)")
                     }
                     .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -136,12 +136,16 @@ public struct TranscriptView: View {
                     .onChange(of: panel.bulkState) { _, newState in
                         switch newState.lastDirection {
                         case .collapse:
-                            DispatchQueue.main.async {
+                            // Yield one runloop tick so the LazyVStack
+                            // has a chance to remount under the new
+                            // `layoutRevision` id before we re-route
+                            // scroll position.
+                            Task { @MainActor in
                                 scrollForFilter(proxy: proxy)
                             }
                         case .expand:
                             if let topID = currentTopVisibleID {
-                                DispatchQueue.main.async {
+                                Task { @MainActor in
                                     var tx = Transaction()
                                     tx.disablesAnimations = true
                                     withTransaction(tx) {
@@ -374,8 +378,8 @@ public struct TranscriptView: View {
                 .font(Theme.Row.summary)
                 .foregroundStyle(palette.dim)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Theme.Padding.panelEdgeHorizontal)
+        .padding(.vertical, Theme.Padding.panelEdgeVertical)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -445,8 +449,8 @@ public struct TranscriptView: View {
                 detailBodyText(content.body, palette: palette)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Theme.Padding.panelEdgeHorizontal)
+        .padding(.vertical, Theme.Padding.panelEdgeVertical)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: appearance.contentBackgroundColor))
     }
@@ -512,7 +516,7 @@ public struct TranscriptView: View {
                     detailEntryRow(entry: entry, palette: palette)
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, Theme.Padding.transcriptVertical)
         }
         .scrollIndicators(.never)
     }

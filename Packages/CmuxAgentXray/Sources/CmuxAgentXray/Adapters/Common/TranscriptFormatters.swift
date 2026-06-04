@@ -34,20 +34,23 @@ internal func wordCount(_ text: String) -> Int {
         .count
 }
 
-/// Human-readable token count for an `AgentEntry`'s `[X.Yk tokens]` /
-/// `[X.YM tokens]` trailing pill. Returns `"123"`, `"12.3k"`,
-/// `"4.2M"`, etc. Sums input + output + cacheRead + cacheCreation
-/// tokens before scaling.
+/// Compact human-readable token count: `"123"`, `"12.3k"`, `"4.2M"`.
+/// Used both for total pills (via ``formatTokenCounts(_:)``) and for
+/// per-bucket breakdown labels (input / output / cacheRead / cacheCreation).
+internal func formatTokens(_ n: Int) -> String {
+    if n < 1000 { return "\(n)" }
+    if n < 1_000_000 { return String(format: "%.1fk", Double(n) / 1000) }
+    return String(format: "%.1fM", Double(n) / 1_000_000)
+}
+
+/// Human-readable total-token pill text for an `AgentEntry`'s
+/// `[X.Yk tokens]` / `[X.YM tokens]` trailing item. Sums all four
+/// buckets (input + output + cacheRead + cacheCreation) and formats
+/// the total via ``formatTokens(_:)``.
 internal func formatTokenCounts(_ usage: AgentEntry.TokenUsage) -> String {
     let total = usage.inputTokens
         + usage.outputTokens
         + usage.cacheReadTokens
         + usage.cacheCreationTokens
-    if total < 1000 { return "\(total)" }
-    if total < 1_000_000 {
-        let value = Double(total) / 1000
-        return String(format: "%.1fk", value)
-    }
-    let value = Double(total) / 1_000_000
-    return String(format: "%.1fM", value)
+    return formatTokens(total)
 }
