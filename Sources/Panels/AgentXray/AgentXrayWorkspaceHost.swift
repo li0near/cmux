@@ -78,7 +78,8 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
     private var debounceTask: Task<Void, Never>?
     private var streamContinuation: AsyncStream<Void>.Continuation?
     private var focusObserverTokens: [NSObjectProtocol] = []
-    private let resolver: AgentSessionResolver
+    private let claudeStore: ClaudeHookSessionStore
+    private let codexStore: CodexHookSessionStore
     private let storeWatcher: ClaudeHookSessionStore?
     private var lastEmittedKey: String?
     private var pendingRetryWorkItem: DispatchWorkItem?
@@ -95,13 +96,15 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
 
     init(
         workspace: Workspace,
-        resolver: AgentSessionResolver = AgentSessionResolver(),
+        claudeStore: ClaudeHookSessionStore = ClaudeHookSessionStore(),
+        codexStore: CodexHookSessionStore = CodexHookSessionStore(),
         watchStore: Bool = true
     ) {
         self.workspaceUUID = workspace.id
         self.workspace = workspace
-        self.resolver = resolver
-        self.storeWatcher = watchStore ? ClaudeHookSessionStore() : nil
+        self.claudeStore = claudeStore
+        self.codexStore = codexStore
+        self.storeWatcher = watchStore ? claudeStore : nil
 
         installFocusPipeline(workspace: workspace)
         installScrollbarObserver()
@@ -174,6 +177,52 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
             }
         }
         return HostCancellable(notificationToken: token)
+    }
+
+    // MARK: - AgentXrayHost: live agent registry
+
+    /// Read cmux's panel-scoped agent PID registry. Backed by
+    /// `Workspace.agentRuntimeState(forPanelId:)`. Empty if no agent
+    /// has registered for the panel yet (e.g. claude hasn't fired its
+    /// `set_agent_pid` CLI call).
+    func agentPIDs(forPanelID panelID: UUID) -> [Int32] {
+        guard let workspace,
+              let runtime = workspace.agentRuntimeState(forPanelId: panelID) else {
+            return []
+        }
+        return Array(runtime.agentPIDs.values)
+    }
+
+    /// Walk both hook stores looking for a record whose `pid` field
+    /// matches. The two stores live at different on-disk paths
+    /// (`~/.cmuxterm/{claude,codex}-hook-sessions.json`); we check
+    /// both because the resolver doesn't know upfront which agent
+    /// kind the PID belongs to.
+    func findAgentHookRecord(byPID pid: Int32) -> AgentHookSessionMatch? {
+        if let match = Self.scanHookStore(claudeStore.loadAll(), forPID: pid, agentKind: .claude) {
+            return match
+        }
+        if let match = Self.scanHookStore(codexStore.loadAll(), forPID: pid, agentKind: .codex) {
+            return match
+        }
+        return nil
+    }
+
+    private static func scanHookStore(
+        _ records: [String: AgentHookSessionRecord],
+        forPID pid: Int32,
+        agentKind: ResolvedAgentSession.AgentKind
+    ) -> AgentHookSessionMatch? {
+        for record in records.values {
+            guard let recordPID = record.pid, Int32(recordPID) == pid else { continue }
+            return AgentHookSessionMatch(
+                agentKind: agentKind,
+                sessionID: record.sessionId,
+                cwd: record.cwd,
+                transcriptPath: record.transcriptPath
+            )
+        }
+        return nil
     }
 
     // MARK: - AgentXrayHost: per-panel routing
@@ -304,23 +353,23 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
 
         let panelUUID = terminal.id
 
-        let cwdHint: String? = {
-            if !terminal.directory.isEmpty { return terminal.directory }
-            if let req = terminal.requestedWorkingDirectory, !req.isEmpty {
-                return req
+        let resolver = AgentSessionResolver(
+            agentPIDsForPanel: { [weak self] panelID in
+                self?.agentPIDs(forPanelID: panelID) ?? []
+            },
+            hookRecordForPID: { [weak self] pid in
+                self?.findAgentHookRecord(byPID: pid)
             }
-            return nil
-        }()
-
+        )
         let resolved = resolver.resolve(
-            workspaceID: workspace.id.uuidString,
-            surfaceID: panelUUID.uuidString,
-            cwdHint: cwdHint
+            panelID: panelUUID,
+            workspaceID: workspace.id.uuidString
         )
         #if DEBUG
+        let pidCount = agentPIDs(forPanelID: panelUUID).count
         cmuxDebugLog("""
             agentXray.focus.resolve panel=\(panelUUID.uuidString.prefix(8)) \
-            cwdHasValue=\(cwdHint != nil) \
+            agentPIDCount=\(pidCount) \
             kind=\(resolved?.agentKind.rawValue ?? "nil") \
             sessionPresent=\(resolved?.sessionID != nil) \
             transcriptPathPresent=\(resolved?.transcriptPath != nil)

@@ -57,6 +57,23 @@ public protocol AgentXrayHost: AnyObject {
         _ handler: @escaping @MainActor (ClaudeAnchorPayload) -> Void
     ) -> any AgentXrayCancellable
 
+    // MARK: Live agent registry (cmux's source-of-truth for "what
+    // agents are running in what panels"). Used by `AgentSessionResolver`
+    // to attach without process inspection.
+
+    /// Live agent PIDs (claude/codex) registered for the given panel.
+    /// Backed by cmux's `set_agent_pid` registry; populated when the
+    /// cmux CLI's hook handler fires. Empty if no agent has registered
+    /// for that panel yet.
+    func agentPIDs(forPanelID panelID: UUID) -> [Int32]
+
+    /// Look up the cmux CLI's SessionStart hook record whose `pid`
+    /// field matches `pid`. Walks both the claude and codex stores.
+    /// Returns nil if no record matches (e.g. the agent hasn't fired
+    /// its SessionStart hook yet). The `agentKind` field discriminates
+    /// which store the record came from.
+    func findAgentHookRecord(byPID pid: Int32) -> AgentHookSessionMatch?
+
     // MARK: Panel intent → cmux side actions
 
     /// Open a detail tab in the same workspace pane as the live panel
