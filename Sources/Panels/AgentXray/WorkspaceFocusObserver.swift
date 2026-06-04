@@ -39,7 +39,7 @@ final class WorkspaceFocusObserver: ObservableObject {
     private let resolver: AgentSessionResolver
     private let storeWatcher: ClaudeHookSessionStore?
     private var lastEmittedKey: String?
-    private var pendingRetryTask: Task<Void, Never>?
+    private var pendingRetryWorkItem: DispatchWorkItem?
     private var retryGeneration = 0
     private var lastTerminalPanelId: UUID?
 
@@ -115,8 +115,8 @@ final class WorkspaceFocusObserver: ObservableObject {
         }
         focusObserverTokens.removeAll()
         storeWatcher?.stopWatching()
-        pendingRetryTask?.cancel()
-        pendingRetryTask = nil
+        pendingRetryWorkItem?.cancel()
+        pendingRetryWorkItem = nil
     }
 
     private func recompute() {
@@ -184,6 +184,15 @@ final class WorkspaceFocusObserver: ObservableObject {
             cwdHint: cwdHint,
             ttyName: ttyName
         )
+        #if DEBUG
+        cmuxDebugLog("""
+            agentXray.focus.resolve panel=\(panelUUID.uuidString.prefix(8)) \
+            tty=\(ttyName ?? "nil") cwdHasValue=\(cwdHint != nil) \
+            kind=\(resolved?.agentKind.rawValue ?? "nil") \
+            sessionPresent=\(resolved?.sessionID != nil) \
+            transcriptPathPresent=\(resolved?.transcriptPath != nil)
+            """)
+        #endif
         if retryBudget > 0, resolved == nil || ttyName == nil {
             scheduleRetry(retryBudget: retryBudget - 1, generation: generation)
         }
@@ -191,20 +200,15 @@ final class WorkspaceFocusObserver: ObservableObject {
     }
 
     private func scheduleRetry(retryBudget: Int, generation: Int) {
-        pendingRetryTask?.cancel()
-        // Bounded 250ms retry delay — the resolver may not have the
-        // tty/session info on first lookup right after focus changes;
-        // re-poll after a short pause. Cancellation-integrated via
-        // `Task.sleep` so a fresh `recompute()` cancels any in-flight
-        // retry. Justified `Task.sleep` use per CLAUDE.md carve-out
-        // (bounded delay, not polling/settling).
-        pendingRetryTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled,
-                  let self,
-                  generation == self.retryGeneration else { return }
-            self.recompute(retryBudget: retryBudget, generation: generation)
+        pendingRetryWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, generation == self.retryGeneration else { return }
+                self.recompute(retryBudget: retryBudget, generation: generation)
+            }
         }
+        pendingRetryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(250), execute: workItem)
     }
 
     private func lastKnownTerminal() -> TerminalPanel? {
