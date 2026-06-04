@@ -31,11 +31,35 @@ Last verified against `upstream/main` at `81e409c35` on **2026-06-04**.
 
 | File | Current change | Risk |
 |---|---|---|
-| _(none yet — Phase 1 added only the package itself)_ | | |
+| `cmux.xcodeproj/project.pbxproj` | adds `Packages/CmuxAgentXray` SPM dependency on the cmux.app target + 6 file refs for `Sources/Panels/AgentXray/*` | merge-pain hotspot; UIDs prefixed `AAAAAAAAAGENTX` (package wiring) and `AGNTRY` (app-side files) to be distinctive |
+| `Sources/Panels/Panel.swift` | adds `case agentXray` to `PanelType` + Codable decode fallback for legacy `agentInspector` raw values | low; isolated enum addition |
+| `Sources/Panels/PanelContentView.swift` | render arm for `.agentXray` (`CmuxAgentXrayPanelView`); `.agentXray` opted into the pane drop-target overlay | low |
+| `Sources/Workspace.swift` | adds `static let agentXray` to `enum SurfaceKind`; `.agentXray` arms in 3 exhaustive switches (snapshot encoding, restoration, surfaceKind(for:)); `requestFlash(panelId:reason:)` fileprivate helper | low; surgical arm additions only |
+| `Sources/CmuxLifecycleEventPublishing.swift` | `.agentXray` arm returning `"agent_xray"` event kind | trivial |
+| `Sources/Search/GlobalSearchDocuments.swift` | `.agentXray` bundled with the title-only group | trivial |
+| `Sources/TerminalPaneDropTargetView.swift` | `.agentXray` arm returning `nil` (no special drop targeting) | trivial |
+| `Sources/ContentView.swift` | `.agentXray` arms in 3 switches: command-palette label, command-palette keywords, `cmuxSidebarSurfaceKind` | trivial |
+| `Sources/ClosedItemHistory.swift` | `.agentXray` arm with the recently-closed label | trivial |
+| `Sources/cmuxApp.swift` | one Debug-menu `Button` invoking `AgentXrayDebugMenu.openAgentXrayInFocusedWorkspace()` | trivial; `#if DEBUG` already wraps the menu |
 
-This table fills out across migration phases 9–10 as the host adapter is
-wired in. Target end state: ~13 small switch-arm additions, all listed
-in the migration plan §8.
+**Net non-pbxproj surface: 9 files, mostly single-line `case .agentXray:` additions.** The pbxproj itself carries the bulk of the change but is mechanical and pre-merge-resolution-friendly.
+
+---
+
+## App-side adapter files
+
+The cmux-app side adapter lives at `Sources/Panels/AgentXray/`. These
+are NEW files (not edits to upstream), so they don't appear in the
+upstream-touch table above.
+
+```
+Sources/Panels/AgentXray/AgentXrayPanelHost.swift          # Panel-protocol wrapper
+Sources/Panels/AgentXray/AgentXrayWorkspaceHost.swift      # AgentXrayHost adapter
+Sources/Panels/AgentXray/WorkspaceFocusObserver.swift      # focus-tracking observer
+Sources/Panels/AgentXray/WorkspaceScrollbarBridge.swift    # scrollbar bridge
+Sources/Panels/AgentXray/Workspace+AgentXray.swift         # Workspace factory + detail routing
+Sources/Panels/AgentXray/cmuxApp+AgentXrayDebugMenu.swift  # Debug-menu entry point
+```
 
 ---
 
