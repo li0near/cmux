@@ -312,23 +312,21 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
             return nil
         }()
 
-        let ttyName = workspace.surfaceTTYNames[panelUUID]
         let resolved = resolver.resolve(
             workspaceID: workspace.id.uuidString,
             surfaceID: panelUUID.uuidString,
-            cwdHint: cwdHint,
-            ttyName: ttyName
+            cwdHint: cwdHint
         )
         #if DEBUG
         cmuxDebugLog("""
             agentXray.focus.resolve panel=\(panelUUID.uuidString.prefix(8)) \
-            tty=\(ttyName ?? "nil") cwdHasValue=\(cwdHint != nil) \
+            cwdHasValue=\(cwdHint != nil) \
             kind=\(resolved?.agentKind.rawValue ?? "nil") \
             sessionPresent=\(resolved?.sessionID != nil) \
             transcriptPathPresent=\(resolved?.transcriptPath != nil)
             """)
         #endif
-        if retryBudget > 0, resolved == nil || ttyName == nil {
+        if retryBudget > 0, resolved == nil {
             scheduleRetry(retryBudget: retryBudget - 1, generation: generation)
         }
         updateIfChanged(resolved)

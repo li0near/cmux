@@ -1,4 +1,7 @@
-public import Foundation
+import Foundation
+#if canImport(Darwin)
+import Darwin
+#endif
 
 /// A resolved Claude/Codex session linked to a specific terminal
 /// surface in cmux.
@@ -32,198 +35,258 @@ public struct ResolvedAgentSession: Equatable, Sendable {
     }
 }
 
-/// Resolves a `(workspaceID, surfaceID)` pair to a live
-/// `ResolvedAgentSession`.
-///
-/// Resolution layers, in order:
-///   1. **Hook stores** — `~/.cmuxterm/{claude,codex}-hook-sessions.json`,
-///      written by `cmux claude-hook session-start` and the codex
-///      equivalent. Authoritative when populated.
-///   2. **Claude tty fallback** — restored Claude sessions can run
-///      before a fresh SessionStart hook re-scopes the hook store.
-///      If exact lookup misses, inspect the focused terminal's tty
-///      for `claude --resume <sessionID>` and resolve that exact
-///      transcript.
-///
-/// Deliberately does NOT use a disk-mtime fallback. Picking the
-/// freshest `.jsonl` in `~/.claude/projects/<encoded-cwd>/` cannot
-/// disambiguate sibling terminals sharing a cwd.
-///
-/// `@unchecked Sendable` — `FileManager` and the hook stores are
-/// thread-safe in practice; Apple just doesn't mark `FileManager`
-/// `Sendable`.
-public struct AgentSessionResolver: @unchecked Sendable {
-    private let claudeStore: ClaudeHookSessionStore
-    private let codexStore: CodexHookSessionStore
-    private let fileManager: FileManager
-    private let claudeProjectsRoot: String
-    private let processCommandsForTTY: @Sendable (String) -> [(pid: Int, command: String)]
+/// One-shot snapshot of a running agent process. Produced by the
+/// process-listing seam; consumed by `AgentSessionResolver` to find
+/// the session attached to a focused terminal panel.
+public struct AgentProcessSnapshot: Equatable, Sendable {
+    public let pid: Int
+    public let agentKind: ResolvedAgentSession.AgentKind
+    public let cwd: String
+    /// Absolute paths of `.jsonl` files this process has currently
+    /// open. The basename (without `.jsonl`) is the session id.
+    public let openTranscripts: [String]
 
     public init(
-        claudeStore: ClaudeHookSessionStore = ClaudeHookSessionStore(),
-        codexStore: CodexHookSessionStore = CodexHookSessionStore(),
-        fileManager: FileManager = .default,
-        claudeProjectsRoot: String = AgentSessionResolver.defaultClaudeProjectsRoot,
-        processCommandsForTTY: @escaping @Sendable (String) -> [(pid: Int, command: String)]
-            = AgentSessionResolver.defaultProcessCommandsForTTY
+        pid: Int,
+        agentKind: ResolvedAgentSession.AgentKind,
+        cwd: String,
+        openTranscripts: [String]
     ) {
-        self.claudeStore = claudeStore
-        self.codexStore = codexStore
-        self.fileManager = fileManager
-        self.claudeProjectsRoot = claudeProjectsRoot
-        self.processCommandsForTTY = processCommandsForTTY
+        self.pid = pid
+        self.agentKind = agentKind
+        self.cwd = cwd
+        self.openTranscripts = openTranscripts
     }
+}
 
-    public static var defaultClaudeProjectsRoot: String {
-        NSString(string: "~/.claude/projects").expandingTildeInPath
+/// Resolves a `(workspaceID, surfaceID, cwdHint)` triple to a live
+/// `ResolvedAgentSession` by inspecting running processes — not by
+/// reading any persisted state.
+///
+/// The previous shape (hook-store lookup keyed on workspaceID +
+/// TTY-resume `ps` scan) broke on every cmux restart: workspace UUIDs
+/// are minted fresh, so old hook records don't match; persisted TTY
+/// device names were stale because the new shell spawns on a fresh
+/// pty. The honest fix is to ignore both persisted layers and resolve
+/// by walking the live process tree on every focus event.
+///
+/// Algorithm:
+///   1. Enumerate every running `claude` / `codex` process on the host.
+///   2. Filter to processes whose working directory matches `cwdHint`.
+///   3. For each match, read its open file descriptors and pick the
+///      `.jsonl` under `~/.claude/projects/` (claude) or
+///      `~/.codex/sessions/` (codex). The basename is the session id.
+///   4. If exactly one match remains, return a `ResolvedAgentSession`.
+///      Multiple ambiguous matches → return nil.
+///
+/// This same path handles tab-switch, first-open, post-restart attach,
+/// `claude --resume`, and `/new` mid-session — no special cases.
+///
+/// `@unchecked Sendable` — `FileManager` is thread-safe in practice;
+/// Apple just doesn't mark it `Sendable`.
+public struct AgentSessionResolver: @unchecked Sendable {
+    private let listAgentProcesses: @Sendable () -> [AgentProcessSnapshot]
+
+    public init(
+        listAgentProcesses: @escaping @Sendable () -> [AgentProcessSnapshot]
+            = AgentSessionResolver.defaultListAgentProcesses
+    ) {
+        self.listAgentProcesses = listAgentProcesses
     }
 
     public func resolve(
         workspaceID: String,
         surfaceID: String,
-        cwdHint: String? = nil,
-        ttyName: String? = nil
+        cwdHint: String? = nil
     ) -> ResolvedAgentSession? {
-        let claude = claudeStore.record(forWorkspaceId: workspaceID, surfaceId: surfaceID)
-        let codex = codexStore.record(forWorkspaceId: workspaceID, surfaceId: surfaceID)
-
-        switch (claude, codex) {
-        case (.some(let c), .some(let x)):
-            if x.updatedAt > c.updatedAt {
-                return makeSession(kind: .codex, record: x)
-            }
-            return makeSession(kind: .claude, record: c)
-        case (.some(let c), .none):
-            return makeSession(kind: .claude, record: c)
-        case (.none, .some(let x)):
-            return makeSession(kind: .codex, record: x)
-        case (.none, .none):
-            return fallbackClaudeResumeForTTY(
-                workspaceID: workspaceID,
-                surfaceID: surfaceID,
-                cwdHint: cwdHint,
-                ttyName: ttyName
-            )
+        guard let cwd = Self.normalizedCwd(cwdHint), !cwd.isEmpty else {
+            return nil
         }
-    }
 
-    private func makeSession(
-        kind: ResolvedAgentSession.AgentKind,
-        record: AgentHookSessionRecord
-    ) -> ResolvedAgentSession {
-        ResolvedAgentSession(
-            agentKind: kind,
-            sessionID: record.sessionId,
-            workspaceID: record.workspaceId,
-            surfaceID: record.surfaceId,
-            cwd: record.cwd,
-            transcriptPath: record.transcriptPath
-        )
-    }
+        let processes = listAgentProcesses()
+        let matches = processes.filter { process in
+            Self.normalizedCwd(process.cwd) == cwd
+        }
 
-    private func fallbackClaudeResumeForTTY(
-        workspaceID: String,
-        surfaceID: String,
-        cwdHint: String?,
-        ttyName: String?
-    ) -> ResolvedAgentSession? {
-        guard let normalizedTTY = Self.normalizedTTYName(ttyName) else { return nil }
-        guard let sessionID = processCommandsForTTY(normalizedTTY)
-            .compactMap({ Self.claudeResumeSessionId(command: $0.command) })
-            .last else { return nil }
+        // Ambiguous: multiple agent processes in the same cwd. Refuse
+        // to guess; let the caller surface "no session attached" until
+        // the ambiguity resolves on its own (one of them exits).
+        guard matches.count == 1, let process = matches.first else {
+            return nil
+        }
 
-        return .init(
-            agentKind: .claude,
+        // Find the live transcript: pick the only open .jsonl. If the
+        // process has multiple open transcript files (rare — happens
+        // briefly during /clear or /new while old fd is still open),
+        // pick the most recently modified one as a tiebreaker.
+        guard let transcriptPath = pickLiveTranscript(process.openTranscripts) else {
+            return nil
+        }
+
+        let sessionID = (transcriptPath as NSString)
+            .lastPathComponent
+            .replacingOccurrences(of: ".jsonl", with: "")
+        guard !sessionID.isEmpty else { return nil }
+
+        return ResolvedAgentSession(
+            agentKind: process.agentKind,
             sessionID: sessionID,
             workspaceID: workspaceID,
             surfaceID: surfaceID,
-            cwd: cwdHint,
-            transcriptPath: claudeTranscriptPath(sessionID: sessionID, cwdHint: cwdHint)
+            cwd: cwd,
+            transcriptPath: transcriptPath
         )
     }
 
-    private func claudeTranscriptPath(sessionID: String, cwdHint: String?) -> String? {
-        guard Self.claudeSessionIdIsSafeFilename(sessionID) else { return nil }
-        if let cwd = cwdHint?.trimmingCharacters(in: .whitespacesAndNewlines), !cwd.isEmpty {
-            let projectDir = Self.encodeClaudeProjectDir((cwd as NSString).standardizingPath)
-            let path = URL(fileURLWithPath: claudeProjectsRoot, isDirectory: true)
-                .appendingPathComponent(projectDir, isDirectory: true)
-                .appendingPathComponent("\(sessionID).jsonl", isDirectory: false)
-                .path
-            if fileManager.fileExists(atPath: path) { return path }
-        }
-        guard let projectDirs = try? fileManager.contentsOfDirectory(atPath: claudeProjectsRoot)
-            else { return nil }
-        for projectDir in projectDirs {
-            let path = URL(fileURLWithPath: claudeProjectsRoot, isDirectory: true)
-                .appendingPathComponent(projectDir, isDirectory: true)
-                .appendingPathComponent("\(sessionID).jsonl", isDirectory: false)
-                .path
-            if fileManager.fileExists(atPath: path) { return path }
-        }
-        return nil
-    }
-
-    private static func claudeResumeSessionId(command: String) -> String? {
-        let parts = command.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
-        guard parts.contains(where: { $0 == "claude" || $0.hasSuffix("/claude") }) else {
-            return nil
-        }
-        for (index, part) in parts.enumerated() {
-            if part == "--resume", index + 1 < parts.count {
-                return safeSessionId(parts[index + 1])
+    private func pickLiveTranscript(_ paths: [String]) -> String? {
+        if paths.count <= 1 { return paths.first }
+        // Newest mtime wins — corresponds to the session currently
+        // being written. Stale fds (rare: just after /new while the
+        // old session fd is closing) pick the loser.
+        let fm = FileManager.default
+        let withMtimes: [(path: String, mtime: Date)] = paths.compactMap { path in
+            guard let attrs = try? fm.attributesOfItem(atPath: path),
+                  let mtime = attrs[.modificationDate] as? Date else {
+                return nil
             }
-            if part.hasPrefix("--resume=") {
-                return safeSessionId(String(part.dropFirst("--resume=".count)))
-            }
+            return (path, mtime)
         }
-        return nil
+        return withMtimes.max(by: { $0.mtime < $1.mtime })?.path
     }
 
-    private static func safeSessionId(_ raw: String) -> String? {
-        let trimmed = raw.trimmingCharacters(in: CharacterSet(charactersIn: "'\" "))
-        return claudeSessionIdIsSafeFilename(trimmed) ? trimmed : nil
-    }
-
-    private static func claudeSessionIdIsSafeFilename(_ sessionID: String) -> Bool {
-        !sessionID.isEmpty && sessionID != "." && sessionID != ".." &&
-            sessionID.range(of: #"[\\/]"#, options: .regularExpression) == nil
-    }
-
-    private static func encodeClaudeProjectDir(_ path: String) -> String {
-        path.replacingOccurrences(of: "/", with: "-")
-    }
-
-    private static func normalizedTTYName(_ raw: String?) -> String? {
-        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty
-            else { return nil }
-        let components = raw.split(separator: "/")
-        if let last = components.last, !last.isEmpty { return String(last) }
-        return raw
-    }
-
-    public static let defaultProcessCommandsForTTY: @Sendable (String) -> [(pid: Int, command: String)] = { ttyName in
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-ww", "-t", ttyName, "-o", "pid=,command="]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        do {
-            try process.run()
-        } catch {
-            return []
-        }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return [] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return [] }
-        return output.split(separator: "\n").compactMap { line in
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            let pieces = trimmed.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-            guard pieces.count == 2, let pid = Int(pieces[0]) else { return nil }
-            return (pid: pid, command: String(pieces[1]))
-        }
+    private static func normalizedCwd(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        return (raw as NSString).standardizingPath
     }
 }
+
+// MARK: - Default libproc-backed process listing
+
+#if canImport(Darwin)
+
+extension AgentSessionResolver {
+    /// Default `listAgentProcesses` impl. Walks every running process
+    /// on the host via libproc, filters to `claude` / `codex` binaries,
+    /// reads each match's cwd + open `.jsonl` paths.
+    ///
+    /// Deliberately stateless and synchronous — called per focus
+    /// event (~150 ms debounced). Typical macOS host has < 1000
+    /// processes; the syscall cost is dominated by `proc_pidpath`
+    /// for filtering. ~1–5 ms per call in practice.
+    public static let defaultListAgentProcesses: @Sendable () -> [AgentProcessSnapshot] = {
+        var snapshots: [AgentProcessSnapshot] = []
+        for pid in liveProcessIDs() {
+            guard let path = processBinaryPath(pid: pid) else { continue }
+            let basename = (path as NSString).lastPathComponent
+            let kind: ResolvedAgentSession.AgentKind?
+            switch basename {
+            case "claude": kind = .claude
+            case "codex":  kind = .codex
+            default:       kind = nil
+            }
+            guard let agentKind = kind else { continue }
+            guard let cwd = processCwd(pid: pid) else { continue }
+            let openTranscripts = openAgentTranscripts(pid: pid, agentKind: agentKind)
+            snapshots.append(AgentProcessSnapshot(
+                pid: pid,
+                agentKind: agentKind,
+                cwd: cwd,
+                openTranscripts: openTranscripts
+            ))
+        }
+        return snapshots
+    }
+
+    private static func liveProcessIDs() -> [Int] {
+        // proc_listallpids: pass nil/0 first to get the byte count, then allocate.
+        let byteCount = proc_listallpids(nil, 0)
+        guard byteCount > 0 else { return [] }
+        // Add slack so newly-spawned processes between calls don't get truncated.
+        let slots = Int(byteCount) / MemoryLayout<pid_t>.stride + 64
+        var pids = [pid_t](repeating: 0, count: slots)
+        let copiedBytes = pids.withUnsafeMutableBufferPointer { buf -> Int32 in
+            guard let base = buf.baseAddress else { return 0 }
+            return proc_listallpids(base, Int32(slots * MemoryLayout<pid_t>.stride))
+        }
+        guard copiedBytes > 0 else { return [] }
+        let copiedCount = Int(copiedBytes) / MemoryLayout<pid_t>.stride
+        return pids.prefix(copiedCount).compactMap { $0 > 0 ? Int($0) : nil }
+    }
+
+    private static func processBinaryPath(pid: Int) -> String? {
+        // 4096-byte buffer matches the cmux-side `cmuxTopPIDPathBufferSize`
+        // convention; on Darwin `PROC_PIDPATHINFO_MAXSIZE` is 4096.
+        var buffer = [CChar](repeating: 0, count: 4096)
+        let length = proc_pidpath(pid_t(pid), &buffer, UInt32(buffer.count))
+        guard length > 0 else { return nil }
+        return String(cString: buffer)
+    }
+
+    private static func processCwd(pid: Int) -> String? {
+        var info = proc_vnodepathinfo()
+        let expectedSize = MemoryLayout<proc_vnodepathinfo>.stride
+        let size = proc_pidinfo(pid_t(pid), PROC_PIDVNODEPATHINFO, 0, &info, Int32(expectedSize))
+        guard size == expectedSize else { return nil }
+        let cwd = withUnsafePointer(to: &info.pvi_cdir.vip_path) { tuplePtr -> String in
+            tuplePtr.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { ptr in
+                String(cString: ptr)
+            }
+        }
+        return cwd.isEmpty ? nil : cwd
+    }
+
+    private static func openAgentTranscripts(
+        pid: Int,
+        agentKind: ResolvedAgentSession.AgentKind
+    ) -> [String] {
+        // 1) Find the byte size of the fd table.
+        let byteCount = proc_pidinfo(pid_t(pid), PROC_PIDLISTFDS, 0, nil, 0)
+        guard byteCount > 0 else { return [] }
+
+        let count = Int(byteCount) / MemoryLayout<proc_fdinfo>.stride
+        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: count + 16)
+        let copiedBytes = fds.withUnsafeMutableBufferPointer { buf -> Int32 in
+            guard let base = buf.baseAddress else { return 0 }
+            return proc_pidinfo(pid_t(pid), PROC_PIDLISTFDS, 0, base, Int32(buf.count * MemoryLayout<proc_fdinfo>.stride))
+        }
+        guard copiedBytes > 0 else { return [] }
+        let copiedCount = Int(copiedBytes) / MemoryLayout<proc_fdinfo>.stride
+
+        // 2) For each fd that's a vnode (regular file), get its path.
+        let projectsRoot: String
+        switch agentKind {
+        case .claude: projectsRoot = (("~/.claude/projects" as NSString).expandingTildeInPath as String)
+        case .codex:  projectsRoot = (("~/.codex/sessions" as NSString).expandingTildeInPath as String)
+        }
+        var paths: [String] = []
+        for i in 0..<copiedCount {
+            let fdInfo = fds[i]
+            guard fdInfo.proc_fdtype == UInt32(PROX_FDTYPE_VNODE) else { continue }
+            var vnodeInfo = vnode_fdinfowithpath()
+            let expected = MemoryLayout<vnode_fdinfowithpath>.stride
+            let size = proc_pidfdinfo(pid_t(pid), fdInfo.proc_fd, PROC_PIDFDVNODEPATHINFO, &vnodeInfo, Int32(expected))
+            guard size == expected else { continue }
+            let path = withUnsafePointer(to: &vnodeInfo.pvip.vip_path) { tuplePtr -> String in
+                tuplePtr.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { ptr in
+                    String(cString: ptr)
+                }
+            }
+            guard path.hasSuffix(".jsonl") else { continue }
+            guard path.hasPrefix(projectsRoot) else { continue }
+            paths.append(path)
+        }
+        return paths
+    }
+}
+
+#else
+
+extension AgentSessionResolver {
+    /// Non-Darwin fallback: returns no processes. AgentX-ray local
+    /// resolution requires libproc; remote workspaces use a different
+    /// transport (commit 4).
+    public static let defaultListAgentProcesses: @Sendable () -> [AgentProcessSnapshot] = { [] }
+}
+
+#endif
