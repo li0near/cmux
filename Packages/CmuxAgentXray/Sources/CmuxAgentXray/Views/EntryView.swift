@@ -54,13 +54,13 @@ public struct EntryView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
             Button(action: onToggleExpansion) {
                 EntryHeaderView(
                     header: entry.header,
                     palette: palette,
                     pulseIcon: shouldPulseIcon,
-                    accentColor: accentColor,
+                    kindAccentColor: kindAccentColor,
                     isExpanded: isExpanded
                 )
             }
@@ -75,15 +75,16 @@ public struct EntryView: View {
                     onOpenDetail: onOpenDetail,
                     renderSubEntry: renderSubEntry
                 )
-                .padding(.leading, 20)
+                .padding(.leading, Theme.Indent.subRow)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .entryChrome(palette: palette, isExpanded: false)
+        .padding(.horizontal, Theme.Padding.horizontal)
+        .padding(.vertical, Theme.Spacing.verticalStack)
     }
 
     /// Variant-specific accent color override. nil = palette.primary.
-    private var accentColor: Color? {
+    private var kindAccentColor: Color? {
         switch entry {
         case .user(let user):
             return user.wasQueued ? palette.blue : palette.blue

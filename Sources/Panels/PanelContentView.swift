@@ -112,7 +112,7 @@ struct PanelContentView: View {
             }
         case .agentXray:
             if #available(macOS 15, *), let agentXrayHost = panel as? AgentXrayPanelHost {
-                CmuxAgentXrayPanelView(
+                TranscriptView(
                     panel: agentXrayHost.xrayPanel,
                     appearance: HostAppearance(
                         foregroundColor: NSColor.labelColor,

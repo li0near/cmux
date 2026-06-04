@@ -38,7 +38,7 @@ struct EntryBodyView: View {
             let content = computedIndex < computed.count ? computed[computedIndex] : .empty
             textSection(content: content, style: style)
         case .subentries(let children):
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
                 ForEach(children, id: \.id.stableString) { child in
                     renderSubEntry(child)
                 }
@@ -50,14 +50,14 @@ struct EntryBodyView: View {
     private func textSection(content: ExpandableContent, style: TextStyle) -> some View {
         if !content.inlineBody.isEmpty {
             Text(content.inlineBody)
-                .font(.system(size: 12, design: .monospaced))
+                .font(Theme.Row.summary)
                 .foregroundStyle(textColor(for: style))
                 .italic(style == .thinking)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
+                .padding(Theme.Padding.expandedBodyBlock)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.expandedBodyBlock)
                         .fill(palette.expandedBackground)
                 )
         }

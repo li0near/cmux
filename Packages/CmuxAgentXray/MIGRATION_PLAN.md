@@ -27,8 +27,8 @@ after every phase completes so a fresh session can resume mid-migration.
 | 14 Documentation finalization | ✅ done | `agentxray` @ `7335f5b61` | FORK_NOTES.md upstream-touch table populated (10 rows + new-files inventory); README status section refreshed |
 | 15 Cleanup — retire spike branch references | ✅ done | `agentxray` @ `7335f5b61` | PHASE_9_HANDOVER.md removed (superseded by Phase 9 commit + FORK_NOTES); remaining spike-references are intentional lineage notes in code comments |
 | 17 Parity punch-list completion | ⏳ in progress | see `Packages/CmuxAgentXray/PARITY_PUNCH_LIST.md` | Exhaustive side-by-side audit produced 87 findings (42 ✅ / 38 ⚠️ / 7 ❌). Punch-list is the canonical execution order to reach parity. |
-| 17pre `AgentTurn → AgentEntry` rename | ✅ done | this commit | Mechanical sweep — type decl, file rename, nested types, anchor field (`agentTurnID` → `agentEntryID`), store method (`pairAgentTurn` → `pairAgentEntry`), child field (`parentTurnID` → `parentEntryID`), doc-comment type references. Conversational "turn" prose preserved (`per-turn`, `this turn`, `the turn's subEntries`, etc.). Verification: `git grep -wn "AgentTurn"` → 0 hits in code; build + tests 21/21 green. The fabricated §17 "AgentRow vs AgentTurn" Q&A line was deleted. |
-| 17a Visual-parity pass | ⏳ blocked on 17pre | see `Packages/CmuxAgentXray/VISUAL_PASS_REVIEW.md` | User-signed-off spec for the visual-parity commit (icons, layout tokens, typography groups, hover bars, file moves, renames). Lands as one batch. |
+| 17pre `AgentTurn → AgentEntry` rename | ✅ done | `agentxray` @ 17pre commit | Mechanical sweep — type decl, file rename, nested types, anchor field (`agentTurnID` → `agentEntryID`), store method (`pairAgentTurn` → `pairAgentEntry`), child field (`parentTurnID` → `parentEntryID`), doc-comment type references; legacy "Row" function names in `PanelView` renamed to `*EntryView`; localization keys `agentXray.row.*` → `agentXray.entry.*`. Conversational "turn" prose preserved (`per-turn`, `this turn`, `the turn's subEntries`, etc.). Verification: `git grep -wn "AgentTurn"` → 0 hits in code; build + tests 21/21 green. The fabricated §17 "AgentRow vs AgentTurn" Q&A line was deleted. |
+| 17a Visual-parity pass | ✅ done | `agentxray` @ 17a commit | `VISUAL_PASS_REVIEW.md` §1–§8 landed as one batch. New: `Theme.swift` (flattened Layout + Typography tokens), `HoverBars.swift`, `StatusBarView.swift`, `AgentEntryView.swift` + `+Thinking/+Tool/+AssistantText.swift` extension files replacing inline private funcs in PanelView, `Adapters/Common/TranscriptFormatters.swift` (formatTokenCounts, singleLinePromptPreview, wordCount). Renamed: `Views/PanelView.swift` → `Views/TranscriptView.swift` (`CmuxAgentXrayPanelView` → `TranscriptView`), `EntryView.accentColor` → `kindAccentColor`, `ExpansionToggle.entryChevron` → `entry`. Modified: `Models/EntryIcon.swift` full rewrite per spec + user-locked overrides for `.compact` / `.recap` / `.slashCommand` + the three predecessor tool extras (LS, ExitPlanMode, AskUserQuestion); `EntryHeaderView` / `EntryBodyView` / `EntryView` consume Theme tokens; `MetadataPillView` folded inline into `EntryHeaderView`; `ClaudeTranscriptBuilder` formatter statics removed (redirects to TranscriptFormatters; user-prompt hard truncation moved from data layer to SwiftUI `.lineLimit(1).truncationMode(.tail)`); per-row hairline divider removed; `HudGlyph.activeDot` / `.runningCircle` replace hardcoded glyphs; disabled control buttons render via `.disabled(...)` (system auto-dim) instead of `palette.dim.opacity(0.4)`; HoverBars top + bottom hairlines applied to every interactive surface (frame-less and framed). Deleted: `Views/Helpers/EntryChrome.swift`, `Views/Helpers/MetadataPillView.swift`, `CmuxAgentXray.swift`, `Tests/CmuxAgentXrayTests/CmuxAgentXraySmokeTests.swift`. Tests 21 → 20. App-side touch: `Sources/Panels/PanelContentView.swift:115` updated to `TranscriptView`. |
 | 17b AttachStage feature | ⏳ follow-up | (no doc yet) | Separate commit after 17a — derives `AttachStage` enum from panel state, drives the status-bar yellow-state label + streaming-error rendering. Stages: idle → awaitingSession → sessionHooked → locatingTranscript → streamingNoEntries → streaming(turns, tokens). |
 | 17c Behavioural correctness batch | ⏳ blocked on 17a/17b | see `PARITY_PUNCH_LIST.md` Group 1 | Final batch — `scrollForFilter` cross-band routing, `InspectorRowAnchorsKey` aggregation, bulk-collapse / bulk-expand handlers, `layoutRevision` remount, session-change scroll handler, boundary-id `.id(...)` on row dividers, detail-mode entries-list rendering. |
 | 17d Forward-looking deferrals beyond parity | 📋 tracked | see §16 deferred-task ledger | Items A, B, C, F, G, H — go beyond predecessor parity (TextStyle diff-cases, inline sub-agent transcripts, ToolEntry shape evolution, branchLink defaultValue cleanup, xcstrings SPM-build-time pre-compile, AsyncStream focus pipeline). Each is a distinct mini-spec when picked up; not a single batch. |
@@ -1130,6 +1130,117 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
     the conversational concept, not a type-name reference.
   Verification: git grep -wn "AgentTurn" Packages/CmuxAgentXray/ → 0
     hits; swift build green; swift test 21/21 green.
+
+[Phase 17a] 2026-06-04 -> agentxray @ 17a commit (see "Phase 17a: visual-parity pass")
+  Visual-parity pass per VISUAL_PASS_REVIEW.md §1–§8. Lands as one
+    batch.
+  New files (8):
+    Views/Theme.swift                 — flattened Layout + Typography
+                                        tokens (Spacing, Padding, Metric,
+                                        Indent, Height, Stroke,
+                                        CornerRadius, Opacity, StatusBar,
+                                        Row, SubRow, DetailPanel) under
+                                        single `enum Theme` namespace.
+    Views/Helpers/HoverBars.swift     — top + bottom 1pt hairline
+                                        modifier (`@State hovering`,
+                                        ease-out 0.12s, opacity Theme.dim).
+    Views/StatusBarView.swift         — extracted from PanelView.
+                                        Glyph via HudGlyph constants;
+                                        disabled buttons via `.disabled()`
+                                        (system auto-dim).
+    Views/AgentEntryView.swift        — primary view replacing inline
+                                        agentEntryView private func.
+    Views/AgentEntryView+Thinking.swift — sub-entry rendering for
+                                          thinking blocks.
+    Views/AgentEntryView+Tool.swift     — sub-entry rendering for tool
+                                          invocations (input/result/
+                                          status/duration/sub-agent chip).
+    Views/AgentEntryView+AssistantText.swift
+                                      — "↗ assistant response · N words"
+                                        link to detail tab.
+    Adapters/Common/TranscriptFormatters.swift
+                                      — `formatTokenCounts(_:)`,
+                                        `singleLinePromptPreview(_:)`,
+                                        `wordCount(_:)`. Drops the
+                                        `truncated` length cap from the
+                                        user-prompt path (SwiftUI
+                                        .lineLimit(1).truncationMode(.tail)
+                                        handles dynamic truncation).
+  Renamed:
+    Views/PanelView.swift → Views/TranscriptView.swift
+    `CmuxAgentXrayPanelView`        → `TranscriptView`
+    `EntryView.accentColor`         → `EntryView.kindAccentColor`
+    `ExpansionToggle.entryChevron(entryID:)`
+                                    → `ExpansionToggle.entry(id:)`
+    `EntryHeaderView.accentColor:`  → `kindAccentColor:`
+  Modified in place:
+    Models/EntryIcon.swift           — full rewrite per spec §2 plus
+                                       user-locked overrides:
+                                       `.compact`     → square.stack.3d.up
+                                                        / .fill
+                                       `.recap`       → clock / clock.fill
+                                       `.slashCommand`→ command.square
+                                                        / .fill
+                                       Plus three predecessor tool
+                                       extras added: LS (folder),
+                                       ExitPlanMode (checkmark.seal),
+                                       AskUserQuestion (questionmark.bubble).
+                                       Predecessor dead-code icons
+                                       (.hook, .apiError-extra-fill,
+                                       .continueResume-extra-fill)
+                                       not ported.
+    Views/EntryHeaderView.swift     — Theme tokens; MetadataPillView
+                                       folded inline (private struct).
+    Views/EntryBodyView.swift       — Theme tokens.
+    Views/EntryView.swift           — Theme tokens; entryChrome modifier
+                                       call dropped (was always
+                                       isExpanded:false).
+    Panel/AgentXrayPanel+Expansion.swift
+                                    — ExpansionToggle.entry(id:) case.
+    Adapters/Claude/ClaudeTranscriptBuilder.swift
+                                    — drop static formatters; redirect
+                                       call sites to TranscriptFormatters
+                                       free funcs. Keep private static
+                                       `truncated` for tool-input JSON
+                                       rendering (separate concern from
+                                       user-prompt truncation).
+  Cmux app touch:
+    Sources/Panels/PanelContentView.swift:115 updated to TranscriptView.
+  Deleted:
+    Views/Helpers/EntryChrome.swift                       — unused chrome
+                                                            modifier (call
+                                                            site always
+                                                            passed
+                                                            isExpanded:false;
+                                                            background
+                                                            branch was
+                                                            dead code).
+    Views/Helpers/MetadataPillView.swift                  — folded inline
+                                                            into
+                                                            EntryHeaderView
+                                                            (single
+                                                            consumer).
+    CmuxAgentXray.swift                                   — AgentXrayModule
+                                                            module marker
+                                                            no longer
+                                                            load-bearing.
+    Tests/CmuxAgentXrayTests/CmuxAgentXraySmokeTests.swift — moduleMarker
+                                                             test depended
+                                                             on the marker.
+  Per-row divider removal: predecessor parity per audit. Predecessor
+    only renders turn-boundary + tail dividers (both id'd, both scroll-
+    routing targets — those land in 17c with their consumer). For
+    visual-parity here: drop the per-row hairline and add nothing.
+    The lone topDivider above the transcript survives.
+  HoverBars sites: status-bar control buttons (rewind / auto-expand /
+    collapse-all / expand-all), scroll-mode pill, header trailing
+    pills (token / word-count via inlined MetadataPill), assistant-
+    response link.
+  Disabled-button feedback: `.disabled(disabled)` SwiftUI modifier
+    (matches predecessor parity); replaces `palette.dim.opacity(0.4)`.
+  Verification: swift build green; swift test 20/20 green (smoke
+    suite removed); xcodebuild cmux scheme green via
+    `./scripts/reload.sh --tag agentxray`.
 ```
 
 ## §15 Bug-fix ledger (autonomous fixes during port)

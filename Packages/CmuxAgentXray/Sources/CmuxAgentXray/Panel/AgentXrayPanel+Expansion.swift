@@ -7,8 +7,8 @@ extension AgentXrayPanel {
 
     /// Identifies the expansion key the user toggled.
     public enum ExpansionToggle: Equatable, Sendable {
-        /// Top-level entry chevron (or agent-turn header).
-        case entryChevron(entryID: String)
+        /// Top-level entry header (one entry per agent turn / user prompt).
+        case entry(id: String)
         /// Agent turn's thinking sub-entry (derived id).
         case thinking(parentEntryID: String)
         /// Tool sub-entry inside an agent turn (mirrored JSONL id).
@@ -18,7 +18,7 @@ extension AgentXrayPanel {
         /// derived sub-id; all others are direct JSONL ids.
         public var key: String {
             switch self {
-            case .entryChevron(let id), .tool(let id):
+            case .entry(let id), .tool(let id):
                 return id
             case .thinking(let parent):
                 return EntryID.derived(parent: parent, kind: "thinking").stableString

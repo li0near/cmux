@@ -488,8 +488,8 @@ struct ClaudeTranscriptBuilder {
         isQueuedPending: Bool
     ) -> UserEntry {
         let icon: EntryIcon = wasQueued ? .queuedUser : .user
-        let preview = Self.userPromptPreview(text)
-        let wordCount = Self.wordCount(text)
+        let preview = singleLinePromptPreview(text)
+        let wordCount = wordCount(text)
         let trailing: [TrailingItem] = wordCount > 0
             ? [.wordCount("\(wordCount) words")]
             : []
@@ -511,8 +511,8 @@ struct ClaudeTranscriptBuilder {
     }
 
     private func buildPendingUserEntry(_ p: ClaudePendingPrompt) -> UserEntry {
-        let preview = Self.userPromptPreview(p.text)
-        let wordCount = Self.wordCount(p.text)
+        let preview = singleLinePromptPreview(p.text)
+        let wordCount = wordCount(p.text)
         let trailing: [TrailingItem] = wordCount > 0
             ? [.wordCount("\(wordCount) words")]
             : []
@@ -785,7 +785,7 @@ struct ClaudeTranscriptBuilder {
                 defaultValue: "Claude",
                 bundle: .module
             )
-            let tokenTotal = ClaudeTranscriptBuilder.formatTokenTotal(pending.usage)
+            let tokenTotal = formatTokenCounts(pending.usage)
             var trailing: [TrailingItem] = []
             if pending.usage.inputTokens
                 + pending.usage.outputTokens
@@ -1246,42 +1246,11 @@ struct ClaudeTranscriptBuilder {
         return s
     }
 
-    private static func truncated(_ s: String, max: Int) -> String {
+    /// Hard length cap with `…` ellipsis. Used for inline tool-input
+    /// JSON rendering where unbounded object/array dumps would blow up
+    /// row height. Distinct concern from user-prompt preview, which
+    /// dynamically truncates at the view layer via `.truncationMode(.tail)`.
+    static func truncated(_ s: String, max: Int) -> String {
         s.count <= max ? s : String(s.prefix(max - 1)) + "…"
-    }
-
-    /// Whitespace-collapsed prompt preview used as `Header.title` for
-    /// `UserEntry`. Single-line summary suitable for inline display in
-    /// the row header.
-    static func userPromptPreview(_ text: String) -> String {
-        let collapsed = text
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-        return truncated(collapsed, max: 120)
-    }
-
-    /// Approximate word count used in the `[12 words]` trailing pill.
-    static func wordCount(_ text: String) -> Int {
-        text
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .count
-    }
-
-    /// Human-readable token total for an AgentEntry's `[X.YM tokens]`
-    /// trailing pill. Returns `"123"`, `"12.3k"`, `"4.2M"`, etc.
-    static func formatTokenTotal(_ usage: AgentEntry.TokenUsage) -> String {
-        let total = usage.inputTokens
-            + usage.outputTokens
-            + usage.cacheReadTokens
-            + usage.cacheCreationTokens
-        if total < 1000 { return "\(total)" }
-        if total < 1_000_000 {
-            let value = Double(total) / 1000
-            return String(format: "%.1fk", value)
-        }
-        let value = Double(total) / 1_000_000
-        return String(format: "%.1fM", value)
     }
 }

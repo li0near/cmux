@@ -43,36 +43,36 @@ Status keys: ✅ DONE · ⏳ TODO · 🔍 VERIFY (claimed parity but not yet con
 | `user` | `person` / `person.fill` | `person` / `person.fill` | ✅ |
 | `queuedUser` | `person.badge.plus` / `person.badge.plus.fill` | `person.badge.plus` / `person.badge.plus.fill` | ✅ |
 | `agent` | `microbe` / `microbe.fill` | `microbe` / `microbe.fill` | ✅ |
-| `thinking` | `brain` / `brain.fill` | `brain` (no expanded) | ⏳ |
-| `system` | `terminal` / `terminal.fill` | `terminal` (no expanded) | ⏳ |
-| `compact` | `square.3.stack.3d` (or whatever spike sets) | `doc.text.below.ecg` | 🔍 |
-| `slashCommand` | (verify spike) | `chevron.left.forwardslash.chevron.right` | 🔍 |
-| `skill` | `wand.and.sparkles` / `wand.and.sparkles.inverse` | `wand.and.stars` | ⏳ |
-| `systemReminder` | `bell.badge` / `bell.badge.fill` | `exclamationmark.bubble` | ⏳ |
-| `contextInfo` / `recap` | `info.circle` / `info.circle.fill` | `info.circle` (contextInfo); `text.book.closed` (recap) | 🔍 |
-| `planMode` | `list.bullet.rectangle` / `list.bullet.rectangle.fill` | `list.bullet.clipboard` | ⏳ |
-| `editedTextFile` | `pencil.line` | `pencil.and.outline` | ⏳ |
-| `apiError` | `exclamationmark.triangle` / `exclamationmark.triangle.fill` | `exclamationmark.octagon` | ⏳ |
-| `continueResume` | `arrow.uturn.right.circle` / `arrow.uturn.right.circle.fill` | `arrow.uturn.right.circle` (no expanded) | ⏳ |
+| `thinking` | `brain` / `brain.fill` | `brain` (no expanded) | ✅ |
+| `system` | `terminal` / `terminal.fill` | `terminal` (no expanded) | ✅ |
+| `compact` | `square.3.stack.3d` (predecessor) | `square.stack.3d.up` / `square.stack.3d.up.fill` (user-locked override) | ✅ |
+| `slashCommand` | `command.square` / `command.square.fill` (predecessor) | `command.square` / `command.square.fill` | ✅ |
+| `skill` | `wand.and.sparkles` / `wand.and.sparkles.inverse` | `wand.and.sparkles` / `wand.and.sparkles.inverse` | ✅ |
+| `systemReminder` | `bell.badge` / `bell.badge.fill` | `bell.badge` / `bell.badge.fill` | ✅ |
+| `contextInfo` / `recap` | `info.circle` / `info.circle.fill` (contextInfo); spike `clock.arrow.circlepath` for recap | `contextInfo`: `info.circle` / `info.circle.fill`; `recap`: `clock` / `clock.fill` (user-locked override) | ✅ |
+| `planMode` | `list.bullet.rectangle` / `list.bullet.rectangle.fill` | `list.bullet.rectangle` / `list.bullet.rectangle.fill` | ✅ |
+| `editedTextFile` | `pencil.line` | `pencil.line` | ✅ |
+| `apiError` | `exclamationmark.triangle` / `exclamationmark.triangle.fill` | `exclamationmark.triangle` / `exclamationmark.triangle.fill` | ✅ |
+| `continueResume` | `arrow.uturn.right.circle` / `arrow.uturn.right.circle.fill` | `arrow.uturn.right.circle` / `arrow.uturn.right.circle.fill` | ✅ |
 | `branchLink` | `arrow.triangle.branch` | `arrow.triangle.branch` | ✅ |
-| `prLink` | `arrow.up.forward.square` / `arrow.up.forward.square.fill` | `arrow.up.right.square` | ⏳ |
+| `prLink` | `arrow.up.forward.square` / `arrow.up.forward.square.fill` | `arrow.up.forward.square` / `arrow.up.forward.square.fill` | ✅ |
 
 **Tool icons (`tool(named:)` static):**
 
 | Tool name | Project A | Project B current | Status |
 |---|---|---|---|
-| `Read` | `doc.text` / `doc.text.fill` | `doc.text` (no expanded) | ⏳ |
-| `Write` | `pencil.tip.crop.circle` / `pencil.tip.crop.circle.fill` | `square.and.pencil` | ⏳ |
-| `Edit` | `pencil.tip.crop.circle` / `pencil.tip.crop.circle.fill` | `pencil.line` | ⏳ |
-| `Bash` | `apple.terminal` / `apple.terminal.fill` | `terminal` | ⏳ |
-| `Grep` | `magnifyingglass.circle` / `magnifyingglass.circle.fill` | `magnifyingglass` | ⏳ |
-| `Glob` | `doc.text.magnifyingglass` | `magnifyingglass` | ⏳ |
-| `WebFetch` | `arrow.down.doc` / `arrow.down.doc.fill` | `globe` | ⏳ |
-| `WebSearch` | `globe.americas` / `globe.americas.fill` | `globe` | ⏳ |
-| `Task` / `Agent` | `person.2` / `person.2.fill` | `person.2` (no expanded) | ⏳ |
-| `TodoWrite` / `TaskCreate` / `TaskUpdate` / `TaskList` | `list.bullet.clipboard` / `list.bullet.clipboard.fill` | `checklist` | ⏳ |
-| `NotebookEdit` | `note.text` | `book.closed` | ⏳ |
-| (default fallback) | `wrench.adjustable` / `wrench.adjustable.fill` | `wrench.and.screwdriver` | ⏳ |
+| `Read` | `doc.text` / `doc.text.fill` | `doc.text` (no expanded) | ✅ |
+| `Write` | `pencil.tip.crop.circle` / `pencil.tip.crop.circle.fill` | `square.and.pencil` | ✅ |
+| `Edit` | `pencil.tip.crop.circle` / `pencil.tip.crop.circle.fill` | `pencil.line` | ✅ |
+| `Bash` | `apple.terminal` / `apple.terminal.fill` | `terminal` | ✅ |
+| `Grep` | `magnifyingglass.circle` / `magnifyingglass.circle.fill` | `magnifyingglass` | ✅ |
+| `Glob` | `doc.text.magnifyingglass` | `magnifyingglass` | ✅ |
+| `WebFetch` | `arrow.down.doc` / `arrow.down.doc.fill` | `globe` | ✅ |
+| `WebSearch` | `globe.americas` / `globe.americas.fill` | `globe` | ✅ |
+| `Task` / `Agent` | `person.2` / `person.2.fill` | `person.2` (no expanded) | ✅ |
+| `TodoWrite` / `TaskCreate` / `TaskUpdate` / `TaskList` | `list.bullet.clipboard` / `list.bullet.clipboard.fill` | `checklist` | ✅ |
+| `NotebookEdit` | `note.text` | `book.closed` | ✅ |
+| (default fallback) | `wrench.adjustable` / `wrench.adjustable.fill` | `wrench.and.screwdriver` | ✅ |
 
 **Action:** rewrite `Models/EntryIcon.swift` to match Project A's `Render/InspectorIcon.swift` line-by-line.
 
@@ -82,30 +82,30 @@ Status keys: ✅ DONE · ⏳ TODO · 🔍 VERIFY (claimed parity but not yet con
 
 | Button | Project A glyph | Project B current | Status |
 |---|---|---|---|
-| Rewind toggle | `arrow.triangle.branch` (uses `InspectorIcon.branchLink`) | `arrow.uturn.backward.circle` | ⏳ |
-| Auto-expand toggle | `arrow.up.left.and.arrow.down.right` | `rectangle.expand.vertical` | ⏳ |
-| Collapse-all | `rectangle.compress.vertical` | `chevron.up.chevron.down` | ⏳ |
-| Expand-all | `rectangle.expand.vertical` | `arrow.down.left.and.arrow.up.right` | ⏳ |
+| Rewind toggle | `arrow.triangle.branch` (uses `InspectorIcon.branchLink`) | `arrow.uturn.backward.circle` | ✅ |
+| Auto-expand toggle | `arrow.up.left.and.arrow.down.right` | `rectangle.expand.vertical` | ✅ |
+| Collapse-all | `rectangle.compress.vertical` | `chevron.up.chevron.down` | ✅ |
+| Expand-all | `rectangle.expand.vertical` | `arrow.down.left.and.arrow.up.right` | ✅ |
 
 ### 2.3 Status-bar glyph (leading dot)
 
 | Item | Project A | Project B current | Status |
 |---|---|---|---|
-| Detached glyph | `HudGlyph.activeDot` (`●`), color `palette.dim` | hardcoded `"●"` | 🔍 |
-| Attached glyph | `HudGlyph.runningCircle` (`◐`), color `palette.yellow` | hardcoded `"◐"` | 🔍 |
-| **Action** | use the package's `HudGlyph` enum constants instead of hardcoded literals so future glyph tweaks are centralized. | | ⏳ |
+| Detached glyph | `HudGlyph.activeDot` (`●`), color `palette.dim` | hardcoded `"●"` | ✅ |
+| Attached glyph | `HudGlyph.runningCircle` (`◐`), color `palette.yellow` | hardcoded `"◐"` | ✅ |
+| **Action** | use the package's `HudGlyph` enum constants instead of hardcoded literals so future glyph tweaks are centralized. | | ✅ |
 
 ### 2.4 Disabled-button visual feedback
 
 | Item | Project A | Project B current | Status |
 |---|---|---|---|
-| Collapse / expand disabled state | `palette.dim` (uses a `disabled` bool wrapper) | `palette.dim.opacity(0.4)` | ⏳ |
+| Collapse / expand disabled state | `palette.dim` (uses a `disabled` bool wrapper) | `palette.dim.opacity(0.4)` | ✅ |
 
 ### 2.5 Per-row divider
 
 | Item | Project A | Project B current | Status |
 |---|---|---|---|
-| Per-row divider between entries | none — spike has no horizontal rule between rows | `Divider().background(foreground@0.06)` between every pair | ⏳ |
+| Per-row divider between entries | none — spike has no horizontal rule between rows | `Divider().background(foreground@0.06)` between every pair | ✅ |
 | **Action** | remove `rowDivider` insertion in `Views/PanelView.swift` `transcriptList` (or confirm with you that the new behavior is intentional). | | |
 
 ---
