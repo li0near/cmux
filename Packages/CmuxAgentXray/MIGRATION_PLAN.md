@@ -22,7 +22,7 @@ after every phase completes so a fresh session can resume mid-migration.
 | 9 Host integration — Workspace conformance + debug menu | ✅ done | `agentxray` @ `d5fb1ad6a` | Package wired into cmux app via 6-place pbxproj edit; 6 app-side adapter files (AgentXrayPanelHost, AgentXrayWorkspaceHost, WorkspaceFocusObserver, WorkspaceScrollbarBridge, Workspace+AgentXray, cmuxApp+AgentXrayDebugMenu); ~13 minimal switch arms; package floor lowered macOS 15→14 to match cmux app |
 | 10 Detail mode wiring | ✅ done | `agentxray` @ `ddb4bd128` | DetailContent.resolve(request:entry:) ported (12 cases); ToolEntry helper accessors (inputDetail/resultDetail/sidechainTranscript) added |
 | 11 Localization + theming pass | ✅ done | `agentxray` @ `5841c246d` | 43 keys populated in xcstrings; agent.label key collision split into kind-specific `.claude` / `.codex` keys (autonomous bug fix) |
-| 12 AsyncStream focus pipeline | ⏸ deferred | | Combine debounce in WorkspaceFocusObserver works correctly; AsyncStream conversion is a quality refinement deferred to §16 deferred ledger |
+| 12 AsyncStream focus pipeline | ✅ done | rolled up via 17d | `Sources/Panels/AgentXray/WorkspaceFocusObserver.swift` switched from Combine `objectWillChange.debounce(...).sink` to AsyncStream + Task-loop trailing-debounce (150 ms). Combine bridge survives only at the source seam (Workspace is `ObservableObject`, not `@Observable`); the consumer pipeline is async/await with explicit Task cancellation. |
 | 13 Swift 6 strict concurrency flip | ✅ done (no-op) | `agentxray` @ `5841c246d` | Front-loaded in Phase 1 (Swift 6 mode + ExistentialAny + InternalImportsByDefault enabled in Package.swift since day one); confirmed swift build passes with zero warnings on the agentxray branch tip |
 | 14 Documentation finalization | ✅ done | `agentxray` @ `7335f5b61` | FORK_NOTES.md upstream-touch table populated (10 rows + new-files inventory); README status section refreshed |
 | 15 Cleanup — retire spike branch references | ✅ done | `agentxray` @ `7335f5b61` | PHASE_9_HANDOVER.md removed (superseded by Phase 9 commit + FORK_NOTES); remaining spike-references are intentional lineage notes in code comments |
@@ -31,7 +31,7 @@ after every phase completes so a fresh session can resume mid-migration.
 | 17a Visual-parity pass | ✅ done | `agentxray` @ 17a commit | `VISUAL_PASS_REVIEW.md` §1–§8 landed as one batch. New: `Theme.swift` (flattened Layout + Typography tokens), `HoverBars.swift`, `StatusBarView.swift`, `AgentEntryView.swift` + `+Thinking/+Tool/+AssistantText.swift` extension files replacing inline private funcs in PanelView, `Adapters/Common/TranscriptFormatters.swift` (formatTokenCounts, singleLinePromptPreview, wordCount). Renamed: `Views/PanelView.swift` → `Views/TranscriptView.swift` (`CmuxAgentXrayPanelView` → `TranscriptView`), `EntryView.accentColor` → `kindAccentColor`, `ExpansionToggle.entryChevron` → `entry`. Modified: `Models/EntryIcon.swift` full rewrite per spec + user-locked overrides for `.compact` / `.recap` / `.slashCommand` + the three predecessor tool extras (LS, ExitPlanMode, AskUserQuestion); `EntryHeaderView` / `EntryBodyView` / `EntryView` consume Theme tokens; `MetadataPillView` folded inline into `EntryHeaderView`; `ClaudeTranscriptBuilder` formatter statics removed (redirects to TranscriptFormatters; user-prompt hard truncation moved from data layer to SwiftUI `.lineLimit(1).truncationMode(.tail)`); per-row hairline divider removed; `HudGlyph.activeDot` / `.runningCircle` replace hardcoded glyphs; disabled control buttons render via `.disabled(...)` (system auto-dim) instead of `palette.dim.opacity(0.4)`; HoverBars top + bottom hairlines applied to every interactive surface (frame-less and framed). Deleted: `Views/Helpers/EntryChrome.swift`, `Views/Helpers/MetadataPillView.swift`, `CmuxAgentXray.swift`, `Tests/CmuxAgentXrayTests/CmuxAgentXraySmokeTests.swift`. Tests 21 → 20. App-side touch: `Sources/Panels/PanelContentView.swift:115` updated to `TranscriptView`. |
 | 17b AttachStage feature | ✅ done | `agentxray` @ 17b commit | New `Models/AttachStage.swift` (6-case enum: idle / awaitingSession / sessionHooked / locatingTranscript / streamingNoEntries / streaming(turnCount:, tokenTotal:)) with `derive(resolvedSession:entries:)` static. `StatusBarView` rewired for 3-color glyph precedence (red / yellow / green) per `VISUAL_PASS_REVIEW.md` §1: red on `stream.error != nil` or `.idle` / `.awaitingSession`; yellow on `.sessionHooked` / `.locatingTranscript` / `.streamingNoEntries`; green on `.streaming(...)`. Stream-error message overrides title text. New xcstrings keys: `agentXray.statusBar.{detached,attached,sessionHooked,locatingTranscript,streamingNoEntries,streamError}`. Today only `idle` / `streamingNoEntries` / `streaming` are derived; intermediate stages are reserved for future attach lifecycle instrumentation. |
 | 17c Behavioural correctness batch | ✅ done | `agentxray` @ 17c commit | All 12 items in `PARITY_PUNCH_LIST.md` Group 1 ✅. New in `TranscriptView`: `EntryAnchorsKey` PreferenceKey (per-entry `Anchor<CGRect>` aggregation) + `@State currentTopVisibleID` + `handleEntryAnchorsChange` GeometryProxy resolver; `ScrollViewReader`-wrapped scroll-routing helpers (`scrollForFilter` / `scrollTarget`); `.onChange(of: panel.entriesFilter)` → snap-only scroll, `.onChange(of: panel.resolvedSession?.sessionID)` → tail-snap on session change, `.onChange(of: panel.bulkState)` arms (`.expand` materialize-kick scrolls to `currentTopVisibleID` inside a `.disablesAnimations` transaction; `.collapse` clamps via `scrollForFilter`); inner-VStack wrapper `.id("cmux-agentxray-layout-\(layoutRevision)")` for collapse-outcome remount; boundary-id'd zero-height `Color.clear` markers before each user entry (`beforeTurnBoundaryID`) and at the tail (`tailBoundaryID(for:)`) — predecessor parity (no visible hairline). Detail-mode rendering: when `DetailContent.entries` non-nil, render via `EntryView` rows in `.fullDetail` mode (abandoned-branch / sub-agent transcripts). `triggerFlash` gate added on cmux-app side at `AgentXrayPanelHost.triggerFlash` (`NotificationPaneFlashSettings.isEnabled()` early-return, matching every other cmux panel). Verified parity for already-present items: DetailRequest 12-case enum (1.8), `pendingClaudeAnchorsBySessionID` queue + drain (1.10), `applyModeFlip` asymmetry (1.12). |
-| 17d Forward-looking deferrals beyond parity | 📋 tracked | see §16 deferred-task ledger | Items A, B, C, F, G, H — go beyond predecessor parity (TextStyle diff-cases, inline sub-agent transcripts, ToolEntry shape evolution, branchLink defaultValue cleanup, xcstrings SPM-build-time pre-compile, AsyncStream focus pipeline). Each is a distinct mini-spec when picked up; not a single batch. |
+| 17d Forward-looking deferrals beyond parity | ✅ swept | rolled up | F (branchLink defaultValue alignment) ✅ done; H (AsyncStream focus pipeline / Phase 12) ✅ done. PARITY Groups 3/4/5 audit pass: Group 3 (15 items) → all ✅ (color rules + nestedSubRow indent fixed; rest within tolerance), Group 4 (4 items) → all ✅ (kind-glyph header + Kind→glyph mapping added), Group 5 (6 items) → all ✅. Items A (TextStyle diff cases) / B (inline sub-agent transcripts) / C (ToolEntry shape evolution) / G (xcstrings SPM-build-time pre-compile) explicitly stay deferred — speculative future work or build-tooling investment without a current consumer (per CLAUDE.md "don't pre-solve hypothetical future requirements"). |
 
 ---
 
@@ -1325,6 +1325,54 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
   Verification: swift build green; swift test 20/20 green;
     xcodebuild cmux scheme green via `./scripts/reload.sh --tag
     agentxray`.
+
+[Phase 17d] 2026-06-04 -> agentxray @ 17d commit (see "Phase 17d: forward-looking deferrals + parity audit sweep")
+  Sweep through the §16 deferred ledger + PARITY_PUNCH_LIST Groups
+    3/4/5 audit pass.
+  §16 ledger items closed:
+    F. branchLink.title defaultValue alignment — both call sites in
+       ClaudeTranscriptBuilder now use a hoisted `let totalRewinds =
+       resolution.totalRewinds` and the same `\(branch.rewindIndex)
+       of \(totalRewinds)` format string. Cosmetic; runtime output
+       was already identical via xcstrings.
+    H. AsyncStream focus pipeline (was Phase 12) — Combine
+       `objectWillChange.sink` now yields into an `AsyncStream<Void>`
+       continuation; consumer `MainActor` Task trailing-debounces
+       150 ms via `Task.sleep` cancellation (each new event cancels
+       any pending recompute). Combine surface reduced to a one-line
+       bridge at the workspace seam — Workspace is `ObservableObject`,
+       not `@Observable`, so the bridge stays.
+  §16 ledger items NOT closed (deferred-by-policy):
+    A — TextStyle diff cases: speculative future feature.
+    B — inline sub-agent transcript rendering: future UX evolution.
+    C — ToolEntry shape evolution: speculative.
+    G — xcstrings → .strings SPM pre-compile: not load-bearing today
+        (no test consumes localized lookup output).
+  PARITY_PUNCH_LIST Groups 3/4/5 audit pass:
+    Group 3 (15 items, per-row layout drift) — all ✅. Real fixes:
+      3.3  System per-subType + synthesized accent colors corrected
+           (systemReminder→yellow, contextUsage→dim, branchLink→dim,
+           prLink→blue).
+      3.8  Theme.Indent.nestedSubRow updated 34 → 36pt (formula now
+           `subRow + Metric.rowIconWidth` per predecessor parity).
+      3.14 EntryView.kindAccentColor switch over SystemEntry.SubType
+           differentiated.
+      Other rows confirmed within tolerance.
+    Group 4 (4 items, detail-mode chrome) — all ✅:
+      4.1  Detail-tab header restructured: HStack(leading kind glyph,
+           VStack(title, subtitle), Spacer).
+      4.4  `detailKindIcon(for:)` + `detailKindAccent(for:palette:)`
+           helpers map all 12 DetailContent.Kind cases to SF Symbol
+           + accent color.
+      4.2 / 4.3 already correct (no nested detail tabs;
+           detail-mode renders without status bar).
+    Group 5 (6 items, polish) — all ✅:
+      5.1 / 5.2 / 5.3 / 5.6 already addressed in 17a / Phase 9.
+      5.4 / 5.5 (Codex timestamps + ClaudeModelNameMap) verified by
+           existence; deeper diffs deferred to dogfood.
+  Verification: swift build green; swift test 20/20 green;
+    xcodebuild cmux scheme green via `./scripts/reload.sh --tag
+    agentxray`.
 ```
 
 ## §15 Bug-fix ledger (autonomous fixes during port)
@@ -1408,23 +1456,23 @@ Append-only. Each entry: file, what was wrong, fix summary, commit hash. Two-com
 Items found during port that are out of scope for the migration but worth tracking.
 
 ```
-A. TextStyle expansion — diffAdded/diffRemoved/codeMonospace cases when diff rendering lands.
-B. Sub-agent transcript inline rendering — currently link-only; future: inline expand inside ToolEntry's body.subentries.
-C. ToolEntry shape — likely to evolve as tool-call UX changes (user noted "I think it will change in the future").
+A. TextStyle expansion — diffAdded/diffRemoved/codeMonospace cases when diff rendering lands. *(Stays deferred — speculative future feature; no current consumer.)*
+B. Sub-agent transcript inline rendering — currently link-only; future: inline expand inside ToolEntry's body.subentries. *(Stays deferred — future UX evolution.)*
+C. ToolEntry shape — likely to evolve as tool-call UX changes (user noted "I think it will change in the future"). *(Stays deferred — speculative.)*
 D. ~~Notification name `cmuxClaudePromptSubmitted` — currently defined in cmux app; explore moving definition into package to remove one upstream touch.~~ **✅ DONE in Phase 2** — moved to `Packages/CmuxAgentXray/Sources/CmuxAgentXray/Models/ClaudeAnchorPayload.swift`; see §15 entry from Phase 2 commit `18ff88fa5`.
 E. Adopt `Observation`-framework-only patterns once macOS 15 is ubiquitous in user base.
-F. Align defaultValue at the two `agentXray.row.branchLink.title` call sites in
+F. ~~Align defaultValue at the two `agentXray.entry.branchLink.title` call sites in
    ClaudeTranscriptBuilder so source-side defaults match (cosmetic; runtime
-   output already identical via the xcstrings entry).
+   output already identical via the xcstrings entry).~~ **✅ DONE in 17d** — both sites now use `\(branch.rewindIndex) of \(totalRewinds)` with a hoisted local at the second call site.
 G. Pre-compile `Localizable.xcstrings` → `en.lproj/Localizable.strings` at SPM
    build time (or ship a Resources/en.lproj folder) so the package can resolve
    localized values under `swift test` — currently only the cmux app target's
    Xcode build invokes xcstringstool, so xcstrings keys fall through to
-   defaultValue under `swift test`.
-H. Replace the Combine `objectWillChange.debounce` in
+   defaultValue under `swift test`. *(Stays deferred — no current test consumes the localized lookup output; existing tests assert key presence in xcstrings JSON instead. Adding a SwiftPM build plugin that invokes xcstringstool is plausible but not load-bearing today.)*
+H. ~~Replace the Combine `objectWillChange.debounce` in
    `Sources/Panels/AgentXray/WorkspaceFocusObserver.swift` with an
    `AsyncStream`-based event pipeline (was Phase 12). Combine version is
-   correct and ships with Phase 9; AsyncStream is a quality refinement.
+   correct and ships with Phase 9; AsyncStream is a quality refinement.~~ **✅ DONE in 17d** — Combine `objectWillChange.sink` now feeds an `AsyncStream<Void>` continuation; consumer Task trailing-debounces 150 ms via `Task.sleep` cancellation. Combine surface reduced to a one-line bridge at the workspace seam.
 I. Top-level `CmuxAgentXrayPanelView` is currently a minimal port of the
    spike's `AgentInspectorPanelView`. The spike's full feature set
    (InspectorRowAnchorsKey aggregation + currentTopVisibleId tracking,

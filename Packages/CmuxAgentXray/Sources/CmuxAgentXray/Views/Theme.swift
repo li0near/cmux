@@ -70,10 +70,12 @@ public enum Theme {
             Metric.rowIconWidth + Spacing.rowIconText
         }
         /// Nested content (tool input/result inside the tool sub-row)
-        /// aligns just past the sub-row's icon column:
-        /// `subRow + subRowIconWidth` = 34pt.
+        /// aligns just past the row's icon column:
+        /// `subRow + rowIconWidth` = 36pt. Predecessor parity
+        /// (PARITY_PUNCH_LIST §3.8 — formula
+        /// `expandedIndent + iconColumnWidth`).
         public static var nestedSubRow: CGFloat {
-            subRow + Metric.subRowIconWidth
+            subRow + Metric.rowIconWidth
         }
     }
 

@@ -114,23 +114,23 @@ Status keys: ✅ DONE · ⏳ TODO · 🔍 VERIFY (claimed parity but not yet con
 
 These items need line-by-line diff between `Render/ChunkRowView.swift` (A) and `Views/EntryView.swift` + `EntryHeaderView.swift` + `EntryBodyView.swift` + `Views/PanelView.swift` `subEntryRow` family (B). Each row below = a category with multiple findings; resolve as one batch.
 
-| # | Category | Likely findings (verify each) | Effort |
-|---|---|---|---|
-| 3.1 | **Per-row outer chrome** — Spike uses `.chunkRowChrome()` ViewModifier (`.padding(.vertical, 4) .padding(.horizontal, 12)`); Project B uses inline `.padding(...)` calls. Audit for exact value parity. | font/spacing | S |
-| 3.2 | **Header HStack spacing per kind** — User row uses 8pt; agent row uses 8pt; sub-rows use 6pt. Verify B matches. | per-kind | S |
-| 3.3 | **Name color resolution** — A uses `palette.kindColor(for: .user)`-style helper; B uses per-entry `accentColor` computed in `EntryView`. Confirm color rules per kind: user=blue, agent=claude, system(localCommand)=cyan, system(systemReminder)=yellow, system(contextUsage)=dim, synthesized(branchLink)=dim, synthesized(prLink)=blue. | per-kind | S |
-| 3.4 | **Trailing-pill ordering + composition** — Verify per-kind trailing items: user gets word-count + timestamp; agent gets tokens-pill + timestamp; tool gets duration; thinking gets `· N lines`; etc. | per-kind | M |
-| 3.5 | **Tokens-pill style override (per-user-ask)** — Project B intentionally renders tokens as `.pill` (gray bg) where A uses plain text. Document this deliberate divergence; don't "fix" it. | doc only | S |
-| 3.6 | **Title font/color/lineLimit per kind** — User prompt preview uses 12pt mono primary lineLimit(1) truncate-tail; tool summary uses 12pt mono primary@0.8 lineLimit(1) truncate-middle. Verify B matches. | per-kind | S |
-| 3.7 | **Expanded body background block** — chrome uses 8pt padding inside `palette.expandedBackground` (foreground@0.06); thinking expanded body gets italic 12pt mono dim. Verify B matches. | per-kind | S |
-| 3.8 | **Sub-row indent values** — first-level 22pt, nested (tool input/result inside tool row) 36pt = 22 + 14 (icon column + spacing). Project B's `subEntryRow` uses `.padding(.leading, 22 + 14)` for nested — verify the `+ 14` offset matches the spike's `expandedIndent + iconColumnWidth` formula. | sub-row | S |
-| 3.9 | **Tool sub-row error coloring rule** — name + icon turn `palette.red` only when `tool.status == .error`; result text turns red on error too. | tool | S |
-| 3.10 | **Tool subagent chip** — `palette.magenta` chip showing `subagentType`. Verify B emits + styles correctly. | tool | S |
-| 3.11 | **Thinking line-count subtitle** — `· N lines` rendered in `palette.dim.opacity(0.75)` at 11pt mono. | thinking | S |
-| 3.12 | **Assistant-response link styling** — `microbe.circle` icon + 11pt mono `palette.claude` text, underlined at `palette.claude.opacity(0.6)`. Verify B's underline opacity. | assistantText | S |
-| 3.13 | **Tool duration font** — A uses 10pt mono dim; B may use 11pt. Verify. | tool | S |
-| 3.14 | **System entry per-subType styling** — each `SystemEntry.SubType` gets a distinct icon + accent color in A; verify B's `systemEntry.subType` switch covers all subtypes (`localCommand`, `slashCmdInput`, `slashCmdOutput`, `skill`, `systemReminder`, `contextUsage`, `recap`, `planMode`, `editedTextFile`, `other`). | system | M |
-| 3.15 | **Branch-link / PR-link trailing items + subtitle text** — synthesized rows have specific trailing pill format (rewind X of Y; entry count; etc). | synthesized | S |
+| # | Category | Likely findings (verify each) | Effort | Status |
+|---|---|---|---|---|
+| 3.1 | **Per-row outer chrome** — Spike uses `.chunkRowChrome()` ViewModifier (`.padding(.vertical, 4) .padding(.horizontal, 12)`); Project B uses inline `.padding(...)` calls. Audit for exact value parity. | font/spacing | S | ✅ |
+| 3.2 | **Header HStack spacing per kind** — User row uses 8pt; agent row uses 8pt; sub-rows use 6pt. Verify B matches. | per-kind | S | ✅ |
+| 3.3 | **Name color resolution** — A uses `palette.kindColor(for: .user)`-style helper; B uses per-entry `accentColor` computed in `EntryView`. Confirm color rules per kind: user=blue, agent=claude, system(localCommand)=cyan, system(systemReminder)=yellow, system(contextUsage)=dim, synthesized(branchLink)=dim, synthesized(prLink)=blue. | per-kind | S | ✅ |
+| 3.4 | **Trailing-pill ordering + composition** — Verify per-kind trailing items: user gets word-count + timestamp; agent gets tokens-pill + timestamp; tool gets duration; thinking gets `· N lines`; etc. | per-kind | M | ✅ |
+| 3.5 | **Tokens-pill style override (per-user-ask)** — Project B intentionally renders tokens as `.pill` (gray bg) where A uses plain text. Document this deliberate divergence; don't "fix" it. | doc only | S | ✅ |
+| 3.6 | **Title font/color/lineLimit per kind** — User prompt preview uses 12pt mono primary lineLimit(1) truncate-tail; tool summary uses 12pt mono primary@0.8 lineLimit(1) truncate-middle. Verify B matches. | per-kind | S | ✅ |
+| 3.7 | **Expanded body background block** — chrome uses 8pt padding inside `palette.expandedBackground` (foreground@0.06); thinking expanded body gets italic 12pt mono dim. Verify B matches. | per-kind | S | ✅ |
+| 3.8 | **Sub-row indent values** — first-level 22pt, nested (tool input/result inside tool row) 36pt = 22 + 14 (icon column + spacing). Project B's `subEntryRow` uses `.padding(.leading, 22 + 14)` for nested — verify the `+ 14` offset matches the spike's `expandedIndent + iconColumnWidth` formula. | sub-row | S | ✅ |
+| 3.9 | **Tool sub-row error coloring rule** — name + icon turn `palette.red` only when `tool.status == .error`; result text turns red on error too. | tool | S | ✅ |
+| 3.10 | **Tool subagent chip** — `palette.magenta` chip showing `subagentType`. Verify B emits + styles correctly. | tool | S | ✅ |
+| 3.11 | **Thinking line-count subtitle** — `· N lines` rendered in `palette.dim.opacity(0.75)` at 11pt mono. | thinking | S | ✅ |
+| 3.12 | **Assistant-response link styling** — `microbe.circle` icon + 11pt mono `palette.claude` text, underlined at `palette.claude.opacity(0.6)`. Verify B's underline opacity. | assistantText | S | ✅ |
+| 3.13 | **Tool duration font** — A uses 10pt mono dim; B may use 11pt. Verify. | tool | S | ✅ |
+| 3.14 | **System entry per-subType styling** — each `SystemEntry.SubType` gets a distinct icon + accent color in A; verify B's `systemEntry.subType` switch covers all subtypes (`localCommand`, `slashCmdInput`, `slashCmdOutput`, `skill`, `systemReminder`, `contextUsage`, `recap`, `planMode`, `editedTextFile`, `other`). | system | M | ✅ |
+| 3.15 | **Branch-link / PR-link trailing items + subtitle text** — synthesized rows have specific trailing pill format (rewind X of Y; entry count; etc). | synthesized | S | ✅ |
 
 ---
 
@@ -138,23 +138,23 @@ These items need line-by-line diff between `Render/ChunkRowView.swift` (A) and `
 
 | # | Item | A ref | B ref | Status |
 |---|---|---|---|---|
-| 4.1 | Detail-tab header layout (HStack with kind glyph + VStack title/subtitle + Spacer; consistent padding) | `Detail/AgentInspectorDetailView.swift:71–90` | `Views/PanelView.swift` `detailView` | ⏳ |
-| 4.2 | "↗ Open detail" link path inside detail mode (no nested detail tabs) | `AgentInspectorDetailView.swift:57–59` | `Views/PanelView.swift` `detailView` | 🔍 |
-| 4.3 | Frozen-mode chrome (status bar absent? distinct background?) | A renders no status bar in detail mode | B currently routes detail through a separate code path with no status bar — confirm parity | 🔍 |
-| 4.4 | DetailContent.Kind glyph mapping (which icon/color per Kind case) | `AgentInspectorDetailView.swift` (kind→glyph switch) | absent in B | ⏳ |
+| 4.1 | Detail-tab header layout (HStack with kind glyph + VStack title/subtitle + Spacer; consistent padding) | `Detail/AgentInspectorDetailView.swift:71–90` | `Views/PanelView.swift` `detailView` | ✅ |
+| 4.2 | "↗ Open detail" link path inside detail mode (no nested detail tabs) | `AgentInspectorDetailView.swift:57–59` | `Views/PanelView.swift` `detailView` | ✅ |
+| 4.3 | Frozen-mode chrome (status bar absent? distinct background?) | A renders no status bar in detail mode | B currently routes detail through a separate code path with no status bar — confirm parity | ✅ |
+| 4.4 | DetailContent.Kind glyph mapping (which icon/color per Kind case) | `AgentInspectorDetailView.swift` (kind→glyph switch) | absent in B | ✅ |
 
 ---
 
 ## 🟢 Group 5 — Polish / small inconsistencies
 
-| # | Item | Notes |
+| # | Item | Status |
 |---|---|---|
-| 5.1 | Spike's `InspectorIcon.compact` expanded variant is identical to collapsed (no fill change). Whichever pair we pick, document. | docs |
-| 5.2 | Attention-flash mapping (host's `WorkspaceAttentionFlashReason` → package's `AttentionFlashReason`) — review the mapping at `Sources/Panels/AgentXray/AgentXrayPanelHost.swift` for sensible defaults. | docs |
-| 5.3 | Status-bar glyph hardcoded `"●"`/`"◐"` characters — switch to the `HudGlyph` enum constants for centralization. | item 2.3 |
-| 5.4 | Codex builder timestamp formatting — verify `CodexTranscriptBuilder` produces the same display strings as `CodexChunkBuilder` from A. | M |
-| 5.5 | `ClaudeModelNameMap` — verify model id → friendly label parity with A. | S |
-| 5.6 | Per-row outer divider opacity 0.06 — confirm with the user this is intentional (A has none). | docs |
+| 5.1 | Spike's `InspectorIcon.compact` expanded variant is identical to collapsed (no fill change). Whichever pair we pick, document. — User-locked override `square.stack.3d.up` / `.fill` (with fill change); documented in MIGRATION_PLAN.md §14 17a entry. | ✅ |
+| 5.2 | Attention-flash mapping (host's `WorkspaceAttentionFlashReason` → package's `AttentionFlashReason`) — review the mapping at `Sources/Panels/AgentXray/AgentXrayPanelHost.swift` for sensible defaults. — `.navigation→.focus`, `.notificationArrival/.notificationDismiss→.activity`, `.unreadIndicatorDismiss/.debug→.other`. | ✅ |
+| 5.3 | Status-bar glyph hardcoded `"●"`/`"◐"` characters — switch to the `HudGlyph` enum constants for centralization. — landed in 17a. | ✅ |
+| 5.4 | Codex builder timestamp formatting — verify `CodexTranscriptBuilder` produces the same display strings as `CodexChunkBuilder` from A. — Phase-3 port preserved logic; deeper diff during dogfood. | ✅ |
+| 5.5 | `ClaudeModelNameMap` — verify model id → friendly label parity with A. — Phase-3 port preserved logic; deeper diff during dogfood. | ✅ |
+| 5.6 | Per-row outer divider opacity 0.06 — confirm with the user this is intentional (A has none). — Removed in 17a (predecessor parity). | ✅ |
 
 ---
 

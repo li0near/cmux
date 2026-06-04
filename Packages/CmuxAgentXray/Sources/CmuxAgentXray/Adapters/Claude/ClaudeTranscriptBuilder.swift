@@ -867,6 +867,7 @@ struct ClaudeTranscriptBuilder {
                 && !emittedDivergencePoints.contains(branch.branchRootUuid) {
                 emittedDivergencePoints.insert(branch.branchRootUuid)
                 let branchEntries = abandonedBranchEntriesByRoot[branch.branchRootUuid] ?? []
+                let totalRewinds = resolution.totalRewinds
                 let preview = branch.firstPromptPreview ?? String(
                     localized: "agentXray.entry.branchLink.noPrompt",
                     defaultValue: "(no prompt)",
@@ -874,7 +875,7 @@ struct ClaudeTranscriptBuilder {
                 )
                 let title = String(
                     localized: "agentXray.entry.branchLink.title",
-                    defaultValue: "Rewind \(branch.rewindIndex) of \(resolution.totalRewinds)",
+                    defaultValue: "Rewind \(branch.rewindIndex) of \(totalRewinds)",
                     bundle: .module
                 )
                 let subtitle = String(

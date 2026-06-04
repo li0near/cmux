@@ -84,25 +84,46 @@ public struct EntryView: View {
     }
 
     /// Variant-specific accent color override. nil = palette.primary.
+    /// Per-kind color rules per `PARITY_PUNCH_LIST.md` §3.3 + §3.14:
+    ///   user            → blue (queued or normal)
+    ///   agent           → claude
+    ///   system          → per-subType:
+    ///                     • localCommand / slashCmd / skill / recap /
+    ///                       planMode / editedTextFile / other → cyan
+    ///                     • systemReminder                    → yellow
+    ///                     • contextUsage                      → dim
+    ///   compact         → dim
+    ///   synthesized     → per-kind:
+    ///                     • branchLink                        → dim
+    ///                     • prLink                            → blue
     private var kindAccentColor: Color? {
         switch entry {
-        case .user(let user):
-            return user.wasQueued ? palette.blue : palette.blue
+        case .user:
+            return palette.blue
         case .agent:
             return palette.claude
         case .system(let sys):
             switch sys.subType {
-            case .recap, .skill, .planMode:
-                return palette.cyan
-            default:
+            case .systemReminder:
+                return palette.yellow
+            case .contextUsage:
+                return palette.dim
+            case .localCommand,
+                 .slashCmdInput,
+                 .slashCmdOutput,
+                 .skill,
+                 .recap,
+                 .planMode,
+                 .editedTextFile,
+                 .other:
                 return palette.cyan
             }
         case .compact:
             return palette.dim
         case .synthesized(let syn):
             switch syn.kind {
-            case .branchLink: return palette.yellow
-            case .prLink:     return palette.cyan
+            case .branchLink: return palette.dim
+            case .prLink:     return palette.blue
             }
         }
     }

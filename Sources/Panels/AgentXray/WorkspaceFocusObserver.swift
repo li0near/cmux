@@ -17,9 +17,13 @@ import Foundation
 /// changes that don't shift focus (e.g. /clear creates a new session
 /// entry).
 ///
-/// Currently uses Combine's `objectWillChange.debounce(...).sink`
-/// pipeline. A future revision will swap in an `AsyncStream`-based
-/// event pipeline.
+/// Event pipeline:
+///   - `Workspace.objectWillChange` (Combine ObservableObject — outside
+///     this class's control) is bridged into an `AsyncStream<Void>` via
+///     a one-line `sink { continuation.yield() }`.
+///   - A `MainActor` Task consumes the stream and trailing-debounces
+///     150 ms via `Task.sleep` cancellation. Replaces the prior
+///     `.debounce(for:scheduler:).sink { ... }` Combine pipeline.
 @MainActor
 @available(macOS 15, *)
 final class WorkspaceFocusObserver: ObservableObject {
@@ -27,7 +31,10 @@ final class WorkspaceFocusObserver: ObservableObject {
     @Published private(set) var current: ResolvedAgentSession?
 
     private weak var workspace: Workspace?
-    private var cancellable: AnyCancellable?
+    private var workspaceBridge: AnyCancellable?
+    private var observationTask: Task<Void, Never>?
+    private var debounceTask: Task<Void, Never>?
+    private var streamContinuation: AsyncStream<Void>.Continuation?
     private var focusObserverTokens: [NSObjectProtocol] = []
     private let resolver: AgentSessionResolver
     private let storeWatcher: ClaudeHookSessionStore?
@@ -45,11 +52,30 @@ final class WorkspaceFocusObserver: ObservableObject {
         self.resolver = resolver
         self.storeWatcher = watchStore ? ClaudeHookSessionStore() : nil
 
-        cancellable = workspace.objectWillChange
-            .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.recompute()
+        // Bridge: Combine `objectWillChange` → AsyncStream<Void>. The
+        // sink is the only Combine surface; the rest of the pipeline
+        // is async/await.
+        let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        self.streamContinuation = continuation
+        workspaceBridge = workspace.objectWillChange.sink { _ in
+            continuation.yield()
+        }
+
+        // Consumer: trailing-debounce via Task cancellation. Each
+        // incoming event cancels any pending recompute and starts a
+        // new 150 ms sleep; only the last sleep survives, then fires
+        // recompute().
+        observationTask = Task { @MainActor [weak self] in
+            for await _ in stream {
+                guard let self else { return }
+                self.debounceTask?.cancel()
+                self.debounceTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard !Task.isCancelled else { return }
+                    self?.recompute()
+                }
             }
+        }
 
         storeWatcher?.startWatching { [weak self] in
             DispatchQueue.main.async { self?.recompute() }
@@ -76,8 +102,14 @@ final class WorkspaceFocusObserver: ObservableObject {
     }
 
     func stop() {
-        cancellable?.cancel()
-        cancellable = nil
+        workspaceBridge?.cancel()
+        workspaceBridge = nil
+        streamContinuation?.finish()
+        streamContinuation = nil
+        observationTask?.cancel()
+        observationTask = nil
+        debounceTask?.cancel()
+        debounceTask = nil
         for token in focusObserverTokens {
             NotificationCenter.default.removeObserver(token)
         }
