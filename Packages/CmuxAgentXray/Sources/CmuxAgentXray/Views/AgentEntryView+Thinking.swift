@@ -36,7 +36,7 @@ extension AgentEntryView {
 
             if isExpanded {
                 Text(body)
-                    .font(Theme.Row.summary.italic())
+                    .font(Theme.SubRow.summary.italic())
                     .foregroundStyle(palette.dim)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Theme.Padding.expandedBodyBlock)

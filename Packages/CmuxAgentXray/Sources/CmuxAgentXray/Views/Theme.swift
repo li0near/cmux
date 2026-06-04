@@ -154,9 +154,12 @@ public enum Theme {
     // MARK: - Typography — Sub-entry row
 
     /// Fonts for sub-entries (thinking / tool / assistantText) — all one
-    /// point smaller than the corresponding ``Row`` font.
+    /// point smaller than the corresponding ``Row`` font. Sub-row names
+    /// use `.medium` weight (one step lighter than the parent ``Row``'s
+    /// `.semibold`) — they read as a quieter continuation of the parent
+    /// row, not a sibling header.
     public enum SubRow {
-        public static let name = Font.system(size: 11, weight: .semibold, design: .monospaced)
+        public static let name = Font.system(size: 11, weight: .medium, design: .monospaced)
         public static let summary = Font.system(size: 11, design: .monospaced)
         /// Line counts, tool durations (10pt).
         public static let meta = Font.system(size: 10, design: .monospaced)

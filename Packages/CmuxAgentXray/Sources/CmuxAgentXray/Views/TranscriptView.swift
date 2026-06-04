@@ -557,10 +557,16 @@ private struct EntryAnchorsKey: PreferenceKey {
 // MARK: - Branch-link sub-row
 
 /// Rewind / abandoned-branch link rendered as a compact sub-row
-/// (predecessor parity per PARITY §3.15 / dogfood #5b). Indented
-/// under the parent agent turn with a `↳` lead-in glyph + branch
-/// icon + smaller font. Click → `onOpenDetail(.abandonedBranch(...))`
-/// — the subtree expands in a sibling detail tab, not inline.
+/// (predecessor parity per PARITY §3.15 / dogfood feedback). Layout
+/// mirrors the spike's `tangentLeading` chrome:
+///
+///     [↳] [branch] Rewind X of Y · N entries · <preview>
+///       └─ glyph in the gap between parent's icon column and name column
+///          └─ branch icon aligns with the parent's NAME column (= where
+///             other sub-row icons would land if this were a true sub-row)
+///
+/// Click → `onOpenDetail(.abandonedBranch(...))` — the abandoned-branch
+/// transcript opens in a sibling detail tab.
 @available(macOS 15, *)
 private struct BranchLinkEntryRow: View {
     let rewindIndex: Int
@@ -572,10 +578,11 @@ private struct BranchLinkEntryRow: View {
 
     var body: some View {
         Button(action: onOpenDetail) {
-            HStack(spacing: Theme.Spacing.subRowIconText) {
-                // Tangent leading glyph — `↳` in the parent's icon
-                // column so the sub-row visually nests under the
-                // turn it abandons.
+            HStack(spacing: Theme.Spacing.rowIconText) {
+                // Tangent leading: reserve the parent's icon-column
+                // width and overlay `↳` at the trailing edge with a
+                // half-spacing offset so it lands in the gap between
+                // the parent's icon and name columns.
                 Color.clear
                     .frame(width: Theme.Metric.rowIconWidth, height: 12)
                     .overlay(alignment: .trailing) {
@@ -583,14 +590,19 @@ private struct BranchLinkEntryRow: View {
                             .font(Theme.SubRow.summary)
                             .foregroundStyle(palette.dim)
                             .fixedSize()
+                            .offset(x: Theme.Spacing.rowIconText / 2)
                     }
                 Image(systemName: EntryIcon.branchLink.collapsed)
                     .font(Theme.SubRow.icon)
                     .foregroundStyle(palette.dim)
                 Text(titleText)
-                    .font(Theme.SubRow.name)
+                    .font(Theme.SubRow.summary)
                     .foregroundStyle(palette.dim)
+                    .underline(true, color: palette.dim.opacity(Theme.Opacity.dim))
                     .lineLimit(1)
+                Text("·")
+                    .font(Theme.SubRow.summary)
+                    .foregroundStyle(palette.dim.opacity(Theme.Opacity.detail))
                 Text(subtitleText)
                     .font(Theme.SubRow.summary)
                     .foregroundStyle(palette.dim.opacity(Theme.Opacity.detail))
@@ -598,7 +610,6 @@ private struct BranchLinkEntryRow: View {
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
             }
-            .padding(.leading, Theme.Indent.subRow)
             .padding(.horizontal, Theme.Padding.horizontal)
             .padding(.vertical, Theme.Spacing.verticalStack)
             .frame(maxWidth: .infinity, alignment: .leading)

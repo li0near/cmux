@@ -81,7 +81,7 @@ extension AgentEntryView {
             if isExpanded {
                 let inputDetail = tool.inputDetail ?? ""
                 let resultDetail = tool.resultDetail ?? ""
-                VStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
+                VStack(alignment: .leading, spacing: 2) {
                     if !inputDetail.isEmpty {
                         cappedTextBlock(
                             inputDetail,
@@ -109,6 +109,8 @@ extension AgentEntryView {
     /// Tool input/result with `.standard` caps (30 lines / 3 KiB).
     /// Truncated body renders inline; if overflow, a ↗ "Open detail"
     /// link routes the full content to a sibling detail tab.
+    /// Font matches sub-row body (11pt mono) — predecessor parity;
+    /// previous 12pt + 4pt block-spacing felt heavy.
     private func cappedTextBlock(
         _ text: String,
         color: Color,
@@ -122,7 +124,7 @@ extension AgentEntryView {
         return VStack(alignment: .leading, spacing: 2) {
             if !content.inlineBody.isEmpty {
                 Text(content.inlineBody)
-                    .font(Theme.Row.summary)
+                    .font(Theme.SubRow.summary)
                     .foregroundStyle(color)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Theme.Padding.expandedBodyBlock)

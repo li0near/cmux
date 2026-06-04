@@ -50,7 +50,7 @@ struct EntryBodyView: View {
     private func textSection(content: ExpandableContent, style: TextStyle) -> some View {
         if !content.inlineBody.isEmpty {
             Text(content.inlineBody)
-                .font(Theme.Row.summary)
+                .font(Theme.SubRow.summary)
                 .foregroundStyle(textColor(for: style))
                 .italic(style == .thinking)
                 .textSelection(.enabled)
