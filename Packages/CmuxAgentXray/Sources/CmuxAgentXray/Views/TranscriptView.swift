@@ -47,8 +47,12 @@ public struct TranscriptView: View {
         let palette = HudPalette(foreground: appearance.foregroundColor)
         return StatusBarView(
             palette: palette,
-            resolvedSessionTitle: resolvedSessionTitle,
-            isAttached: panel.resolvedSession != nil,
+            stage: AttachStage.derive(
+                resolvedSession: panel.resolvedSession,
+                entries: panel.stream.entries
+            ),
+            streamError: panel.stream.error,
+            attachedTitle: resolvedSessionTitle,
             scrollMode: panel.scrollMode,
             rewindVisibility: panel.rewindVisibility,
             expansionMode: panel.expansionMode,

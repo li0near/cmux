@@ -4,26 +4,24 @@ public import SwiftUI
 ///
 ///     [glyph]  attached <session>           scroll: snap   ↻ ⇲ ⇣⇡ ⇡⇣
 ///
-/// Carries:
-/// - Leading glyph (●/◐) — `HudGlyph.activeDot` when detached;
-///   `HudGlyph.runningCircle` when attached.
-/// - Title — "attached <kind> <session…>  <cwd>" or the
-///   localized "no agent session focused" placeholder.
-/// - Scroll-mode pill — toggles `.snap` / `.free`.
-/// - Four control buttons — rewind toggle, auto-expand toggle,
-///   collapse-all, expand-all. Disabled buttons render via
-///   SwiftUI's `.disabled(!canX)` modifier (system auto-dim) — no
-///   manual opacity overrides.
+/// 3-color glyph precedence (per `VISUAL_PASS_REVIEW.md` §1):
+///   1. stream error or no resolved session → **red**
+///   2. session but no entries yet           → **yellow** (stage label)
+///   3. else                                 → **green** (attached title)
+///
+/// `AttachStage` drives the yellow-state label. Stream errors override
+/// the entire status text with the error message.
 ///
 /// **Snapshot-boundary policy:** value-typed inputs and stable closures
-/// only. Caller (`TranscriptView`) projects panel state once and
-/// passes flags + handlers in.
+/// only. Caller (`TranscriptView`) derives the stage + flags up front
+/// and passes them in.
 @available(macOS 15, *)
 public struct StatusBarView: View {
 
     public let palette: HudPalette
-    public let resolvedSessionTitle: String?
-    public let isAttached: Bool
+    public let stage: AttachStage
+    public let streamError: String?
+    public let attachedTitle: String?
     public let scrollMode: ScrollMode
     public let rewindVisibility: RewindVisibility
     public let expansionMode: ExpansionMode
@@ -38,8 +36,9 @@ public struct StatusBarView: View {
 
     public init(
         palette: HudPalette,
-        resolvedSessionTitle: String?,
-        isAttached: Bool,
+        stage: AttachStage,
+        streamError: String?,
+        attachedTitle: String?,
         scrollMode: ScrollMode,
         rewindVisibility: RewindVisibility,
         expansionMode: ExpansionMode,
@@ -52,8 +51,9 @@ public struct StatusBarView: View {
         onExpandAll: @escaping () -> Void
     ) {
         self.palette = palette
-        self.resolvedSessionTitle = resolvedSessionTitle
-        self.isAttached = isAttached
+        self.stage = stage
+        self.streamError = streamError
+        self.attachedTitle = attachedTitle
         self.scrollMode = scrollMode
         self.rewindVisibility = rewindVisibility
         self.expansionMode = expansionMode
@@ -68,9 +68,9 @@ public struct StatusBarView: View {
 
     public var body: some View {
         HStack(spacing: Theme.Spacing.rowIconText) {
-            Text(isAttached ? HudGlyph.runningCircle : HudGlyph.activeDot)
+            Text(glyph)
                 .font(Theme.StatusBar.icon)
-                .foregroundStyle(isAttached ? palette.yellow : palette.dim)
+                .foregroundStyle(glyphColor)
             Text(title)
                 .font(Theme.StatusBar.title)
                 .foregroundStyle(palette.primary)
@@ -89,15 +89,79 @@ public struct StatusBarView: View {
         .padding(.horizontal, Theme.Padding.horizontal)
     }
 
-    private var title: String {
-        if let resolvedSessionTitle {
-            return resolvedSessionTitle
+    // MARK: - State derivation
+
+    private enum ColorState {
+        case red, yellow, green
+    }
+
+    private var colorState: ColorState {
+        if streamError != nil { return .red }
+        switch stage {
+        case .idle, .awaitingSession:
+            return .red
+        case .sessionHooked, .locatingTranscript, .streamingNoEntries:
+            return .yellow
+        case .streaming:
+            return .green
         }
-        return String(
-            localized: "agentXray.statusBar.detached",
-            defaultValue: "no agent session focused",
-            bundle: .module
-        )
+    }
+
+    private var glyph: String {
+        switch colorState {
+        case .red, .yellow: return HudGlyph.activeDot
+        case .green:        return HudGlyph.runningCircle
+        }
+    }
+
+    private var glyphColor: Color {
+        switch colorState {
+        case .red:    return palette.red
+        case .yellow: return palette.yellow
+        case .green:  return palette.green
+        }
+    }
+
+    private var title: String {
+        if let streamError {
+            return String(
+                localized: "agentXray.statusBar.streamError",
+                defaultValue: "Stream error: \(streamError)",
+                bundle: .module
+            )
+        }
+        switch stage {
+        case .idle, .awaitingSession:
+            return String(
+                localized: "agentXray.statusBar.detached",
+                defaultValue: "no agent session focused",
+                bundle: .module
+            )
+        case .sessionHooked(let id):
+            return String(
+                localized: "agentXray.statusBar.sessionHooked",
+                defaultValue: "Session hooked: \(id.prefix(8))",
+                bundle: .module
+            )
+        case .locatingTranscript:
+            return String(
+                localized: "agentXray.statusBar.locatingTranscript",
+                defaultValue: "Locating transcript…",
+                bundle: .module
+            )
+        case .streamingNoEntries:
+            return String(
+                localized: "agentXray.statusBar.streamingNoEntries",
+                defaultValue: "Streaming — no entries yet",
+                bundle: .module
+            )
+        case .streaming:
+            return attachedTitle ?? String(
+                localized: "agentXray.statusBar.attached",
+                defaultValue: "attached",
+                bundle: .module
+            )
+        }
     }
 
     // MARK: - Scroll-mode pill

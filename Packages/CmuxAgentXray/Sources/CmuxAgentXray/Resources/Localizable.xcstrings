@@ -473,6 +473,72 @@
           }
         }
       }
+    },
+    "agentXray.statusBar.detached" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no agent session focused"
+          }
+        }
+      }
+    },
+    "agentXray.statusBar.attached" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "attached"
+          }
+        }
+      }
+    },
+    "agentXray.statusBar.sessionHooked" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Session hooked: %@"
+          }
+        }
+      }
+    },
+    "agentXray.statusBar.locatingTranscript" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Locating transcript…"
+          }
+        }
+      }
+    },
+    "agentXray.statusBar.streamingNoEntries" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming — no entries yet"
+          }
+        }
+      }
+    },
+    "agentXray.statusBar.streamError" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stream error: %@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

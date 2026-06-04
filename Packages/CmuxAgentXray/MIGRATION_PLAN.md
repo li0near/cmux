@@ -29,7 +29,7 @@ after every phase completes so a fresh session can resume mid-migration.
 | 17 Parity punch-list completion | ⏳ in progress | see `Packages/CmuxAgentXray/PARITY_PUNCH_LIST.md` | Exhaustive side-by-side audit produced 87 findings (42 ✅ / 38 ⚠️ / 7 ❌). Punch-list is the canonical execution order to reach parity. |
 | 17pre `AgentTurn → AgentEntry` rename | ✅ done | `agentxray` @ 17pre commit | Mechanical sweep — type decl, file rename, nested types, anchor field (`agentTurnID` → `agentEntryID`), store method (`pairAgentTurn` → `pairAgentEntry`), child field (`parentTurnID` → `parentEntryID`), doc-comment type references; legacy "Row" function names in `PanelView` renamed to `*EntryView`; localization keys `agentXray.row.*` → `agentXray.entry.*`. Conversational "turn" prose preserved (`per-turn`, `this turn`, `the turn's subEntries`, etc.). Verification: `git grep -wn "AgentTurn"` → 0 hits in code; build + tests 21/21 green. The fabricated §17 "AgentRow vs AgentTurn" Q&A line was deleted. |
 | 17a Visual-parity pass | ✅ done | `agentxray` @ 17a commit | `VISUAL_PASS_REVIEW.md` §1–§8 landed as one batch. New: `Theme.swift` (flattened Layout + Typography tokens), `HoverBars.swift`, `StatusBarView.swift`, `AgentEntryView.swift` + `+Thinking/+Tool/+AssistantText.swift` extension files replacing inline private funcs in PanelView, `Adapters/Common/TranscriptFormatters.swift` (formatTokenCounts, singleLinePromptPreview, wordCount). Renamed: `Views/PanelView.swift` → `Views/TranscriptView.swift` (`CmuxAgentXrayPanelView` → `TranscriptView`), `EntryView.accentColor` → `kindAccentColor`, `ExpansionToggle.entryChevron` → `entry`. Modified: `Models/EntryIcon.swift` full rewrite per spec + user-locked overrides for `.compact` / `.recap` / `.slashCommand` + the three predecessor tool extras (LS, ExitPlanMode, AskUserQuestion); `EntryHeaderView` / `EntryBodyView` / `EntryView` consume Theme tokens; `MetadataPillView` folded inline into `EntryHeaderView`; `ClaudeTranscriptBuilder` formatter statics removed (redirects to TranscriptFormatters; user-prompt hard truncation moved from data layer to SwiftUI `.lineLimit(1).truncationMode(.tail)`); per-row hairline divider removed; `HudGlyph.activeDot` / `.runningCircle` replace hardcoded glyphs; disabled control buttons render via `.disabled(...)` (system auto-dim) instead of `palette.dim.opacity(0.4)`; HoverBars top + bottom hairlines applied to every interactive surface (frame-less and framed). Deleted: `Views/Helpers/EntryChrome.swift`, `Views/Helpers/MetadataPillView.swift`, `CmuxAgentXray.swift`, `Tests/CmuxAgentXrayTests/CmuxAgentXraySmokeTests.swift`. Tests 21 → 20. App-side touch: `Sources/Panels/PanelContentView.swift:115` updated to `TranscriptView`. |
-| 17b AttachStage feature | ⏳ follow-up | (no doc yet) | Separate commit after 17a — derives `AttachStage` enum from panel state, drives the status-bar yellow-state label + streaming-error rendering. Stages: idle → awaitingSession → sessionHooked → locatingTranscript → streamingNoEntries → streaming(turns, tokens). |
+| 17b AttachStage feature | ✅ done | `agentxray` @ 17b commit | New `Models/AttachStage.swift` (6-case enum: idle / awaitingSession / sessionHooked / locatingTranscript / streamingNoEntries / streaming(turnCount:, tokenTotal:)) with `derive(resolvedSession:entries:)` static. `StatusBarView` rewired for 3-color glyph precedence (red / yellow / green) per `VISUAL_PASS_REVIEW.md` §1: red on `stream.error != nil` or `.idle` / `.awaitingSession`; yellow on `.sessionHooked` / `.locatingTranscript` / `.streamingNoEntries`; green on `.streaming(...)`. Stream-error message overrides title text. New xcstrings keys: `agentXray.statusBar.{detached,attached,sessionHooked,locatingTranscript,streamingNoEntries,streamError}`. Today only `idle` / `streamingNoEntries` / `streaming` are derived; intermediate stages are reserved for future attach lifecycle instrumentation. |
 | 17c Behavioural correctness batch | ⏳ blocked on 17a/17b | see `PARITY_PUNCH_LIST.md` Group 1 | Final batch — `scrollForFilter` cross-band routing, `InspectorRowAnchorsKey` aggregation, bulk-collapse / bulk-expand handlers, `layoutRevision` remount, session-change scroll handler, boundary-id `.id(...)` on row dividers, detail-mode entries-list rendering. |
 | 17d Forward-looking deferrals beyond parity | 📋 tracked | see §16 deferred-task ledger | Items A, B, C, F, G, H — go beyond predecessor parity (TextStyle diff-cases, inline sub-agent transcripts, ToolEntry shape evolution, branchLink defaultValue cleanup, xcstrings SPM-build-time pre-compile, AsyncStream focus pipeline). Each is a distinct mini-spec when picked up; not a single batch. |
 
@@ -1241,6 +1241,45 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
   Verification: swift build green; swift test 20/20 green (smoke
     suite removed); xcodebuild cmux scheme green via
     `./scripts/reload.sh --tag agentxray`.
+
+[Phase 17b] 2026-06-04 -> agentxray @ 17b commit (see "Phase 17b: AttachStage feature")
+  AttachStage enum + status-bar 3-color glyph precedence per
+    VISUAL_PASS_REVIEW.md §1.
+  New file:
+    Models/AttachStage.swift       — 6-case enum (idle, awaitingSession,
+                                     sessionHooked(sessionID:),
+                                     locatingTranscript,
+                                     streamingNoEntries,
+                                     streaming(turnCount:, tokenTotal:))
+                                     + `derive(resolvedSession:entries:)`
+                                     static. Today only idle /
+                                     streamingNoEntries / streaming are
+                                     derived from observable state;
+                                     intermediate cases reserved for
+                                     future attach lifecycle
+                                     instrumentation.
+  Modified:
+    Views/StatusBarView.swift      — API switched from
+                                     (resolvedSessionTitle, isAttached)
+                                     to (stage, streamError,
+                                     attachedTitle). Glyph color rules:
+                                     red on stream.error != nil or
+                                     .idle/.awaitingSession; yellow on
+                                     .sessionHooked / .locatingTranscript
+                                     / .streamingNoEntries; green on
+                                     .streaming(...). Stream-error
+                                     message overrides title text.
+                                     Glyph itself flips between
+                                     HudGlyph.activeDot (red/yellow) and
+                                     .runningCircle (green).
+    Views/TranscriptView.swift     — derive AttachStage at render time
+                                     and pass to StatusBarView.
+    Resources/Localizable.xcstrings — six new keys:
+                                     agentXray.statusBar.{detached,
+                                     attached, sessionHooked,
+                                     locatingTranscript,
+                                     streamingNoEntries, streamError}.
+  Verification: swift build green; swift test 20/20 green.
 ```
 
 ## §15 Bug-fix ledger (autonomous fixes during port)
