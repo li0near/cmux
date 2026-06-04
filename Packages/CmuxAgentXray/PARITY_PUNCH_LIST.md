@@ -2,8 +2,12 @@
 
 **Source-of-truth checklist for finishing the migration.** Cross-references file:line in both projects. Once every row here is checked, the migration is parity-complete.
 
-- **Project A (predecessor — reference):** `/Users/I505728/temp/github/cmux-swiftui/Sources/Panels/AgentInspector/`
-- **Project B (current):** `/Users/I505728/temp/github/cmux-agentxray/Packages/CmuxAgentXray/Sources/CmuxAgentXray/` and `/Users/I505728/temp/github/cmux-agentxray/Sources/Panels/AgentXray/`
+All paths below are repo-relative.
+
+- **Project A (predecessor — reference):** `Sources/Panels/AgentInspector/` on branch `agent-inspector-swiftui-spike`.
+- **Project B (current):** `Packages/CmuxAgentXray/Sources/CmuxAgentXray/` (package) + `Sources/Panels/AgentXray/` (app-side adapter), on branch `agentxray`.
+
+To follow predecessor links from this branch, either: (a) check out `agent-inspector-swiftui-spike` in a sibling worktree, or (b) browse the file on GitHub at the predecessor branch tip.
 
 Status keys: ✅ DONE · ⏳ TODO · 🔍 VERIFY (claimed parity but not yet confirmed line-by-line)
 

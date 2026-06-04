@@ -88,15 +88,31 @@ CMUX_ZIG=/opt/homebrew/opt/zig@0.15/bin/zig \
 
 ## Status
 
-This package landed in cmux on **2026-06-04**. Phases 1–11 and 13 are
+This package landed in cmux on **2026-06-04**. Phases 1–11 and 13–15 are
 complete; Phase 9 wires the package into the cmux app target end-to-end
-(`xcodebuild` succeeds, package tests 21/21 green). Phase 12
-(`AsyncStream` focus pipeline) is a deferred quality pass. Phase
-14/15/16 (docs, cleanup, whole-package audit) finalize the migration.
+(`xcodebuild` succeeds, package tests 21/21 green). Phase 16 audit
+produced an exhaustive side-by-side gap list against the predecessor
+implementation. Phase 17 is in progress — finishing the gap-closure
+work to reach parity.
 
-Phase status, open work, the autonomous bug-fix ledger, and the
-deferred-task ledger live in `~/.claude/plans/agentxray-migration-2026-06-04.md`.
+**For the next session resuming this work, read in this order:**
+
+1. `MIGRATION_PLAN.md` (sibling file) — full phase plan, status table
+   (§1), progress log (§14), bug-fix ledger (§15), deferred-task
+   ledger (§16), origin cross-reference (§18).
+2. `PARITY_PUNCH_LIST.md` (sibling file) — canonical 87-finding
+   checklist of every behavioural / visual gap. Recommended
+   execution order at the bottom.
+3. `VISUAL_PASS_REVIEW.md` (sibling file) — user-signed-off spec for
+   the next visual-parity commit (icons, `Layout.swift` /
+   `Typography.swift` tokens, `HoverBars` modifier, file moves,
+   renames). Lands as one batch.
+
 Upstream-touch surface is tracked in `FORK_NOTES.md` (sibling file).
+The `AttachStage` feature (status-bar attach-progress labels) and the
+behavioural-correctness batch (`scrollForFilter`,
+`InspectorRowAnchorsKey`, bulk-action handlers, etc.) follow the
+visual-parity commit per the plan §1 row 17a/17b/17c.
 
 ## Conventions (must read)
 

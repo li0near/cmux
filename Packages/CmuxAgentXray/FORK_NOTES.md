@@ -111,4 +111,4 @@ upstream content).
 
 Everything personal/in-progress lives outside this package:
 
-- Migration plan + status: `~/.claude/plans/agentxray-migration-2026-06-04.md`
+- Migration plan + status: `MIGRATION_PLAN.md` (sibling file)
