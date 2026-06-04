@@ -33,10 +33,17 @@ public final class JSONLTail: @unchecked Sendable {
     private static let maxOpenRetries: Int = 8
 
     private let onLines: LinesHandler
+    private let logger: any AgentXrayLogger
 
-    public init(path: String, initialOffset: UInt64 = 0, onLines: @escaping LinesHandler) {
+    public init(
+        path: String,
+        initialOffset: UInt64 = 0,
+        logger: any AgentXrayLogger = NoOpAgentXrayLogger(),
+        onLines: @escaping LinesHandler
+    ) {
         self.path = path
         self.offset = initialOffset
+        self.logger = logger
         self.onLines = onLines
     }
 
@@ -73,7 +80,7 @@ public final class JSONLTail: @unchecked Sendable {
             // Exponential backoff: 1, 2, 4, 8, 16, 32, 30, 30 s ≈ ~2 min total.
             openRetryAttempts += 1
             guard openRetryAttempts <= Self.maxOpenRetries else {
-                debugLog("jsonlTail: gave up opening \(path) after \(openRetryAttempts) attempts")
+                logger.warning("jsonlTail: gave up opening transcript after \(openRetryAttempts) attempts")
                 return
             }
             let delaySeconds = min(30, 1 << min(openRetryAttempts - 1, 5))

@@ -25,12 +25,17 @@ public final class TranscriptStream {
     public private(set) var error: String?
 
     @ObservationIgnored private var tail: JSONLTail?
-    @ObservationIgnored private var claudeBuilder = ClaudeTranscriptBuilder()
-    @ObservationIgnored private var codexBuilder = CodexTranscriptBuilder()
+    @ObservationIgnored private var claudeBuilder: ClaudeTranscriptBuilder
+    @ObservationIgnored private var codexBuilder: CodexTranscriptBuilder
     @ObservationIgnored private var codexStamps: CodexSyntheticTimestamps?
     @ObservationIgnored private var currentKind: ResolvedAgentSession.AgentKind?
+    @ObservationIgnored private let logger: any AgentXrayLogger
 
-    public init() {}
+    public init(logger: any AgentXrayLogger = NoOpAgentXrayLogger()) {
+        self.logger = logger
+        self.claudeBuilder = ClaudeTranscriptBuilder(logger: logger)
+        self.codexBuilder = CodexTranscriptBuilder()
+    }
 
     deinit {
         tail?.stop()
@@ -78,7 +83,8 @@ public final class TranscriptStream {
         // Start the tail at post-existing-content offset.
         let nextTail = JSONLTail(
             path: path,
-            initialOffset: UInt64(initialBytes.count)
+            initialOffset: UInt64(initialBytes.count),
+            logger: logger
         ) { [weak self] lines in
             Task { @MainActor [weak self] in
                 self?.ingest(lines)

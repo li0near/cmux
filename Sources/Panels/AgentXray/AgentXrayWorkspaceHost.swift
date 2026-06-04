@@ -2,6 +2,7 @@ import AppKit
 import CmuxAgentXray
 import Combine
 import Foundation
+import OSLog
 
 /// Workspace-scoped concrete `AgentXrayHost`. One per `Workspace`,
 /// lazy-initialized via `Workspace.agentXrayWorkspaceHostLazy()` when
@@ -31,6 +32,15 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
     // MARK: - AgentXrayHost / identity
 
     var workspaceID: UUID { workspaceUUID }
+
+    /// Host-side logger routing. `.debug` events go to the cmux
+    /// `cmuxDebugLog` ring buffer (DEBUG builds only) so they show up
+    /// in the existing `tail -f /tmp/cmux-debug-<tag>.log` dogfood
+    /// loop. Higher levels (`.info`/`.notice`/`.warning`/`.error`)
+    /// route to `os.Logger` for production retention + sysdiagnose
+    /// pickup. Single static instance — `os.Logger` is a thread-safe
+    /// value type and the routing has no per-host state.
+    let logger: any AgentXrayLogger = AgentXrayWorkspaceLogger()
 
     private let workspaceUUID: UUID
     private weak var workspace: Workspace?
@@ -483,5 +493,52 @@ extension Workspace {
     fileprivate func requestFlash(panelId: UUID, reason: WorkspaceAttentionFlashReason) {
         guard let panel = panels[panelId] else { return }
         panel.triggerFlash(reason: reason)
+    }
+}
+
+// MARK: - Logger adapter
+
+/// Concrete `AgentXrayLogger` for the cmux app target. Routes by
+/// level:
+///   - `.debug` → `cmuxDebugLog(...)` (DEBUG builds only) so dev-time
+///     `tail -f /tmp/cmux-debug-<tag>.log` keeps working.
+///   - `.info` / `.notice` / `.warning` / `.error` → `os.Logger`
+///     subsystem `com.cmuxterm.app`, category `AgentXray`. Visible in
+///     Console.app and persisted into sysdiagnose archives so
+///     production engineers can investigate user reports.
+///
+/// All interpolated strings forward with `.public` privacy because the
+/// package's `AgentXrayLogger` protocol erases per-interpolation
+/// privacy at the seam. Callers must not interpolate raw user content
+/// (transcript bodies, file paths containing user dirs) per the
+/// protocol's documented privacy convention.
+@available(macOS 15, *)
+struct AgentXrayWorkspaceLogger: AgentXrayLogger {
+    private static let osLog = Logger(subsystem: "com.cmuxterm.app", category: "AgentXray")
+
+    func debug(_ message: @autoclosure () -> String) {
+        #if DEBUG
+        cmuxDebugLog("agentXray: \(message())")
+        #endif
+    }
+
+    func info(_ message: @autoclosure () -> String) {
+        let body = message()
+        Self.osLog.info("\(body, privacy: .public)")
+    }
+
+    func notice(_ message: @autoclosure () -> String) {
+        let body = message()
+        Self.osLog.notice("\(body, privacy: .public)")
+    }
+
+    func warning(_ message: @autoclosure () -> String) {
+        let body = message()
+        Self.osLog.warning("\(body, privacy: .public)")
+    }
+
+    func error(_ message: @autoclosure () -> String) {
+        let body = message()
+        Self.osLog.error("\(body, privacy: .public)")
     }
 }

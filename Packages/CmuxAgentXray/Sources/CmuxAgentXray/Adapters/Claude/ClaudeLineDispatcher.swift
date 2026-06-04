@@ -71,7 +71,8 @@ enum ClaudeLineDispatcher {
         _ line: ClaudeJSONLLine,
         activeBranch: Set<String>,
         activeBranchAvailable: Bool,
-        skillCommandUuids: Set<String> = []
+        skillCommandUuids: Set<String> = [],
+        logger: any AgentXrayLogger = NoOpAgentXrayLogger()
     ) -> ClaudeLineRouting {
         if let routing = CommonLineParser.parse(line) { return routing }
 
@@ -106,7 +107,7 @@ enum ClaudeLineDispatcher {
                 activeBranchAvailable: activeBranchAvailable
             )
         default:
-            debugLog("unknown JSONL type \(line.type)")
+            logger.warning("Claude JSONL: unknown line type '\(line.type)'")
             return .skip
         }
     }

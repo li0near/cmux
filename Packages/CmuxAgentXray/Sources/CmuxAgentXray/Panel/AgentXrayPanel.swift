@@ -143,7 +143,7 @@ public final class AgentXrayPanel {
 
     /// Live transcript stream — empty in detail mode.
     @ObservationIgnored
-    public let stream = TranscriptStream()
+    public let stream: TranscriptStream
 
     /// Per-entry computed-fields cache. Reset on session change.
     @ObservationIgnored
@@ -220,6 +220,7 @@ public final class AgentXrayPanel {
         self.workspaceID = host.workspaceID
         self.mode = .live
         self.host = host
+        self.stream = TranscriptStream(logger: host.logger)
 
         restorePersistedToggles()
         wireHostSubscriptions()
@@ -232,6 +233,7 @@ public final class AgentXrayPanel {
         self.workspaceID = host.workspaceID
         self.mode = .detail(content: detail)
         self.host = host
+        self.stream = TranscriptStream(logger: host.logger)
         // No subscriptions — detail panels are frozen.
     }
 

@@ -44,6 +44,11 @@ struct ClaudeTranscriptBuilder {
     // MARK: - State
 
     private var rawLines: [ClaudeJSONLLine] = []
+    private let logger: any AgentXrayLogger
+
+    init(logger: any AgentXrayLogger = NoOpAgentXrayLogger()) {
+        self.logger = logger
+    }
 
     // MARK: - API
 
@@ -133,7 +138,8 @@ struct ClaudeTranscriptBuilder {
             line,
             activeBranch: ctx.resolution.activeUUIDs,
             activeBranchAvailable: ctx.resolution.leafUuid != nil,
-            skillCommandUuids: ctx.skillCommandUuids
+            skillCommandUuids: ctx.skillCommandUuids,
+            logger: logger
         )
 
         switch routing {

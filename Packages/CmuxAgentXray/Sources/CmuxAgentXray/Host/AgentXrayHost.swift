@@ -18,6 +18,11 @@ public protocol AgentXrayHost: AnyObject {
     /// scope anchors to (workspace, surface) pairs.
     var workspaceID: UUID { get }
 
+    /// Logger seam. The host implements this to route package log
+    /// events to its own observability stack (e.g. `os.Logger` +
+    /// `cmuxDebugLog`). Tests can pass `NoOpAgentXrayLogger`.
+    var logger: any AgentXrayLogger { get }
+
     // MARK: Focus tracking
 
     /// The agent session currently in focus (if any). Read at attach
