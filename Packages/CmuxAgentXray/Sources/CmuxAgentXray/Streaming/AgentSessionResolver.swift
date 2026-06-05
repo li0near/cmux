@@ -231,15 +231,30 @@ public struct AgentSessionResolver: Sendable {
         // Path 2: live PID + hook record. Handles fresh panels (user
         // started claude after cmux was running) and `/new` mid-session
         // (snapshot is stale; live hook record reflects the new id).
+        //
+        // Skip records whose `transcriptPath` is nil or empty: claude's
+        // SessionStart hook can fire before the .jsonl path is known
+        // (or before claude has decided to disclose it), at which point
+        // the hook record is incomplete. Returning a session here would
+        // make `TranscriptStream.attach` early-return on the empty
+        // path, leaving the panel "Hooked" with nothing observing the
+        // file — when the user eventually prompts and claude writes,
+        // no `JSONLTail` is watching. Falling through keeps the panel
+        // detached until the hook record's next update populates the
+        // path; the store watcher will then trigger another recompute
+        // and the panel will hook + stream cleanly.
         for pid in agentPIDsForPanel(panelID) {
             guard let match = hookRecordForPID(pid) else { continue }
+            guard let path = match.transcriptPath, !path.isEmpty else {
+                continue
+            }
             return ResolvedAgentSession(
                 agentKind: match.agentKind,
                 sessionID: match.sessionID,
                 workspaceID: workspaceID,
                 surfaceID: panelID.uuidString,
                 cwd: match.cwd,
-                transcriptPath: match.transcriptPath
+                transcriptPath: path
             )
         }
 
