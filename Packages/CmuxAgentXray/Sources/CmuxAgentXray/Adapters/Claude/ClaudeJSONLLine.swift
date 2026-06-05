@@ -208,6 +208,12 @@ struct ClaudeAttachment: Decodable, Equatable {
     let planExists: Bool?
     /// `plan_mode` only — `"full"` / `"reentry"` etc.
     let reminderType: String?
+    /// `queued_command` only — origin discriminator.
+    /// `"prompt"` = user typed mid-AI-turn (render as user message).
+    /// `"task-notification"` = harness echo of a background-task
+    /// completion (`Bash(run_in_background: true)`); skip.
+    /// nil on older sessions; treat as `"prompt"`.
+    let commandMode: String?
 }
 
 /// `message` body for user / assistant entries.

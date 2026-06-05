@@ -20,6 +20,12 @@ enum AttachmentLineParser {
     ) -> ClaudeLineRouting {
         switch line.attachment?.type {
         case "queued_command":
+            // Skip harness-emitted background-task completion echoes;
+            // they're not user prompts. Older sessions have no
+            // `commandMode` and still render. See AttachmentParserTests.
+            if line.attachment?.commandMode == "task-notification" {
+                return .skip
+            }
             return ClaudeLineDispatcher.branchGated(
                 line, kind: .renderSpecial(.queuedPrompt),
                 activeBranch: activeBranch,
