@@ -153,20 +153,17 @@ must skip it — otherwise the panel renders "Hooked" while
 nothing observing the file.
 
 ```
-claude bare    SessionStart    storeWatcher    user types       prompt-submit    storeWatcher    JSONLTail
-runs           hook fires      fires →         first prompt     hook fires       fires →         opens file,
-               (transcript_    recompute →                      (carries         recompute →     drains existing,
-                path nil)      path 2 SKIPS                     transcript_      path 2 HITS     watches appends
-                               (Detached)                        path)            (valid path)
-     │              │              │                │                │              │                │
-     │              │              │             [user activity]     │              │                │
-     │              [Panel: Detached ─────────────────────────────────────▶]        │                │
-     │              │              │                │                │              [Panel: Hooked ──▶]
-     │              │              │                │                │              │           [Streaming ─▶]
-     ▼              ▼              ▼                ▼                ▼              ▼                ▼
-   t = 0         ~100 ms        ~250 ms            ...            ~50 ms         ~200 ms         ~250 ms
-                                                                  (after user
-                                                                   prompt)
+claude            SessionStart      user prompts      prompt-submit
+bare runs         hook fires        (first time)      hook fires
+                  (path 2 SKIPS:                      (record updated;
+                   transcriptPath                      path 2 HITS;
+                   nil)                                JSONLTail attaches)
+     │                 │                 │                 │
+     [Detached ────────────────────────────────────────▶]  │
+     │                 │                 │            [Hooked → Streaming ─▶]
+     ▼                 ▼                 ▼                 ▼
+   t = 0            ~150 ms          user-pace       ~250 ms after
+                                                     user prompt
 ```
 
 When the user later sends a prompt, claude's prompt-submit hook fires
