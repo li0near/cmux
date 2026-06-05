@@ -21,6 +21,7 @@ extension AgentEntryView {
                     Image(systemName: EntryIcon.thinking.systemName(expanded: isExpanded))
                         .font(Theme.SubRow.icon)
                         .foregroundStyle(palette.dim)
+                        .frame(width: Theme.Metric.subRowIconWidth)
                     Text("thinking")
                         .font(Theme.SubRow.name)
                         .foregroundStyle(palette.dim)

@@ -13,6 +13,7 @@ extension AgentEntryView {
             Image(systemName: "microbe.circle")
                 .font(Theme.SubRow.icon)
                 .foregroundStyle(palette.claude)
+                .frame(width: Theme.Metric.subRowIconWidth)
             Button {
                 onOpenDetail(.assistantResponse(entryID: assistantText.parentEntryID.stableString))
             } label: {

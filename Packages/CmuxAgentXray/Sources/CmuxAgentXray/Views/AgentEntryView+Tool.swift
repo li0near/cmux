@@ -46,6 +46,7 @@ extension AgentEntryView {
                                 options: .repeating,
                                 isActive: isPending
                             )
+                            .frame(width: Theme.Metric.subRowIconWidth)
                     }
                     Text(toolName)
                         .font(Theme.Row.name)
