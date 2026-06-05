@@ -592,19 +592,14 @@ struct ClaudeTranscriptBuilder {
             )
             for event in pending.subEntryEvents {
                 switch event {
-                case .thinking(let text, let ts, let id):
+                case .text(let kind, let text, let ts, let id):
+                    let fallbackTs = (kind == .assistant)
+                        ? (ts ?? pending.lastTimestamp ?? pending.startTime)
+                        : (ts ?? pending.startTime)
                     subEntries.append(.text(ClaudeTranscriptBuilder.makeTextSubEntry(
-                        kind: .thinking,
+                        kind: kind,
                         text: text,
-                        timestamp: ts ?? pending.startTime,
-                        id: id,
-                        parentEntryID: parentEntryID
-                    )))
-                case .assistantText(let text, let ts, let id):
-                    subEntries.append(.text(ClaudeTranscriptBuilder.makeTextSubEntry(
-                        kind: .assistant,
-                        text: text,
-                        timestamp: ts ?? pending.lastTimestamp ?? pending.startTime,
+                        timestamp: fallbackTs,
                         id: id,
                         parentEntryID: parentEntryID
                     )))
@@ -789,8 +784,7 @@ struct ClaudeTranscriptBuilder {
     /// blocks land. Tool metadata stays in `PendingTurn.toolCalls`;
     /// only the **arrival-order signal** flows through this enum.
     fileprivate enum PendingSubEntry {
-        case thinking(text: String, timestamp: Date?, id: EntryID)
-        case assistantText(text: String, timestamp: Date?, id: EntryID)
+        case text(kind: TextSubEntry.Kind, text: String, timestamp: Date?, id: EntryID)
         case toolUse(toolUseId: String)
     }
 
@@ -888,25 +882,25 @@ struct ClaudeTranscriptBuilder {
         case .text(let str):
             let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
-                appendAssistantText(trimmed, timestamp: line.timestamp, ctx: &ctx)
+                appendTextEvent(kind: .assistant, trimmed, timestamp: line.timestamp, ctx: &ctx)
             }
         case .blocks(let blocks):
             for block in blocks {
                 switch block.type {
                 case "text":
                     if let t = block.text {
-                        appendAssistantText(t, timestamp: line.timestamp, ctx: &ctx)
+                        appendTextEvent(kind: .assistant, t, timestamp: line.timestamp, ctx: &ctx)
                     }
                 case "thinking":
                     if let t = block.thinking {
-                        appendThinkingText(t, timestamp: line.timestamp, ctx: &ctx)
+                        appendTextEvent(kind: .thinking, t, timestamp: line.timestamp, ctx: &ctx)
                     }
                 case "tool_use":
                     appendToolUse(block, timestamp: line.timestamp, ctx: &ctx)
                 case "tool_result":
                     attachToolResult(block, timestamp: line.timestamp, ctx: &ctx)
                 case "image":
-                    appendAssistantText("[image]", timestamp: line.timestamp, ctx: &ctx)
+                    appendTextEvent(kind: .assistant, "[image]", timestamp: line.timestamp, ctx: &ctx)
                 default:
                     break
                 }
@@ -914,7 +908,13 @@ struct ClaudeTranscriptBuilder {
         }
     }
 
-    private func appendAssistantText(
+    /// Append one text event to the pending turn — used for both
+    /// thinking and final assistant text blocks. The `kind` discriminator
+    /// drives which per-kind counter is bumped (so the derived id
+    /// `"thinking-N"` / `"assistantText-N"` keeps its kind tag) and is
+    /// stored on the event for the flush-time projection.
+    private func appendTextEvent(
+        kind: TextSubEntry.Kind,
         _ text: String,
         timestamp: Date?,
         ctx: inout BuildContext
@@ -922,38 +922,21 @@ struct ClaudeTranscriptBuilder {
         guard ctx.pendingTurn != nil else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let idx = ctx.pendingTurn!.assistantTextCounter
-        ctx.pendingTurn!.assistantTextCounter += 1
-        let id = EntryID.derived(
-            parent: ctx.pendingTurn!.id,
-            kind: "assistantText-\(idx)"
+        let suffix: String
+        switch kind {
+        case .thinking:
+            let idx = ctx.pendingTurn!.thinkingCounter
+            ctx.pendingTurn!.thinkingCounter += 1
+            suffix = "thinking-\(idx)"
+        case .assistant:
+            let idx = ctx.pendingTurn!.assistantTextCounter
+            ctx.pendingTurn!.assistantTextCounter += 1
+            suffix = "assistantText-\(idx)"
+        }
+        let id = EntryID.derived(parent: ctx.pendingTurn!.id, kind: suffix)
+        ctx.pendingTurn!.subEntryEvents.append(
+            .text(kind: kind, text: trimmed, timestamp: timestamp, id: id)
         )
-        ctx.pendingTurn!.subEntryEvents.append(.assistantText(
-            text: trimmed,
-            timestamp: timestamp,
-            id: id
-        ))
-    }
-
-    private func appendThinkingText(
-        _ text: String,
-        timestamp: Date?,
-        ctx: inout BuildContext
-    ) {
-        guard ctx.pendingTurn != nil else { return }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        let idx = ctx.pendingTurn!.thinkingCounter
-        ctx.pendingTurn!.thinkingCounter += 1
-        let id = EntryID.derived(
-            parent: ctx.pendingTurn!.id,
-            kind: "thinking-\(idx)"
-        )
-        ctx.pendingTurn!.subEntryEvents.append(.thinking(
-            text: trimmed,
-            timestamp: timestamp,
-            id: id
-        ))
     }
 
     private func appendToolUse(
