@@ -92,12 +92,23 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
     private var scrollbarObserverToken: NSObjectProtocol?
     private var scrollbarSubscribers: [UUID: @MainActor (UUID) -> Void] = [:]
 
+    // MARK: - Remote attach (path 3)
+
+    private let remoteSessionStore: RemoteSessionStore
+    private let remoteHomeResolver: RemoteHomeResolver
+    /// Last-known per-tab SSH transport for the tracked terminal,
+    /// inferred from the panel's process tree. Cleared on focus change.
+    /// Reads happen during `recompute()` and `currentTerminalRemoteContext()`.
+    private var inferredTransportByPanel: [UUID: SSHTransport?] = [:]
+
     // MARK: - Init
 
     init(
         workspace: Workspace,
         claudeStore: ClaudeHookSessionStore = ClaudeHookSessionStore(),
         codexStore: CodexHookSessionStore = CodexHookSessionStore(),
+        remoteSessionStore: RemoteSessionStore = RemoteSessionStore(),
+        remoteHomeResolver: RemoteHomeResolver? = nil,
         watchStore: Bool = true
     ) {
         self.workspaceUUID = workspace.id
@@ -105,6 +116,8 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
         self.claudeStore = claudeStore
         self.codexStore = codexStore
         self.storeWatcher = watchStore ? claudeStore : nil
+        self.remoteSessionStore = remoteSessionStore
+        self.remoteHomeResolver = remoteHomeResolver ?? RemoteHomeResolver()
 
         installFocusPipeline(workspace: workspace)
         installScrollbarObserver()
@@ -288,6 +301,143 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
         workspace?.requestFlash(panelId: panelID, reason: .navigation)
     }
 
+    // MARK: - AgentXrayHost: remote attach (path 3)
+
+    func currentTerminalRemoteContext() -> RemoteAttachContext? {
+        guard let panelID = lastTerminalPanelId else { return nil }
+        return remoteContext(forPanelID: panelID)
+    }
+
+    func attachRemoteClaudeSessionID(_ sessionID: String?) {
+        guard let panelID = lastTerminalPanelId,
+              let workspace,
+              let terminal = workspace.panels[panelID] as? TerminalPanel,
+              let transport = sshTransportForTerminal(terminal) else {
+            return
+        }
+        let cwd = terminal.directory
+        let destination = transport.destination
+
+        // Clearing is synchronous: just write nil + recompute.
+        guard let trimmed = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            remoteSessionStore.write(
+                destination: destination,
+                cwd: cwd,
+                agentKind: .claude,
+                sessionID: nil
+            )
+            recompute()
+            return
+        }
+
+        // Setting may need to resolve $HOME first if the cache is cold.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.remoteHomeResolver.resolve(for: transport)
+            } catch {
+                self.logger.warning("RemoteHomeResolver: \(error.localizedDescription) for \(destination)")
+                // Even if resolution fails, persist the id so the user
+                // doesn't lose it; recompute will keep showing the
+                // prompt because remoteHome stays empty in the context.
+            }
+            self.remoteSessionStore.write(
+                destination: destination,
+                cwd: cwd,
+                agentKind: .claude,
+                sessionID: trimmed
+            )
+            self.recompute()
+        }
+    }
+
+    // MARK: - Remote attach: per-tab SSH inference
+
+    /// Returns a `RemoteAttachContext` for the panel if its tracked
+    /// terminal has an SSH transport (workspace-level OR per-tab
+    /// inferred). The returned context's `remoteHome` is empty when the
+    /// home hasn't been resolved yet — path 3 suppresses synthesis in
+    /// that case but the panel still surfaces the prompt.
+    private func remoteContext(forPanelID panelID: UUID) -> RemoteAttachContext? {
+        guard let workspace,
+              let terminal = workspace.panels[panelID] as? TerminalPanel,
+              let transport = sshTransportForTerminal(terminal) else {
+            return nil
+        }
+        let cwd = terminal.directory
+        let cachedHome = remoteHomeResolver.cached(for: transport) ?? ""
+        return RemoteAttachContext(
+            sshTransport: transport,
+            cwd: cwd,
+            remoteHome: cachedHome,
+            destination: transport.destination,
+            agentKind: .claude
+        )
+    }
+
+    /// Build an SSHTransport for the given terminal, preferring an
+    /// inferred per-tab `ssh` subprocess (so AgentX-ray picks up "user
+    /// typed `ssh box1` in this terminal" inside an otherwise-local
+    /// workspace). Falls back to the workspace-level
+    /// `WorkspaceRemoteConfiguration` when no ssh subprocess is found.
+    /// Returns nil for fully-local terminals.
+    private func sshTransportForTerminal(_ terminal: TerminalPanel) -> SSHTransport? {
+        if let inferred = inferSSHTransportFromProcessTree(panelID: terminal.id) {
+            inferredTransportByPanel[terminal.id] = inferred
+            return inferred
+        }
+        inferredTransportByPanel[terminal.id] = nil
+        return workspace?.agentXraySSHTransport()
+    }
+
+    /// Update the per-tab inference cache once per recompute so reads
+    /// during `currentTerminalRemoteContext()` and the resolver
+    /// closures stay consistent.
+    private func rememberInferredTransport(forTerminal terminal: TerminalPanel) {
+        // sshTransportForTerminal populates the cache as a side effect.
+        _ = sshTransportForTerminal(terminal)
+    }
+
+    /// Walks the panel's PIDs (env-var-scoped, populated by cmux's CLI
+    /// shell-spawn machinery), fetches each PID's argv via
+    /// `CmuxTopProcessArguments`, and parses any whose argv[0] is `ssh`
+    /// using `TerminalSSHSessionDetector.parseSSHCommandLine`. The
+    /// most-recently-spawned ssh wins (innermost; matches the
+    /// detector's nested-ssh precedent).
+    private func inferSSHTransportFromProcessTree(panelID: UUID) -> SSHTransport? {
+        let snapshot = CmuxTopProcessSnapshot.captureCached(
+            includeProcessDetails: true,
+            maximumAge: 1.5
+        )
+        let pidsInPanel = snapshot.pids(forCMUXSurfaceID: panelID)
+        guard !pidsInPanel.isEmpty else { return nil }
+
+        // Sort descending so the highest (most recent) PID wins on tie
+        // breaks — matches the detector's "innermost ssh wins" rule.
+        let sortedPIDs = pidsInPanel.sorted(by: >)
+        for pid in sortedPIDs {
+            guard let args = CmuxTopProcessSnapshot.processArgumentsAndEnvironment(for: pid) else { continue }
+            let argv = args.arguments
+            guard !argv.isEmpty else { continue }
+            // Skip non-ssh executables quickly. Match the file's basename
+            // so `/usr/bin/ssh`, `/opt/homebrew/bin/ssh`, and bare `ssh`
+            // all qualify.
+            let exe = (argv[0] as NSString).lastPathComponent
+            guard exe == "ssh" else { continue }
+            guard let detected = TerminalSSHSessionDetector.parseSSHCommandLine(argv) else {
+                continue
+            }
+            return SSHTransport(
+                destination: detected.destination,
+                port: detected.port,
+                identityFile: detected.identityFile,
+                controlPath: detected.controlPath
+            )
+        }
+        return nil
+    }
+
     // MARK: - Focus pipeline internals
 
     private func installFocusPipeline(workspace: Workspace) {
@@ -392,6 +542,10 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
 
         let panelUUID = terminal.id
 
+        // Refresh per-tab SSH inference + last-tracked-terminal cache
+        // so the resolver's path-3 closures see consistent data.
+        rememberInferredTransport(forTerminal: terminal)
+
         let resolver = AgentSessionResolver(
             agentPIDsForPanel: { [weak self] panelID in
                 self?.agentPIDs(forPanelID: panelID) ?? []
@@ -401,6 +555,16 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
             },
             restoredSnapshotForPanel: { [weak self] panelID in
                 self?.restoredAgentSnapshot(forPanelID: panelID)
+            },
+            remoteContextForPanel: { [weak self] panelID in
+                self?.remoteContext(forPanelID: panelID)
+            },
+            remoteSessionForPanel: { [weak self] _, ctx in
+                self?.remoteSessionStore.read(
+                    destination: ctx.destination,
+                    cwd: ctx.cwd,
+                    agentKind: ctx.agentKind
+                )
             }
         )
         let resolved = resolver.resolve(
@@ -590,22 +754,56 @@ extension Workspace {
     /// pipeline. Returns nil for local workspaces and for remote
     /// workspaces whose configuration lacks a usable destination.
     ///
-    /// The ControlPath is reused so the AgentX-ray `ssh exec tail -F`
-    /// piggybacks on the same multiplexed connection cmux uses for
-    /// terminals — no fresh auth round-trip.
+    /// The ControlPath is extracted from the configuration's
+    /// `sshOptions` and passed through so AgentX-ray's `ssh exec`
+    /// subprocesses (`echo $HOME` and `tail -F`) ride cmux's existing
+    /// ControlMaster — sub-second auth-free attach. Mirrors the
+    /// precedent in `WorkspaceRemoteSSHBatchCommandBuilder`.
     fileprivate func agentXraySSHTransport() -> SSHTransport? {
         guard let config = remoteConfiguration else { return nil }
         let dest = config.destination.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !dest.isEmpty else { return nil }
+        let controlPath = AgentXraySSHOptions.controlPath(in: config.sshOptions)
         return SSHTransport(
             destination: dest,
             port: config.port,
             identityFile: config.identityFile,
-            controlPath: nil  // ControlPath template is computed lazily
-                              // inside the SSH invocation; SSH resolves
-                              // %C tokens at exec time. Future enhancement:
-                              // surface the resolved path here.
+            controlPath: controlPath
         )
+    }
+}
+
+// MARK: - SSH option helpers
+
+/// Tiny value-typed namespace for sshOption parsing. Mirrors the
+/// behaviour of `WorkspaceRemoteSSHBatchCommandBuilder`'s private
+/// `sshOptionValue(named:in:)` so AgentX-ray can extract the workspace's
+/// ControlPath without touching upstream-private helpers.
+@available(macOS 15, *)
+enum AgentXraySSHOptions {
+    /// Returns the `ControlPath` template (e.g. `/tmp/cmux-ssh-501-%C`)
+    /// from a `sshOptions` array, or nil if absent / empty / disabled
+    /// via `none`.
+    static func controlPath(in options: [String]) -> String? {
+        guard let raw = sshOptionValue(named: "ControlPath", in: options) else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.lowercased() != "none" else { return nil }
+        return trimmed
+    }
+
+    private static func sshOptionValue(named name: String, in options: [String]) -> String? {
+        let loweredName = name.lowercased()
+        for option in options {
+            let trimmed = option.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if let equals = trimmed.firstIndex(of: "=") {
+                let key = String(trimmed[..<equals]).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard key.lowercased() == loweredName else { continue }
+                let value = String(trimmed[trimmed.index(after: equals)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                return value.isEmpty ? nil : value
+            }
+        }
+        return nil
     }
 }
 

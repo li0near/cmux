@@ -149,6 +149,10 @@ public final class RemoteJSONLStream: @unchecked Sendable {
         }
         if let controlPath = transport.controlPath, !controlPath.isEmpty {
             args += ["-o", "ControlPath=\(controlPath)"]
+            // Run as a slave when the host has provided a ControlPath:
+            // never try to negotiate a fresh master, so AgentX-ray's
+            // tail rides cmux's existing ControlMaster connection.
+            args += ["-o", "ControlMaster=no"]
         }
         // Be patient with transient drops; the existing ControlMaster
         // session usually keeps things up.

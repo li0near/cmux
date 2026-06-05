@@ -140,26 +140,31 @@ H. ~~Replace the Combine `objectWillChange.debounce` in
    `Sources/Panels/AgentXray/WorkspaceFocusObserver.swift` with an
    `AsyncStream`-based event pipeline (was Phase 12). Combine version is
    correct and ships with Phase 9; AsyncStream is a quality refinement.~~ **✅ DONE in 17d** — Combine `objectWillChange.sink` now feeds an `AsyncStream<Void>` continuation; consumer Task trailing-debounces 150 ms via `Task.sleep` cancellation. Combine surface reduced to a one-line bridge at the workspace seam.
-I. Top-level `CmuxAgentXrayPanelView` is currently a minimal port of the
-   spike's `AgentInspectorPanelView`. The spike's full feature set
-   (InspectorRowAnchorsKey aggregation + currentTopVisibleId tracking,
-   bulk-collapse scroll-clamp, bulk-expand materialize-kick on
-   `panel.bulkState` change, `.onChange(of: visibleTurnFilter)` scroll
-   routing, status-bar pills) is NOT yet ported to the package's
-   panel-level view. Each is independently re-portable from
-   `cmux-swiftui/Sources/Panels/AgentInspector/AgentInspectorPanelView.swift`
-   on top of the existing AgentXrayPanel API surface.
-J. SSH "Set session id" UI affordance — Phase 18 shipped the SSH
-   transport infrastructure (`RemoteJSONLStream` over the existing
-   ControlMaster socket, `SessionTransport.remote(SSHTransport)`,
-   dispatch in `TranscriptStream`), but the UI affordance for the user
-   to configure a sessionId for a remote panel is unimplemented. Without
-   it, remote panels resolve to nil and show "Detached". Natural
-   surfaces: command palette entry + AgentX-ray panel header overflow
-   menu + `UserDefaults` persistence keyed by (workspace title, panel
-   cwd, agentKind). The resolver's path 2 already builds the
-   `ResolvedAgentSession` once given a sessionId; only the UI is
-   missing.
+I. ~~Top-level `CmuxAgentXrayPanelView` is currently a minimal port of the
+   spike's `AgentInspectorPanelView`.~~ **✅ Done** (2026-06-05) — audit
+   confirmed all six spike features already ported during Phases 7 / 17a / 17c
+   with renames: `InspectorRowAnchorsKey → EntryAnchorsKey`
+   (`Views/TranscriptView.swift:550-558`), `currentTopVisibleId →
+   currentTopVisibleID` (lines 28, 352-368), bulk-collapse scroll-clamp
+   + bulk-expand materialize-kick (lines 138-155), `visibleTurnFilter →
+   entriesFilter` (lines 129-132), status-bar pills (`StatusBarView.swift`).
+   No code change needed.
+J. ~~SSH "Set session id" UI affordance — Phase 18 shipped the SSH
+   transport infrastructure but the UI is missing.~~ **✅ Done**
+   (2026-06-05). Adds resolver path 3 (remote session id from
+   `UserDefaults`), inline `RemoteAttachPromptView` mounted from the
+   empty-state branch, "Change" link in `StatusBarView`, ControlPath
+   piggyback so AgentX-ray's `ssh exec` rides cmux's existing
+   ControlMaster, per-tab SSH inference via `TerminalSSHSessionDetector
+   .parseSSHCommandLine` so opening `ssh user@host` inside a local-
+   workspace terminal also surfaces the prompt, and remote `$HOME`
+   resolution+caching by `(destination, port, identityFile, controlPath)`.
+   Persistence keyed by `(destination, cwd, agentKind=.claude)`.
+   Codex remote attach folded into §16.L. v1 limitations: stale id on
+   remote `/new` (Change link is the user-controlled escape hatch);
+   per-tab inferred ssh has `controlPath: nil` so each subprocess
+   opens a fresh ssh connection (workspace-level remote rides
+   ControlMaster correctly).
 K. Daemon-side process enumeration over RPC for remote workspaces —
    would let remote panels auto-resolve (no manual sessionId entry)
    like local ones. Requires modifying `cmuxd-remote`
@@ -169,30 +174,50 @@ K. Daemon-side process enumeration over RPC for remote workspaces —
    images. Out of scope for the AgentX-ray fork-side work; needs
    coordination with the cmux daemon team. *(Stays deferred — depends
    on upstream daemon work.)*
-L. Codex restored-snapshot transcriptPath resolution — Phase 18 path 1
-   returns nil for codex because codex sessions live in date-bucketed
-   `~/.codex/sessions/<year>/<month>/<day>/<sid>.jsonl` directories
-   that the snapshot doesn't carry. Codex via path 2 (live PID + hook
-   record) still works — the hook record carries the explicit
-   transcriptPath. So this is only a path-1 latency gap (slower attach
-   for restored codex; resolves once the agent spawns and fires its
-   SessionStart hook). Trivial fix when someone has a codex repro:
-   either embed the transcriptPath in the snapshot (cmux-side change)
-   or walk the date directories at resolve time. *(Stays deferred —
-   no impact on the common claude case; codex via path 2 already
-   works.)*
-M. Upstream cmux change `#4777` ("Launch restored agent sessions via
-   startup commands", commit 17f529f63) replaced the pre-existing
-   "type `cd … && env … claude --resume <id>` into the panel's PTY"
-   restore mechanism with a script-based shell-argv mechanism. The
-   user-visible behaviour change: the resume command no longer appears
-   in the panel's scrollback. AgentX-ray no longer depends on this
-   either way (Phase 18 paths 1 + 2 cover the restore case via cmux's
-   `restoredAgentSnapshotsByPanelId` + env-var-scoped scanner), so this
-   is purely an upstream UX question. Worth confirming with the cmux
-   team whether the scrollback-disappearance was deliberate before
-   filing anything. *(Stays deferred — out of AgentX-ray scope; upstream
-   to investigate.)*
+L. **Deferred codex work (consolidated).** Folded together as the
+   canonical "deferred codex" entry so a future codex pass picks up
+   everything in one go. Three known gaps:
+   1. **Restored-snapshot transcriptPath resolution.** Phase 18 path 1
+      returns nil for codex because codex sessions live in date-
+      bucketed `~/.codex/sessions/<y>/<m>/<d>/<sid>.jsonl` directories
+      the snapshot doesn't carry. Codex via path 2 (live PID + hook
+      record) still works — the hook record carries the explicit
+      transcriptPath. So this is only a path-1 latency gap (slower
+      attach for restored codex; resolves once the agent spawns and
+      fires its SessionStart hook). Fix: either embed the transcriptPath
+      in the snapshot (cmux-side change in `RestorableAgentSession`) or
+      walk the date directories at resolve time.
+   2. **SSH attach via session id (path 3).** Same date-bucket problem
+      on the remote host — given a codex sessionId, we can't deterministically
+      build the on-disk transcript path without walking
+      `~/.codex/sessions/<y>/<m>/<d>/`. AgentX-ray currently gates the
+      §16.J prompt to claude only (`ctx.agentKind == .claude` in path 3
+      + `RemoteAttachPromptView` strings). Fix: extend `remoteTranscriptPath
+      (forKind:sessionID:cwd:remoteHome:)` in `AgentSessionResolver` to
+      also accept codex by walking remote `~/.codex/sessions/*/*/*/<sid>.jsonl`
+      via one extra `ssh exec ls`-style probe, cache the result alongside
+      `RemoteHomeResolver`'s home cache.
+   3. **`codex resume` argv shape.** Codex CLI uses positional `codex
+      resume <id>` (not `codex --resume <id>`). The §16.J prompt's
+      detail string mentions `claude --resume <id>` only; when codex
+      lands the kind-specific copy needs a parallel `agentXray.remote
+      .prompt.detail.codex` entry that says `codex resume <id>`.
+   *(Stays deferred — no current consumer asks for codex remote attach;
+   the §16.J infrastructure is forward-compatible.)*
+M. ~~Upstream cmux change `#4777` ("Launch restored agent sessions via
+   startup commands", commit 17f529f63) replaced the pre-existing "type
+   `claude --resume <id>` into the panel's PTY" restore mechanism with
+   a script-based shell-argv mechanism. The user-visible behaviour
+   change: the resume command no longer appears in the panel's
+   scrollback. Worth confirming with the cmux team whether the scrollback-
+   disappearance was deliberate before filing anything.~~ **✅ Resolved**
+   — research subagent (2026-06-05) reviewed the PR description, commit
+   message, three reviewer summaries (cubic, CodeRabbit, Greptile), and
+   the test additions. Verdict: scrollback disappearance is a deliberate
+   refactor side-effect (resume runs as Ghostty's `initialCommand` in a
+   proper login shell instead of `initialInput` PTY echo, so cmux zsh
+   integration re-enters), not a UX assertion. Don't file. AgentX-ray
+   no longer depends on the prior behaviour either way.
 N. More aggressive split of `AgentXrayWorkspaceHost` (file currently
    ~500 lines) into per-workspace context + per-panel adapter as
    separate types — investigated during Phase 18 commit 1 design.

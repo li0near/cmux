@@ -572,6 +572,94 @@
           }
         }
       }
+    },
+    "agentXray.remote.prompt.button.change" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change"
+          }
+        }
+      }
+    },
+    "agentXray.remote.prompt.button.change.tooltip" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear the saved session id and re-prompt"
+          }
+        }
+      }
+    },
+    "agentXray.remote.prompt.button.connecting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecting…"
+          }
+        }
+      }
+    },
+    "agentXray.remote.prompt.button.submit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attach"
+          }
+        }
+      }
+    },
+    "agentXray.remote.prompt.detail" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Run `claude --resume <id>` on the remote and paste the id below."
+          }
+        }
+      }
+    },
+    "agentXray.remote.prompt.detail.withDestination" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attaching to %@. Run `claude --resume <id>` on the remote and paste the id below."
+          }
+        }
+      }
+    },
+    "agentXray.remote.prompt.header" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set Claude session id"
+          }
+        }
+      }
+    },
+    "agentXray.remote.prompt.input.placeholder" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude session id"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

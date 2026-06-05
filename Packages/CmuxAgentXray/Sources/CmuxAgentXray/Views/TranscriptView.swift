@@ -64,6 +64,7 @@ public struct TranscriptView: View {
             expansionMode: panel.expansionMode,
             canCollapse: panel.canCollapse,
             canExpand: panel.canExpand,
+            onClearRemoteSession: clearRemoteSessionHandler,
             onToggleScrollMode: {
                 panel.scrollMode = panel.scrollMode == .snap ? .free : .snap
             },
@@ -76,6 +77,15 @@ public struct TranscriptView: View {
             onCollapseAll: { panel.collapseAll() },
             onExpandAll: { panel.expandAll() }
         )
+    }
+
+    /// Non-nil only when the resolved session was attached via path 3
+    /// (`.remote(_:)` transport). Tapping clears the persisted id —
+    /// the panel detaches and `RemoteAttachPromptView` re-renders.
+    private var clearRemoteSessionHandler: (() -> Void)? {
+        guard let transport = panel.resolvedSession?.transport,
+              case .remote = transport else { return nil }
+        return { panel.setRemoteClaudeSessionID(nil) }
     }
 
     private var resolvedSessionTitle: String? {
@@ -98,7 +108,15 @@ public struct TranscriptView: View {
 
         return Group {
             if entries.isEmpty {
-                emptyTranscriptView(palette: palette)
+                if panel.canShowRemoteAttachPrompt {
+                    RemoteAttachPromptView(
+                        panel: panel,
+                        palette: palette,
+                        destination: panel.remoteAttachDestination
+                    )
+                } else {
+                    emptyTranscriptView(palette: palette)
+                }
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {

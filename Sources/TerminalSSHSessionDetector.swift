@@ -570,7 +570,13 @@ enum TerminalSSHSessionDetector {
         }
     }
 
-    private static func parseSSHCommandLine(_ arguments: [String]) -> DetectedSSHSession? {
+    /// Parse an `ssh ...` argv (typically obtained via
+    /// `CmuxTopProcessArguments.processArgumentsAndEnvironment(for:)`)
+    /// into a `DetectedSSHSession` — destination, port, identity, etc.
+    /// Visibility is `internal` so AgentX-ray's per-tab SSH inference
+    /// can reuse the same parser the file-drop and image-transfer
+    /// surfaces already do.
+    static func parseSSHCommandLine(_ arguments: [String]) -> DetectedSSHSession? {
         guard !arguments.isEmpty else { return nil }
 
         var index = 0

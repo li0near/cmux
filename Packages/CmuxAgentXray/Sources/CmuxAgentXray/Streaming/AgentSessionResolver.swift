@@ -157,21 +157,38 @@ public struct AgentSessionResolver: Sendable {
     public typealias AgentPIDsForPanel = @MainActor (UUID) -> [Int32]
     public typealias HookRecordForPID = @MainActor (Int32) -> AgentHookSessionMatch?
     public typealias RestoredSnapshotForPanel = @MainActor (UUID) -> RestoredAgentSnapshot?
+    /// Path-3 input: returns a `RemoteAttachContext` for the panel when
+    /// the focused terminal is on an SSH transport (workspace-level
+    /// remote OR per-tab inferred ssh subprocess), or nil for fully-
+    /// local panels. The host populates the cached `remoteHome`; an
+    /// empty `remoteHome` suppresses the path-3 synthesis but lets the
+    /// panel still render the remote-attach prompt.
+    public typealias RemoteContextForPanel = @MainActor (UUID) -> RemoteAttachContext?
+    /// Path-3 input: returns the user-supplied claude session id for
+    /// the given panel + remote context, or nil if the user has not
+    /// yet typed one for this `(destination, cwd, agentKind)` triple.
+    public typealias RemoteSessionForPanel = @MainActor (UUID, RemoteAttachContext) -> String?
 
     private let agentPIDsForPanel: AgentPIDsForPanel
     private let hookRecordForPID: HookRecordForPID
     private let restoredSnapshotForPanel: RestoredSnapshotForPanel
+    private let remoteContextForPanel: RemoteContextForPanel
+    private let remoteSessionForPanel: RemoteSessionForPanel
     private let claudeProjectsRoot: String
 
     public init(
         agentPIDsForPanel: @escaping AgentPIDsForPanel,
         hookRecordForPID: @escaping HookRecordForPID,
         restoredSnapshotForPanel: @escaping RestoredSnapshotForPanel,
+        remoteContextForPanel: @escaping RemoteContextForPanel = { _ in nil },
+        remoteSessionForPanel: @escaping RemoteSessionForPanel = { _, _ in nil },
         claudeProjectsRoot: String = AgentSessionResolver.defaultClaudeProjectsRoot
     ) {
         self.agentPIDsForPanel = agentPIDsForPanel
         self.hookRecordForPID = hookRecordForPID
         self.restoredSnapshotForPanel = restoredSnapshotForPanel
+        self.remoteContextForPanel = remoteContextForPanel
+        self.remoteSessionForPanel = remoteSessionForPanel
         self.claudeProjectsRoot = claudeProjectsRoot
     }
 
@@ -225,7 +242,69 @@ public struct AgentSessionResolver: Sendable {
                 transcriptPath: match.transcriptPath
             )
         }
+
+        // Path 3: remote attach. Fires only when the host reports a
+        // remote context (workspace-level SSH workspace OR per-tab `ssh`
+        // subprocess inferred via TerminalSSHSessionDetector) AND the
+        // user has typed a session id for this (destination, cwd,
+        // agentKind) triple AND the host has resolved + cached the
+        // remote `$HOME` so we can build an absolute transcript path.
+        // Synthesized session carries `.remote(SSHTransport)` so
+        // TranscriptStream dispatches to RemoteJSONLStream.
+        if let ctx = remoteContextForPanel(panelID),
+           !ctx.remoteHome.isEmpty,
+           ctx.agentKind == .claude,
+           let remoteID = remoteSessionForPanel(panelID, ctx),
+           let path = Self.remoteTranscriptPath(
+               forKind: ctx.agentKind,
+               sessionID: remoteID,
+               cwd: ctx.cwd,
+               remoteHome: ctx.remoteHome
+           )
+        {
+            return ResolvedAgentSession(
+                agentKind: ctx.agentKind,
+                sessionID: remoteID,
+                workspaceID: workspaceID,
+                surfaceID: panelID.uuidString,
+                cwd: ctx.cwd,
+                transcriptPath: path,
+                transport: .remote(ctx.sshTransport)
+            )
+        }
         return nil
+    }
+
+    /// Path-3 transcript-path builder. Returns an **absolute** remote
+    /// path so `RemoteJSONLStream` can pass it through its existing
+    /// single-quoting (no tilde expansion needed on the remote shell).
+    /// Codex returns nil — codex remote attach is tracked under
+    /// MIGRATION_PLAN §16.L (date-bucketed `~/.codex/sessions/<y>/<m>/
+    /// <d>/<sid>.jsonl` layout requires walking the directory tree
+    /// remotely).
+    static func remoteTranscriptPath(
+        forKind kind: ResolvedAgentSession.AgentKind,
+        sessionID: String,
+        cwd: String,
+        remoteHome: String
+    ) -> String? {
+        switch kind {
+        case .claude:
+            // Claude Code derives transcript filenames from cwd by
+            // replacing `/` with `-`; matches the local algorithm
+            // applied to `cwd` exactly so the on-remote-disk file
+            // tail-targets correctly.
+            let encoded = cwd.replacingOccurrences(of: "/", with: "-")
+            // Use string concatenation rather than URL plumbing so we
+            // can guarantee the trailing path stays in POSIX form even
+            // if `remoteHome` contains odd characters.
+            let trimmedHome = remoteHome.hasSuffix("/")
+                ? String(remoteHome.dropLast())
+                : remoteHome
+            return "\(trimmedHome)/.claude/projects/\(encoded)/\(sessionID).jsonl"
+        case .codex:
+            return nil
+        }
     }
 
     private func transcriptPath(

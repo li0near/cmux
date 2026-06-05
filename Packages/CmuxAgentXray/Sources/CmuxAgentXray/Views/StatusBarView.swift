@@ -27,6 +27,13 @@ public struct StatusBarView: View {
     public let expansionMode: ExpansionMode
     public let canCollapse: Bool
     public let canExpand: Bool
+    /// When non-nil, render a compact "Change" link beside the
+    /// attached-title cluster. Wired by ``TranscriptView`` only when
+    /// the resolved session's transport is ``SessionTransport/remote(_:)``
+    /// — i.e. the session was attached via path 3's user-supplied id.
+    /// Tapping calls the closure to clear the persisted id and re-
+    /// surface the prompt.
+    public let onClearRemoteSession: (() -> Void)?
 
     public let onToggleScrollMode: () -> Void
     public let onCycleRewindVisibility: () -> Void
@@ -44,6 +51,7 @@ public struct StatusBarView: View {
         expansionMode: ExpansionMode,
         canCollapse: Bool,
         canExpand: Bool,
+        onClearRemoteSession: (() -> Void)? = nil,
         onToggleScrollMode: @escaping () -> Void,
         onCycleRewindVisibility: @escaping () -> Void,
         onCycleExpansionMode: @escaping () -> Void,
@@ -59,6 +67,7 @@ public struct StatusBarView: View {
         self.expansionMode = expansionMode
         self.canCollapse = canCollapse
         self.canExpand = canExpand
+        self.onClearRemoteSession = onClearRemoteSession
         self.onToggleScrollMode = onToggleScrollMode
         self.onCycleRewindVisibility = onCycleRewindVisibility
         self.onCycleExpansionMode = onCycleExpansionMode
@@ -76,6 +85,16 @@ public struct StatusBarView: View {
                 .foregroundStyle(palette.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
+            if let onClearRemoteSession {
+                Button(action: onClearRemoteSession) {
+                    Text(changeText)
+                        .font(Theme.StatusBar.title)
+                        .foregroundStyle(palette.cyan)
+                        .underline(true, color: palette.cyan.opacity(Theme.Opacity.dim))
+                }
+                .buttonStyle(.plain)
+                .help(changeTooltip)
+            }
             Spacer(minLength: Theme.Spacing.rowIconText)
             HStack(spacing: Theme.Spacing.subRowIconText) {
                 scrollModePill
@@ -87,6 +106,22 @@ public struct StatusBarView: View {
         }
         .frame(height: Theme.Height.statusBar)
         .padding(.horizontal, Theme.Padding.horizontal)
+    }
+
+    private var changeText: String {
+        String(
+            localized: "agentXray.remote.prompt.button.change",
+            defaultValue: "Change",
+            bundle: .module
+        )
+    }
+
+    private var changeTooltip: String {
+        String(
+            localized: "agentXray.remote.prompt.button.change.tooltip",
+            defaultValue: "Clear the saved session id and re-prompt",
+            bundle: .module
+        )
     }
 
     // MARK: - State derivation

@@ -139,6 +139,12 @@ public final class AgentXrayPanel {
     /// attach.
     public internal(set) var currentExpanded: Set<String> = []
 
+    /// True while a remote-attach submission is awaiting host-side work
+    /// (remote `$HOME` resolution, UserDefaults write, focus recompute).
+    /// The view binds this to a "Connecting…" spinner. Cleared when the
+    /// next ``handleSessionChange(_:)`` arrives.
+    public internal(set) var remoteAttachInFlight: Bool = false
+
     // MARK: - Owned subsystems
 
     /// Live transcript stream — empty in detail mode.

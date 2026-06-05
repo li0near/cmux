@@ -7,6 +7,9 @@ extension AgentXrayPanel {
     /// Resets per-session state and (re-)attaches the stream.
     func handleSessionChange(_ session: ResolvedAgentSession?) {
         resolvedSession = session
+        // A session change always concludes any in-flight remote attach
+        // (success or detach via "Change"); clear the spinner.
+        remoteAttachInFlight = false
         host.updateTitle(panelID: id, title: displayTitle)
         stream.attach(session: session)
         // New session → drop precomputed entry fields; ids may collide

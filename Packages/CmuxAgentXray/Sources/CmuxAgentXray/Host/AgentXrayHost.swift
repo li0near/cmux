@@ -97,4 +97,29 @@ public protocol AgentXrayHost: AnyObject {
     /// Trigger an attention flash on the panel chrome (for
     /// notification-style highlighting).
     func flashAttention(panelID: UUID, reason: AttentionFlashReason)
+
+    // MARK: Remote attach (path 3)
+
+    /// Snapshot of "what would AgentX-ray need to attach the focused
+    /// terminal to a remote claude session?". Returns nil for fully-
+    /// local terminals (no SSH transport in scope). Read atomically off
+    /// the host so the panel's path-3 fast path stays consistent.
+    ///
+    /// The host populates the cached remote `$HOME` when known via
+    /// ``RemoteAttachContext/remoteHome``. An empty `remoteHome`
+    /// signals "I know this terminal is remote, but I haven't resolved
+    /// its `$HOME` yet" — the panel still surfaces the remote-attach
+    /// prompt; submitting it triggers `$HOME` resolution.
+    func currentTerminalRemoteContext() -> RemoteAttachContext?
+
+    /// Persist a user-supplied claude session id for the currently-
+    /// tracked terminal's remote endpoint and trigger a focus
+    /// recompute. Pass `nil` to clear the persisted id (the panel
+    /// detaches and re-renders the prompt).
+    ///
+    /// The host owns the persistence (`UserDefaults`) instance and the
+    /// `$HOME` resolver; this method may run async work behind the
+    /// scenes (e.g. resolving `$HOME` on first attach) before the next
+    /// recompute fires.
+    func attachRemoteClaudeSessionID(_ sessionID: String?)
 }
