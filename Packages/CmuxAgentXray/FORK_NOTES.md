@@ -27,7 +27,7 @@ table entry (and a "is this really necessary?" check).
 
 ## Upstream-touch surface
 
-Last verified against `upstream/main` at `81e409c35` on **2026-06-04**.
+Last verified against `upstream/main` at `cc62d2bb8` on **2026-06-05**.
 
 | File | Current change | Risk |
 |---|---|---|
