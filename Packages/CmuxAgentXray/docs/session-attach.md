@@ -23,19 +23,19 @@ first one that yields a usable session wins.
 ## High-level state machine
 
 ```
-┌──────────┐  resolver returns     ┌─────────┐  first line ingested  ┌────────────┐
-│ Detached │ ──── ResolvedAgentSession ────▶ │ Hooked  │ ───────────────────────▶ │ Streaming  │
-└──────────┘     (transcriptPath valid)      └─────────┘    (entries non-empty)   └────────────┘
-     ▲                                            │
-     │                                            ▼
-     │                              ┌──────────────────────────┐
-     │                              │ TranscriptStream.attach  │
-     │                              │   .local  → JSONLTail    │
-     │                              │   .remote → RemoteJSONL  │
-     │                              │            Stream        │
-     │                              └──────────────────────────┘
+┌──────────┐         ┌────────┐         ┌───────────┐
+│ Detached │ ──[A]──▶│ Hooked │──[B]───▶│ Streaming │
+└──────────┘         └────────┘         └───────────┘
+     ▲                    │
+     │                    ▼
+     │           TranscriptStream.attach
+     │             .local  → JSONLTail
+     │             .remote → RemoteJSONLStream
      │
-     └── focus moves away / panel close / "Change" link / hook record cleared
+     └──── focus moves away / panel close / "Change" link / hook record cleared
+
+[A] resolver returns ResolvedAgentSession with non-empty transcriptPath
+[B] first Entry ingested (entries non-empty)
 ```
 
 Status-bar dot color (`Views/StatusBarView.swift`):
@@ -153,34 +153,20 @@ must skip it — otherwise the panel renders "Hooked" while
 nothing observing the file.
 
 ```
-Bare `claude` start
-        │
-        ▼
-SessionStart hook fires      ┌─ Hook record now contains:
-        │                    │     sessionId = X
-        ▼                    │     pid       = <claude_pid>
-cmux CLI writes record ──────┤     cwd       = <cwd>
-                             │     transcriptPath = nil  ← may be nil!
-                             └─
-        │
-        ▼
-storeWatcher (vnode source on claude-hook-sessions.json) fires
-        │
-        ▼
-recompute()  →  resolver.resolve(panelID)
-        │
-        ▼ (path 1 nil; path 2 finds claude_pid → match)
-        │
-        ▼
-match.transcriptPath ∈ {nil, ""} ?
-        │
-        ├─ YES → continue (skip this match)        ─▶ Detached
-        │       (no other PIDs match either)
-        │       Panel stays Detached. JSONLTail
-        │       is NOT created. No phantom listener.
-        │
-        ▼ NO
-return ResolvedAgentSession.local with valid path ─▶ Hooked → Streaming
+claude bare    SessionStart    storeWatcher    user types       prompt-submit    storeWatcher    JSONLTail
+runs           hook fires      fires →         first prompt     hook fires       fires →         opens file,
+               (transcript_    recompute →                      (carries         recompute →     drains existing,
+                path nil)      path 2 SKIPS                     transcript_      path 2 HITS     watches appends
+                               (Detached)                        path)            (valid path)
+     │              │              │                │                │              │                │
+     │              │              │             [user activity]     │              │                │
+     │              [Panel: Detached ─────────────────────────────────────▶]        │                │
+     │              │              │                │                │              [Panel: Hooked ──▶]
+     │              │              │                │                │              │           [Streaming ─▶]
+     ▼              ▼              ▼                ▼                ▼              ▼                ▼
+   t = 0         ~100 ms        ~250 ms            ...            ~50 ms         ~200 ms         ~250 ms
+                                                                  (after user
+                                                                   prompt)
 ```
 
 When the user later sends a prompt, claude's prompt-submit hook fires
@@ -188,37 +174,6 @@ When the user later sends a prompt, claude's prompt-submit hook fires
 which updates the existing record's `transcriptPath` field. The store
 watcher fires again, recompute runs, path 2 now hits cleanly, and the
 panel attaches + streams.
-
-```
-User sends first prompt
-        │
-        ▼
-claude's prompt-submit hook fires (now carries transcript_path)
-        │
-        ▼
-cmux CLI's upsertSessionRecord(...) updates record:
-   transcriptPath: nil → "/Users/x/.claude/projects/.../X.jsonl"
-        │
-        ▼
-storeWatcher fires (vnode .write on claude-hook-sessions.json)
-        │
-        ▼
-recompute()  →  path 2 returns ResolvedAgentSession with valid path
-        │
-        ▼
-updateIfChanged: key changes → emit currentFocus
-        │
-        ▼
-panel.handleSessionChange → TranscriptStream.attach
-        │
-        ▼
-attachLocal: read existing file content (the user line claude just
-wrote), spawn JSONLTail at offset N, install vnode watch for appends
-        │
-        ▼
-Subsequent agent response writes → vnode .extend → drain → emit lines
-→ ingest → entries grow → panel updates → Streaming (GREEN)
-```
 
 This restored the pre-Phase-18 "Detached until first prompt" UX for the
 bare-`claude` case while keeping the immediate-attach win for paths 1
