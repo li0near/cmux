@@ -569,29 +569,17 @@ struct ClaudeTranscriptBuilder {
             guard let pending = pendingTurn else { return }
             let stamp: TurnDurationStamp? = pending.lastMessageUuid.flatMap { turnDurations[$0] }
 
-            // Build final tool calls with sidechain transcripts attached.
-            let finalToolCalls = pending.toolCallOrder.compactMap { id -> AgentToolCall? in
-                guard var call = pending.toolCalls[id] else { return nil }
-                if (call.name == "Task" || call.name == "Agent"),
-                   let lines = sidechainLinesByParent[id] {
-                    call = call.withSidechain(buildSidechainEntries(from: lines))
-                }
-                return call
-            }
-
-            // Walk the arrival-order event log once. Thinking and
-            // assistantText sub-entries appear interleaved with tool
-            // sub-entries in the order Claude emitted them — preserving
-            // the chronological "narrate → tool → narrate → tool" flow.
-            // (Predecessor builder collapsed all narration into one block
-            // and forced [thinking?, …tools, assistantText?] order.)
+            // Walk the arrival-order sub-entry log. Text events
+            // (thinking / assistant) interleave with tool calls in
+            // the order Claude emitted them — preserving the
+            // chronological "narrate → tool → narrate → tool" flow.
+            // (Predecessor builder collapsed all narration into one
+            // block and forced [thinking?, …tools, assistantText?]
+            // order.) Sidechain transcripts attach inline as we go.
             var subEntries: [AgentEntry.SubEntry] = []
             let parentEntryID = EntryID.fromJSONL(pending.id)
-            let toolCallsById = Dictionary(
-                uniqueKeysWithValues: finalToolCalls.map { ($0.id, $0) }
-            )
-            for event in pending.subEntryEvents {
-                switch event {
+            for slot in pending.subEntries {
+                switch slot {
                 case .text(let kind, let text, let ts, let id):
                     let fallbackTs = (kind == .assistant)
                         ? (ts ?? pending.lastTimestamp ?? pending.startTime)
@@ -603,8 +591,11 @@ struct ClaudeTranscriptBuilder {
                         id: id,
                         parentEntryID: parentEntryID
                     )))
-                case .toolUse(let toolUseId):
-                    guard let call = toolCallsById[toolUseId] else { continue }
+                case .tool(var call, _):
+                    if (call.name == "Task" || call.name == "Agent"),
+                       let lines = sidechainLinesByParent[call.id] {
+                        call = call.withSidechain(buildSidechainEntries(from: lines))
+                    }
                     let status: ToolEntry.Status = {
                         if call.isError { return .error }
                         if call.result == nil { return .pending }
@@ -755,15 +746,15 @@ struct ClaudeTranscriptBuilder {
         var startTime: Date
         var lastTimestamp: Date?
         var lastMessageUuid: String?
-        /// Ordered log of sub-entry events as they arrive in the JSONL.
-        /// `flushPendingTurn` walks this once to project arrival-order
-        /// `[AgentEntry.SubEntry]` — thinking, assistant text, and tool
-        /// invocations interleave as the model emitted them, instead of
-        /// the legacy `[thinking?, …tools, assistantText?]` shape.
-        var subEntryEvents: [PendingSubEntry] = []
-        var toolCalls: [String: AgentToolCall] = [:]
-        var toolCallOrder: [String] = []
-        var toolStartedAt: [String: Date] = [:]
+        /// Sub-entries as they arrive — text blocks and tool calls
+        /// interleaved in JSONL arrival order. Tool calls mutate in
+        /// place when their `tool_result` lands (located via
+        /// `toolIndexByID`). `flushPendingTurn` walks this once.
+        var subEntries: [PendingSubEntry] = []
+        /// Index into `subEntries` for each in-flight tool, keyed by
+        /// `tool_use_id`. Lets `tool_result` find its target in O(1)
+        /// without a separate ordering list.
+        var toolIndexByID: [String: Int] = [:]
         var thinkingCounter: Int = 0
         var assistantTextCounter: Int = 0
         var model: String?
@@ -780,12 +771,13 @@ struct ClaudeTranscriptBuilder {
         }
     }
 
-    /// Per-event payload appended to `PendingTurn.subEntryEvents` as
-    /// blocks land. Tool metadata stays in `PendingTurn.toolCalls`;
-    /// only the **arrival-order signal** flows through this enum.
+    /// One slot in `PendingTurn.subEntries`. Tool calls carry their
+    /// own mutable `AgentToolCall` accumulator + the start timestamp
+    /// for duration computation; text events are append-only and
+    /// inert after construction.
     fileprivate enum PendingSubEntry {
         case text(kind: TextSubEntry.Kind, text: String, timestamp: Date?, id: EntryID)
-        case toolUse(toolUseId: String)
+        case tool(call: AgentToolCall, startedAt: Date?)
     }
 
     // MARK: - Classification
@@ -934,7 +926,7 @@ struct ClaudeTranscriptBuilder {
             suffix = "assistantText-\(idx)"
         }
         let id = EntryID.derived(parent: ctx.pendingTurn!.id, kind: suffix)
-        ctx.pendingTurn!.subEntryEvents.append(
+        ctx.pendingTurn!.subEntries.append(
             .text(kind: kind, text: trimmed, timestamp: timestamp, id: id)
         )
     }
@@ -960,13 +952,19 @@ struct ClaudeTranscriptBuilder {
             durationMs: nil,
             sidechainTranscript: nil
         )
-        if ctx.pendingTurn?.toolCalls[id] == nil {
-            ctx.pendingTurn?.toolCallOrder.append(id)
-            ctx.pendingTurn?.subEntryEvents.append(.toolUse(toolUseId: id))
-        }
-        ctx.pendingTurn?.toolCalls[id] = call
-        if let timestamp {
-            ctx.pendingTurn?.toolStartedAt[id] = timestamp
+        guard ctx.pendingTurn != nil else { return }
+        // Only register a fresh tool slot if this id hasn't been seen
+        // (defensive — duplicate tool_use blocks for one id are
+        // unexpected but ignoring repeats keeps order monotonic).
+        if ctx.pendingTurn!.toolIndexByID[id] == nil {
+            let index = ctx.pendingTurn!.subEntries.count
+            ctx.pendingTurn!.subEntries.append(.tool(call: call, startedAt: timestamp))
+            ctx.pendingTurn!.toolIndexByID[id] = index
+        } else {
+            // Re-emitted tool_use — overwrite the call payload but
+            // keep the original index/order.
+            let index = ctx.pendingTurn!.toolIndexByID[id]!
+            ctx.pendingTurn!.subEntries[index] = .tool(call: call, startedAt: timestamp)
         }
     }
 
@@ -975,39 +973,36 @@ struct ClaudeTranscriptBuilder {
         timestamp: Date?,
         ctx: inout BuildContext
     ) {
-        guard let id = block.toolUseId else { return }
+        guard let id = block.toolUseId, ctx.pendingTurn != nil else { return }
         let body = Self.flattenToolResult(block.toolResultContent)
-        let durationMs: Int? = {
-            guard let timestamp,
-                  let started = ctx.pendingTurn?.toolStartedAt[id] else { return nil }
-            let delta = timestamp.timeIntervalSince(started)
-            return delta >= 0 ? Int(delta * 1000) : nil
-        }()
-        if let existing = ctx.pendingTurn?.toolCalls[id] {
-            ctx.pendingTurn?.toolCalls[id] = existing.withResult(
-                body,
-                isError: block.isError ?? false,
-                durationMs: durationMs
-            )
+        let isError = block.isError ?? false
+        if let index = ctx.pendingTurn!.toolIndexByID[id],
+           case .tool(let existing, let startedAt) = ctx.pendingTurn!.subEntries[index] {
+            let durationMs = startedAt.flatMap { started -> Int? in
+                guard let timestamp else { return nil }
+                let delta = timestamp.timeIntervalSince(started)
+                return delta >= 0 ? Int(delta * 1000) : nil
+            }
+            let updated = existing.withResult(body, isError: isError, durationMs: durationMs)
+            ctx.pendingTurn!.subEntries[index] = .tool(call: updated, startedAt: startedAt)
         } else {
+            // Synthetic — tool_result arrived without a prior tool_use.
             let synthetic = AgentToolCall(
                 id: id,
                 name: "(tool result)",
                 summary: "",
                 inputDetail: "",
                 result: body,
-                isError: block.isError ?? false,
+                isError: isError,
                 subagentType: nil,
                 teamMemberName: nil,
                 teamName: nil,
-                durationMs: durationMs,
+                durationMs: nil,
                 sidechainTranscript: nil
             )
-            if ctx.pendingTurn?.toolCalls[id] == nil {
-                ctx.pendingTurn?.toolCallOrder.append(id)
-                ctx.pendingTurn?.subEntryEvents.append(.toolUse(toolUseId: id))
-            }
-            ctx.pendingTurn?.toolCalls[id] = synthetic
+            let index = ctx.pendingTurn!.subEntries.count
+            ctx.pendingTurn!.subEntries.append(.tool(call: synthetic, startedAt: nil))
+            ctx.pendingTurn!.toolIndexByID[id] = index
         }
     }
 
