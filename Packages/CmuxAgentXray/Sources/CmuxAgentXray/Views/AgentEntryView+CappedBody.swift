@@ -66,7 +66,7 @@ extension AgentEntryView {
     private func color(for style: TextStyle) -> Color {
         switch style {
         case .normal:    return palette.primary.opacity(0.85)
-        case .thinking:  return palette.dim
+        case .thinking:  return palette.primary.opacity(0.85)
         case .error:     return palette.red
         }
     }

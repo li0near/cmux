@@ -38,7 +38,7 @@ extension AgentEntryView {
                     .frame(width: Theme.Metric.subRowIconWidth)
             }
             Text(name)
-                .font(Theme.Row.name)
+                .font(Theme.SubRow.name)
                 .foregroundStyle(nameAccent)
                 .lineLimit(1)
             extras()

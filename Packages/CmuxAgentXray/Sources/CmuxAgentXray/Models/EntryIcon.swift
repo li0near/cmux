@@ -41,10 +41,7 @@ extension EntryIcon {
         expanded: "microbe.circle.fill"
     )
     /// Thinking sub-entry.
-    public static let thinking = EntryIcon(
-        collapsed: "brain.head.profile",
-        expanded: "brain.head.profile.fill"
-    )
+    public static let thinking = EntryIcon(collapsed: "brain", expanded: "brain.fill")
     /// System line (local-command output, generic).
     public static let system = EntryIcon(collapsed: "terminal", expanded: "terminal.fill")
     /// Compact-summary entry. Same glyph collapsed/expanded.

@@ -28,19 +28,18 @@ extension AgentXrayPanel {
             layoutRevision: bulkState.layoutRevision &+ 1
         )
         // Eagerly seed observedEntryIDs + currentExpanded from the
-        // entries already loaded on attach (forward-only auto-expand:
-        // pre-attach entries count as "already there" so the pill
-        // never reaches them; branches still default-expanded
-        // structurally).
+        // entries already loaded on attach. The auto-expand pill is
+        // forward-only: pre-attach entries count as "already there"
+        // so the pill never reaches them on the next stream tick.
+        // Branches still default-expanded structurally; sub-entries
+        // (text + tool) stay collapsed.
         observedEntryIDs.removeAll(keepingCapacity: false)
         let entries = currentEntryCollection()
         for entry in stream.entries {
             observedEntryIDs.insert(entry.id.stableString)
             if case .agent(let turn) = entry {
                 for sub in turn.subEntries {
-                    if case .tool(let tool) = sub {
-                        observedEntryIDs.insert(tool.id.stableString)
-                    }
+                    observedEntryIDs.insert(sub.id.stableString)
                 }
             }
         }

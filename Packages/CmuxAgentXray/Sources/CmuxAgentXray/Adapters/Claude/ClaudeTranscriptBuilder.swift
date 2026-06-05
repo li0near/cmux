@@ -206,20 +206,12 @@ struct ClaudeTranscriptBuilder {
         case .recap:
             let recapBody = (line.content ?? body).trimmingCharacters(in: .whitespacesAndNewlines)
             if recapBody.isEmpty { return }
-            ctx.entries.append(.system(SystemEntry(
-                id: .fromJSONL(id),
-                header: Header(
-                    icon: .recap,
-                    name: String(
-                        localized: "agentXray.entry.recap.title",
-                        defaultValue: "Recap",
-                        bundle: .module
-                    ),
-                    timeMarker: .clock(ts)
-                ),
+            ctx.entries.append(Self.makeSystemEntry(
+                id: id, ts: ts, icon: .recap,
+                name: Self.loc("agentXray.entry.recap.title", "Recap"),
                 body: .text([recapBody]),
                 subType: .recap
-            )))
+            ))
         case .prLink:
             guard let prNumber = line.prNumber,
                   let prUrl = line.prUrl,
@@ -228,10 +220,9 @@ struct ClaudeTranscriptBuilder {
                 id: .derived(parent: id, kind: "prLink"),
                 header: Header(
                     icon: .prLink,
-                    title: String(
-                        localized: "agentXray.entry.prLink.title",
-                        defaultValue: "PR #\(prNumber) · \(prRepository)",
-                        bundle: .module
+                    title: Self.loc(
+                        "agentXray.entry.prLink.title",
+                        "PR #\(prNumber) · \(prRepository)"
                     ),
                     timeMarker: .clock(ts)
                 ),
@@ -254,109 +245,64 @@ struct ClaudeTranscriptBuilder {
             } else if case let .slashCommandInput(name, args)
                         = ClaudeContentDetector.classify(body) {
                 let title = args.map { "/\(name) \($0)" } ?? "/\(name)"
-                ctx.entries.append(.system(SystemEntry(
-                    id: .fromJSONL(id),
-                    header: Header(
-                        icon: .slashCommand,
-                        title: title,
-                        timeMarker: .clock(ts)
-                    ),
+                ctx.entries.append(Self.makeSystemEntry(
+                    id: id, ts: ts, icon: .slashCommand,
+                    title: title,
                     body: .empty,
                     subType: .slashCmdInput(name: name, args: args)
-                )))
+                ))
             }
         case .slashCmdOutput:
             if case let .slashCommandOutput(b, isStderr) = ClaudeContentDetector.classify(body) {
                 if b.isEmpty { return }
                 let label = isStderr
-                    ? String(
-                        localized: "agentXray.entry.slashCmd.stderr",
-                        defaultValue: "Slash command stderr",
-                        bundle: .module
-                      )
-                    : String(
-                        localized: "agentXray.entry.slashCmd.output",
-                        defaultValue: "Slash command output",
-                        bundle: .module
-                      )
-                ctx.entries.append(.system(SystemEntry(
-                    id: .fromJSONL(id),
-                    header: Header(icon: .system, name: label, timeMarker: .clock(ts)),
+                    ? Self.loc("agentXray.entry.slashCmd.stderr", "Slash command stderr")
+                    : Self.loc("agentXray.entry.slashCmd.output", "Slash command output")
+                ctx.entries.append(Self.makeSystemEntry(
+                    id: id, ts: ts, icon: .system, name: label,
                     body: Body(sections: [.text([b], style: isStderr ? .error : .normal)]),
                     subType: .slashCmdOutput(isStderr: isStderr)
-                )))
+                ))
             }
         case .localCommandCaveat:
             return
         case .systemReminder:
             if case let .systemReminder(b) = ClaudeContentDetector.classify(body) {
-                ctx.entries.append(.system(SystemEntry(
-                    id: .fromJSONL(id),
-                    header: Header(
-                        icon: .systemReminder,
-                        name: String(
-                            localized: "agentXray.entry.systemReminder.title",
-                            defaultValue: "System reminder",
-                            bundle: .module
-                        ),
-                        timeMarker: .clock(ts)
-                    ),
+                ctx.entries.append(Self.makeSystemEntry(
+                    id: id, ts: ts, icon: .systemReminder,
+                    name: Self.loc("agentXray.entry.systemReminder.title", "System reminder"),
                     body: .text([b]),
                     subType: .systemReminder
-                )))
+                ))
             }
         case .skill:
             if case let .skillInvocation(name, basePath, b) = ClaudeContentDetector.classify(body) {
-                ctx.entries.append(.system(SystemEntry(
-                    id: .fromJSONL(id),
-                    header: Header(
-                        icon: .skill,
-                        name: String(
-                            localized: "agentXray.entry.skill.title",
-                            defaultValue: "Skill: \(name)",
-                            bundle: .module
-                        ),
-                        title: basePath,
-                        timeMarker: .clock(ts)
-                    ),
+                ctx.entries.append(Self.makeSystemEntry(
+                    id: id, ts: ts, icon: .skill,
+                    name: Self.loc("agentXray.entry.skill.title", "Skill: \(name)"),
+                    title: basePath,
                     body: .text([b]),
                     subType: .skill(name: name, basePath: basePath)
-                )))
+                ))
             }
         case .contextUsage:
             if case let .contextUsage(b) = ClaudeContentDetector.classify(body) {
-                ctx.entries.append(.system(SystemEntry(
-                    id: .fromJSONL(id),
-                    header: Header(
-                        icon: .contextInfo,
-                        name: String(
-                            localized: "agentXray.entry.contextUsage.title",
-                            defaultValue: "Context usage",
-                            bundle: .module
-                        ),
-                        timeMarker: .clock(ts)
-                    ),
+                ctx.entries.append(Self.makeSystemEntry(
+                    id: id, ts: ts, icon: .contextInfo,
+                    name: Self.loc("agentXray.entry.contextUsage.title", "Context usage"),
                     body: .text([b]),
                     subType: .contextUsage
-                )))
+                ))
             }
         case .unknownMeta:
             let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { return }
-            ctx.entries.append(.system(SystemEntry(
-                id: .fromJSONL(id),
-                header: Header(
-                    icon: .systemReminder,
-                    name: String(
-                        localized: "agentXray.entry.systemReminder.title",
-                        defaultValue: "System reminder",
-                        bundle: .module
-                    ),
-                    timeMarker: .clock(ts)
-                ),
+            ctx.entries.append(Self.makeSystemEntry(
+                id: id, ts: ts, icon: .systemReminder,
+                name: Self.loc("agentXray.entry.systemReminder.title", "System reminder"),
                 body: .text([trimmed]),
                 subType: .systemReminder
-            )))
+            ))
         case .queuedPrompt:
             let text = extractQueuedPromptText(line.attachment?.prompt)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -370,73 +316,49 @@ struct ClaudeTranscriptBuilder {
                 isQueuedPending: false
             )))
         case .planModeEntered, .planModeExited, .planModeReentered:
-            let phase: SystemEntry.PlanModePhase = {
-                switch kind {
-                case .planModeEntered:    return .entered
-                case .planModeExited:     return .exited
-                case .planModeReentered:  return .reentered
-                default:                  return .entered
-                }
-            }()
-            let phaseName: String = {
-                switch phase {
-                case .entered:
-                    return String(
-                        localized: "agentXray.entry.planMode.entered",
-                        defaultValue: "Plan mode entered",
-                        bundle: .module
-                    )
-                case .exited:
-                    return String(
-                        localized: "agentXray.entry.planMode.exited",
-                        defaultValue: "Plan mode exited",
-                        bundle: .module
-                    )
-                case .reentered:
-                    return String(
-                        localized: "agentXray.entry.planMode.reentered",
-                        defaultValue: "Plan mode resumed",
-                        bundle: .module
-                    )
-                }
-            }()
+            let (phase, phaseName) = Self.planModeMetadata(kind)
             let planBasename = line.attachment?.planFilePath.flatMap { path -> String? in
                 let last = URL(fileURLWithPath: path).lastPathComponent
                 return last.isEmpty ? nil : last
             }
-            ctx.entries.append(.system(SystemEntry(
-                id: .fromJSONL(id),
-                header: Header(
-                    icon: .planMode,
-                    name: phaseName,
-                    title: planBasename,
-                    timeMarker: .clock(ts)
-                ),
+            ctx.entries.append(Self.makeSystemEntry(
+                id: id, ts: ts, icon: .planMode,
+                name: phaseName,
+                title: planBasename,
                 body: .empty,
                 subType: .planMode(
                     phase: phase,
                     planFilePath: line.attachment?.planFilePath,
                     planExists: line.attachment?.planExists ?? false
                 )
-            )))
+            ))
         case .editedTextFile:
             guard let filename = line.attachment?.filename, !filename.isEmpty else { return }
             let basename = URL(fileURLWithPath: filename).lastPathComponent
             let snippet = line.attachment?.snippet
-            ctx.entries.append(.system(SystemEntry(
-                id: .fromJSONL(id),
-                header: Header(
-                    icon: .editedTextFile,
-                    name: String(
-                        localized: "agentXray.entry.externalEdit.title",
-                        defaultValue: "External edit · \(basename)",
-                        bundle: .module
-                    ),
-                    timeMarker: .clock(ts)
-                ),
+            ctx.entries.append(Self.makeSystemEntry(
+                id: id, ts: ts, icon: .editedTextFile,
+                name: Self.loc("agentXray.entry.externalEdit.title", "External edit · \(basename)"),
                 body: snippet.map { Body.text([$0]) } ?? .empty,
                 subType: .editedTextFile(path: filename)
-            )))
+            ))
+        }
+    }
+
+    /// Phase + localized phaseName for the three plan-mode special kinds.
+    /// Pulled out of `emitSpecial` so the per-kind switch isn't duplicated.
+    private static func planModeMetadata(
+        _ kind: ClaudeSpecialKind
+    ) -> (SystemEntry.PlanModePhase, String) {
+        switch kind {
+        case .planModeEntered:
+            return (.entered, loc("agentXray.entry.planMode.entered", "Plan mode entered"))
+        case .planModeExited:
+            return (.exited, loc("agentXray.entry.planMode.exited", "Plan mode exited"))
+        case .planModeReentered:
+            return (.reentered, loc("agentXray.entry.planMode.reentered", "Plan mode resumed"))
+        default:
+            return (.entered, loc("agentXray.entry.planMode.entered", "Plan mode entered"))
         }
     }
 
@@ -462,17 +384,9 @@ struct ClaudeTranscriptBuilder {
 
     private func userRoleLabel(isQueued: Bool, isQueuedPending: Bool) -> String {
         if isQueuedPending {
-            return String(
-                localized: "agentXray.entry.user.queuedLabel",
-                defaultValue: "Queued",
-                bundle: .module
-            )
+            return Self.loc("agentXray.entry.user.queuedLabel", "Queued")
         }
-        return String(
-            localized: "agentXray.entry.user.label",
-            defaultValue: "User",
-            bundle: .module
-        )
+        return Self.loc("agentXray.entry.user.label", "User")
     }
 
     private func makeUserEntry(
@@ -559,11 +473,7 @@ struct ClaudeTranscriptBuilder {
     }
 
     private func buildSystemEntry(from line: ClaudeJSONLLine) -> SystemEntry? {
-        let label = String(
-            localized: "agentXray.entry.system.localCommand",
-            defaultValue: "System",
-            bundle: .module
-        )
+        let label = Self.loc("agentXray.entry.system.localCommand", "System")
         if line.type == "system", let body = line.content, !body.isEmpty {
             let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
             return SystemEntry(
@@ -590,11 +500,7 @@ struct ClaudeTranscriptBuilder {
     }
 
     private func buildCompactEntry(from line: ClaudeJSONLLine) -> CompactEntry {
-        let label = String(
-            localized: "agentXray.entry.compact.label",
-            defaultValue: "Compacted",
-            bundle: .module
-        )
+        let label = Self.loc("agentXray.entry.compact.label", "Compacted")
         let summary: String
         if line.type == "system", let body = line.content, !body.isEmpty {
             summary = body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -616,20 +522,16 @@ struct ClaudeTranscriptBuilder {
         branchEntries: [Entry],
         timestamp: Date
     ) -> SynthesizedEntry {
-        let preview = branch.firstPromptPreview ?? String(
-            localized: "agentXray.entry.branchLink.noPrompt",
-            defaultValue: "(no prompt)",
-            bundle: .module
+        let preview = branch.firstPromptPreview ?? Self.loc(
+            "agentXray.entry.branchLink.noPrompt", "(no prompt)"
         )
-        let title = String(
-            localized: "agentXray.entry.branchLink.title",
-            defaultValue: "Rewind \(branch.rewindIndex) of \(totalRewinds)",
-            bundle: .module
+        let title = Self.loc(
+            "agentXray.entry.branchLink.title",
+            "Rewind \(branch.rewindIndex) of \(totalRewinds)"
         )
-        let subtitle = String(
-            localized: "agentXray.entry.branchLink.subtitle",
-            defaultValue: "\(branch.entryCount) entries · \(preview)",
-            bundle: .module
+        let subtitle = Self.loc(
+            "agentXray.entry.branchLink.subtitle",
+            "\(branch.entryCount) entries · \(preview)"
         )
         return SynthesizedEntry(
             id: .derived(parent: branch.branchRootUuid, kind: "branchLink"),
@@ -672,19 +574,7 @@ struct ClaudeTranscriptBuilder {
                 guard var call = pending.toolCalls[id] else { return nil }
                 if (call.name == "Task" || call.name == "Agent"),
                    let lines = sidechainLinesByParent[id] {
-                    call = AgentToolCall(
-                        id: call.id,
-                        name: call.name,
-                        summary: call.summary,
-                        inputDetail: call.inputDetail,
-                        result: call.result,
-                        isError: call.isError,
-                        subagentType: call.subagentType,
-                        teamMemberName: call.teamMemberName,
-                        teamName: call.teamName,
-                        durationMs: call.durationMs,
-                        sidechainTranscript: buildSidechainEntries(from: lines)
-                    )
+                    call = call.withSidechain(buildSidechainEntries(from: lines))
                 }
                 return call
             }
@@ -703,41 +593,20 @@ struct ClaudeTranscriptBuilder {
             for event in pending.subEntryEvents {
                 switch event {
                 case .thinking(let text, let ts, let id):
-                    subEntries.append(.text(TextSubEntry(
+                    subEntries.append(.text(ClaudeTranscriptBuilder.makeTextSubEntry(
                         kind: .thinking,
+                        text: text,
+                        timestamp: ts ?? pending.startTime,
                         id: id,
-                        parentEntryID: parentEntryID,
-                        header: Header(
-                            icon: .thinking,
-                            name: String(
-                                localized: "agentXray.entry.thinking.label",
-                                defaultValue: "Thinking",
-                                bundle: .module
-                            ),
-                            trailing: [.wordCount("\(wordCount(text)) words")],
-                            timeMarker: .clock(ts ?? pending.startTime)
-                        ),
-                        body: Body(sections: [.text([text], style: .thinking)]),
-                        wordCount: wordCount(text)
+                        parentEntryID: parentEntryID
                     )))
                 case .assistantText(let text, let ts, let id):
-                    let words = wordCount(text)
-                    subEntries.append(.text(TextSubEntry(
+                    subEntries.append(.text(ClaudeTranscriptBuilder.makeTextSubEntry(
                         kind: .assistant,
+                        text: text,
+                        timestamp: ts ?? pending.lastTimestamp ?? pending.startTime,
                         id: id,
-                        parentEntryID: parentEntryID,
-                        header: Header(
-                            icon: .assistantText,
-                            name: String(
-                                localized: "agentXray.entry.assistantText.label",
-                                defaultValue: "Assistant",
-                                bundle: .module
-                            ),
-                            trailing: [.wordCount("\(words) words")],
-                            timeMarker: .clock(ts ?? pending.lastTimestamp ?? pending.startTime)
-                        ),
-                        body: Body(sections: [.text([text], style: .normal)]),
-                        wordCount: words
+                        parentEntryID: parentEntryID
                     )))
                 case .toolUse(let toolUseId):
                     guard let call = toolCallsById[toolUseId] else { continue }
@@ -775,11 +644,7 @@ struct ClaudeTranscriptBuilder {
             let bodySections: [Section] = subEntries.isEmpty
                 ? []
                 : [.subentries(subEntries.map(Self.subEntryToTopLevel))]
-            let agentLabel = String(
-                localized: "agentXray.entry.agent.label.claude",
-                defaultValue: "Claude",
-                bundle: .module
-            )
+            let agentLabel = ClaudeTranscriptBuilder.loc("agentXray.entry.agent.label.claude", "Claude")
             var trailing: [TrailingItem] = []
             let totalTokens = pending.usage.inputTokens
                 + pending.usage.outputTokens
@@ -857,20 +722,16 @@ struct ClaudeTranscriptBuilder {
                 emittedDivergencePoints.insert(branch.branchRootUuid)
                 let branchEntries = abandonedBranchEntriesByRoot[branch.branchRootUuid] ?? []
                 let totalRewinds = resolution.totalRewinds
-                let preview = branch.firstPromptPreview ?? String(
-                    localized: "agentXray.entry.branchLink.noPrompt",
-                    defaultValue: "(no prompt)",
-                    bundle: .module
+                let preview = branch.firstPromptPreview ?? ClaudeTranscriptBuilder.loc(
+                    "agentXray.entry.branchLink.noPrompt", "(no prompt)"
                 )
-                let title = String(
-                    localized: "agentXray.entry.branchLink.title",
-                    defaultValue: "Rewind \(branch.rewindIndex) of \(totalRewinds)",
-                    bundle: .module
+                let title = ClaudeTranscriptBuilder.loc(
+                    "agentXray.entry.branchLink.title",
+                    "Rewind \(branch.rewindIndex) of \(totalRewinds)"
                 )
-                let subtitle = String(
-                    localized: "agentXray.entry.branchLink.subtitle",
-                    defaultValue: "\(branch.entryCount) entries · \(preview)",
-                    bundle: .module
+                let subtitle = ClaudeTranscriptBuilder.loc(
+                    "agentXray.entry.branchLink.subtitle",
+                    "\(branch.entryCount) entries · \(preview)"
                 )
                 let ts = line.timestamp ?? .distantPast
                 entries.append(.synthesized(SynthesizedEntry(
@@ -1140,18 +1001,10 @@ struct ClaudeTranscriptBuilder {
             return delta >= 0 ? Int(delta * 1000) : nil
         }()
         if let existing = ctx.pendingTurn?.toolCalls[id] {
-            ctx.pendingTurn?.toolCalls[id] = AgentToolCall(
-                id: existing.id,
-                name: existing.name,
-                summary: existing.summary,
-                inputDetail: existing.inputDetail,
-                result: body,
+            ctx.pendingTurn?.toolCalls[id] = existing.withResult(
+                body,
                 isError: block.isError ?? false,
-                subagentType: existing.subagentType,
-                teamMemberName: existing.teamMemberName,
-                teamName: existing.teamName,
-                durationMs: durationMs,
-                sidechainTranscript: existing.sidechainTranscript
+                durationMs: durationMs
             )
         } else {
             let synthetic = AgentToolCall(
@@ -1176,6 +1029,73 @@ struct ClaudeTranscriptBuilder {
     }
 
     // MARK: - Helpers
+
+    // MARK: - Helpers
+
+    /// Construct a `TextSubEntry` for either thinking or assistant
+    /// kind. The two events share identical structure aside from
+    /// kind-specific icon, localized label, and body `TextStyle`; the
+    /// helper holds that mapping in one place.
+    private static func makeTextSubEntry(
+        kind: TextSubEntry.Kind,
+        text: String,
+        timestamp: Date,
+        id: EntryID,
+        parentEntryID: EntryID
+    ) -> TextSubEntry {
+        let words = wordCount(text)
+        let icon: EntryIcon = (kind == .thinking) ? .thinking : .assistantText
+        let style: TextStyle = (kind == .thinking) ? .thinking : .normal
+        let name: String = (kind == .thinking)
+            ? loc("agentXray.entry.thinking.label", "Thinking")
+            : loc("agentXray.entry.assistantText.label", "Assistant")
+        return TextSubEntry(
+            kind: kind,
+            id: id,
+            parentEntryID: parentEntryID,
+            header: Header(
+                icon: icon,
+                name: name,
+                trailing: [.wordCount("\(words) words")],
+                timeMarker: .clock(timestamp)
+            ),
+            body: Body(sections: [.text([text], style: style)]),
+            wordCount: words
+        )
+    }
+
+    /// Localization shorthand. One-line replacement for the longer
+    /// `String(localized:defaultValue:bundle:)` incantation; every
+    /// agent-X-ray-package localization key lives in `Bundle.module`.
+    private static func loc(_ key: StaticString, _ fallback: String.LocalizationValue) -> String {
+        String(localized: key, defaultValue: fallback, bundle: .module)
+    }
+
+    /// Construct a `SystemEntry`-wrapped `Entry` from per-emit-case
+    /// fields. The constant boilerplate (`.fromJSONL` id, `.clock(ts)`
+    /// time marker, header glue) folds in here so each `emitSpecial`
+    /// arm states only the per-kind data.
+    private static func makeSystemEntry(
+        id: String,
+        ts: Date,
+        icon: EntryIcon?,
+        name: String? = nil,
+        title: String? = nil,
+        body: Body,
+        subType: SystemEntry.SubType
+    ) -> Entry {
+        .system(SystemEntry(
+            id: .fromJSONL(id),
+            header: Header(
+                icon: icon,
+                name: name,
+                title: title,
+                timeMarker: .clock(ts)
+            ),
+            body: body,
+            subType: subType
+        ))
+    }
 
     private func stripCommandOutputTags(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)

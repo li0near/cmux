@@ -18,7 +18,7 @@ extension AgentEntryView {
             : []
 
         let icon: EntryIcon = (text.kind == .thinking) ? .thinking : .assistantText
-        let accent: Color = (text.kind == .thinking) ? palette.dim : palette.claude
+        let accent: Color = palette.claude
         let displayName = (text.kind == .thinking) ? "thinking" : "assistant"
 
         VStack(alignment: .leading, spacing: 2) {

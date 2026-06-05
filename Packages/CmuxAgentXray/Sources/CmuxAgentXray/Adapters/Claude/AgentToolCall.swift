@@ -47,4 +47,47 @@ struct AgentToolCall: Equatable {
         self.durationMs = durationMs
         self.sidechainTranscript = sidechainTranscript
     }
+
+    /// Return a copy of this call with the result-side fields filled in
+    /// (or overwritten). The "in" fields (`id`, `name`, `summary`,
+    /// `inputDetail`, sub-agent metadata) carry through unchanged.
+    /// Used when a `tool_result` JSONL line lands for an in-flight tool.
+    func withResult(
+        _ result: String,
+        isError: Bool,
+        durationMs: Int?
+    ) -> AgentToolCall {
+        AgentToolCall(
+            id: id,
+            name: name,
+            summary: summary,
+            inputDetail: inputDetail,
+            result: result,
+            isError: isError,
+            subagentType: subagentType,
+            teamMemberName: teamMemberName,
+            teamName: teamName,
+            durationMs: durationMs,
+            sidechainTranscript: sidechainTranscript
+        )
+    }
+
+    /// Attach a sidechain transcript at flush time without rewriting
+    /// the rest of the fields. Used when the parent `Task`/`Agent`
+    /// tool's sub-agent transcript is collated post-hoc.
+    func withSidechain(_ transcript: [Entry]) -> AgentToolCall {
+        AgentToolCall(
+            id: id,
+            name: name,
+            summary: summary,
+            inputDetail: inputDetail,
+            result: result,
+            isError: isError,
+            subagentType: subagentType,
+            teamMemberName: teamMemberName,
+            teamName: teamName,
+            durationMs: durationMs,
+            sidechainTranscript: transcript
+        )
+    }
 }
