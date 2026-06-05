@@ -93,11 +93,11 @@ extension DetailContent {
                 kind: .userPrompt
             )
 
-        case .thinking(let id):
+        case .thinking(let id, let subEntryID):
             guard case .agent(let turn) = entry, turn.id.stableString == id else { return nil }
             var thinkingBody: String?
             for sub in turn.subEntries {
-                if case .thinking(let t) = sub {
+                if case .thinking(let t) = sub, t.id.stableString == subEntryID {
                     thinkingBody = t.body.textContent
                     break
                 }
@@ -167,12 +167,12 @@ extension DetailContent {
                 )
             )
 
-        case .assistantResponse(let id):
+        case .assistantResponse(let id, let subEntryID):
             guard case .agent(let turn) = entry, turn.id.stableString == id else { return nil }
             var assistantBody: String?
             for sub in turn.subEntries {
-                if case .assistantText(let a) = sub {
-                    assistantBody = a.fullBody
+                if case .assistantText(let a) = sub, a.id.stableString == subEntryID {
+                    assistantBody = a.body.textContent
                     break
                 }
             }

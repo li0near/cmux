@@ -21,7 +21,7 @@ public enum BulkDirection: Equatable, Sendable {
 ///   - `allEntryIDs`        — every classified entry id (top-level
 ///                            entries plus sub-entries that
 ///                            participate in expansion: agent turns'
-///                            thinking + tools).
+///                            thinking + tools + assistantText).
 ///
 /// `topLevelEntryIDs` exists so the status bar's pill enabledness
 /// can ask "is any *visible* entry expanded?" — without it, inert
@@ -32,8 +32,7 @@ public enum BulkDirection: Equatable, Sendable {
 ///
 /// Leaves (non-branch top-level entries + sub-entries) are reachable
 /// as `allEntryIDs.subtracting(branchEntryIDs)` — kept implicit to
-/// avoid carrying a redundant set. AssistantText is intentionally
-/// not classified.
+/// avoid carrying a redundant set.
 public struct EntryCollection: Equatable, Sendable {
     public let branchEntryIDs:   Set<String>
     public let topLevelEntryIDs: Set<String>
@@ -63,11 +62,9 @@ public struct EntryCollection: Equatable, Sendable {
                 branches.insert(id)
                 for sub in turn.subEntries {
                     switch sub {
-                    case .thinking(let t): all.insert(t.id.stableString)
-                    case .tool(let t):     all.insert(t.id.stableString)
-                    // assistantText is intentionally not classified;
-                    // it's a header-only link, not an expandable row.
-                    case .assistantText:   break
+                    case .thinking(let t):     all.insert(t.id.stableString)
+                    case .tool(let t):         all.insert(t.id.stableString)
+                    case .assistantText(let a): all.insert(a.id.stableString)
                     }
                 }
             case .user, .system, .compact, .synthesized:

@@ -5,13 +5,16 @@
 /// a sibling tab.
 ///
 /// Cases follow the panel's content surfaces; payloads carry the entry
-/// id (and tool slot identifier where required) needed to look up the
-/// entry in the live stream.
+/// id (and sub-entry id where required) needed to look up the entry in
+/// the live stream. `thinking` and `assistantResponse` carry both the
+/// parent agent-turn id (for entry lookup) and the specific sub-entry
+/// id (because a single turn now contains multiple of each, interleaved
+/// with tools).
 public enum DetailRequest: Equatable, Sendable {
     case userPrompt(entryID: String)
-    case thinking(entryID: String)
+    case thinking(entryID: String, subEntryID: String)
     case systemOutput(entryID: String)
-    case assistantResponse(entryID: String)
+    case assistantResponse(entryID: String, subEntryID: String)
     case skillBody(entryID: String)
     case slashCommandBody(entryID: String)
     case systemReminderBody(entryID: String)
@@ -32,13 +35,14 @@ public enum DetailRequest: Equatable, Sendable {
     public var sourceEntryID: String {
         switch self {
         case .userPrompt(let id),
-             .thinking(let id),
              .systemOutput(let id),
-             .assistantResponse(let id),
              .skillBody(let id),
              .slashCommandBody(let id),
              .systemReminderBody(let id),
              .recapBody(let id):
+            return id
+        case .thinking(let id, _),
+             .assistantResponse(let id, _):
             return id
         case .toolInput(let id, _),
              .toolResult(let id, _),

@@ -705,82 +705,90 @@ struct ClaudeTranscriptBuilder {
                 return call
             }
 
-            // Build subEntries: [thinking?, ...tools, assistantText?]
+            // Walk the arrival-order event log once. Thinking and
+            // assistantText sub-entries appear interleaved with tool
+            // sub-entries in the order Claude emitted them — preserving
+            // the chronological "narrate → tool → narrate → tool" flow.
+            // (Predecessor builder collapsed all narration into one block
+            // and forced [thinking?, …tools, assistantText?] order.)
             var subEntries: [AgentEntry.SubEntry] = []
-            let trimmedThinking = pending.thinkingText.trimmingCharacters(
-                in: .whitespacesAndNewlines
+            let parentEntryID = EntryID.fromJSONL(pending.id)
+            let toolCallsById = Dictionary(
+                uniqueKeysWithValues: finalToolCalls.map { ($0.id, $0) }
             )
-            if !trimmedThinking.isEmpty {
-                subEntries.append(.thinking(ThinkingEntry(
-                    id: .derived(parent: pending.id, kind: "thinking"),
-                    parentEntryID: .fromJSONL(pending.id),
-                    timestamp: pending.startTime,
-                    header: Header(
-                        icon: .thinking,
-                        name: String(
-                            localized: "agentXray.entry.thinking.label",
-                            defaultValue: "Thinking",
-                            bundle: .module
+            for event in pending.subEntryEvents {
+                switch event {
+                case .thinking(let text, let ts, let id):
+                    subEntries.append(.thinking(ThinkingEntry(
+                        id: id,
+                        parentEntryID: parentEntryID,
+                        timestamp: ts ?? pending.startTime,
+                        header: Header(
+                            icon: .thinking,
+                            name: String(
+                                localized: "agentXray.entry.thinking.label",
+                                defaultValue: "Thinking",
+                                bundle: .module
+                            ),
+                            trailing: [.wordCount("\(wordCount(text)) words")],
+                            timestamp: ts ?? pending.startTime
                         ),
-                        timestamp: pending.startTime
-                    ),
-                    body: Body(sections: [.text([pending.thinkingText], style: .thinking)])
-                )))
-            }
-            for call in finalToolCalls {
-                let status: ToolEntry.Status = {
-                    if call.isError { return .error }
-                    if call.result == nil { return .pending }
-                    return .ok
-                }()
-                var sections: [Section] = [.text([call.inputDetail], style: .normal)]
-                if let result = call.result {
-                    sections.append(.text([result], style: status == .error ? .error : .normal))
-                }
-                if let sidechain = call.sidechainTranscript, !sidechain.isEmpty {
-                    sections.append(.subentries(sidechain))
-                }
-                subEntries.append(.tool(ToolEntry(
-                    id: .fromJSONL(call.id),
-                    timestamp: nil,
-                    header: Header(
-                        icon: .tool(named: call.name),
-                        name: call.name,
-                        title: call.summary,
-                        trailing: call.durationMs.map { [.duration("\($0) ms")] } ?? [],
-                        timestamp: nil
-                    ),
-                    body: Body(sections: sections),
-                    toolName: call.name,
-                    status: status,
-                    durationMs: call.durationMs,
-                    subagentType: call.subagentType,
-                    teamMemberName: call.teamMemberName,
-                    teamName: call.teamName
-                )))
-            }
-            let trimmedAssistant = pending.assistantText.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-            if !trimmedAssistant.isEmpty {
-                let words = trimmedAssistant.split { $0.isWhitespace || $0.isNewline }.count
-                subEntries.append(.assistantText(AssistantTextEntry(
-                    id: .derived(parent: pending.id, kind: "assistantText"),
-                    parentEntryID: .fromJSONL(pending.id),
-                    timestamp: pending.lastTimestamp ?? pending.startTime,
-                    header: Header(
-                        icon: .agent,
-                        name: String(
-                            localized: "agentXray.entry.assistantText.label",
-                            defaultValue: "Assistant",
-                            bundle: .module
+                        body: Body(sections: [.text([text], style: .thinking)]),
+                        wordCount: wordCount(text)
+                    )))
+                case .assistantText(let text, let ts, let id):
+                    let words = wordCount(text)
+                    subEntries.append(.assistantText(AssistantTextEntry(
+                        id: id,
+                        parentEntryID: parentEntryID,
+                        timestamp: ts ?? pending.lastTimestamp ?? pending.startTime,
+                        header: Header(
+                            icon: .assistantText,
+                            name: String(
+                                localized: "agentXray.entry.assistantText.label",
+                                defaultValue: "Assistant",
+                                bundle: .module
+                            ),
+                            trailing: [.wordCount("\(words) words")],
+                            timestamp: ts ?? pending.lastTimestamp ?? pending.startTime
                         ),
-                        trailing: [.wordCount("\(words) words")],
-                        timestamp: pending.lastTimestamp ?? pending.startTime
-                    ),
-                    fullBody: pending.assistantText,
-                    wordCount: words
-                )))
+                        body: Body(sections: [.text([text], style: .normal)]),
+                        wordCount: words
+                    )))
+                case .toolUse(let toolUseId):
+                    guard let call = toolCallsById[toolUseId] else { continue }
+                    let status: ToolEntry.Status = {
+                        if call.isError { return .error }
+                        if call.result == nil { return .pending }
+                        return .ok
+                    }()
+                    var sections: [Section] = [.text([call.inputDetail], style: .normal)]
+                    if let result = call.result {
+                        sections.append(.text([result], style: status == .error ? .error : .normal))
+                    }
+                    if let sidechain = call.sidechainTranscript, !sidechain.isEmpty {
+                        sections.append(.subentries(sidechain))
+                    }
+                    subEntries.append(.tool(ToolEntry(
+                        id: .fromJSONL(call.id),
+                        parentEntryID: parentEntryID,
+                        timestamp: nil,
+                        header: Header(
+                            icon: .tool(named: call.name),
+                            name: call.name,
+                            title: call.summary,
+                            trailing: call.durationMs.map { [.duration("\($0) ms")] } ?? [],
+                            timestamp: nil
+                        ),
+                        body: Body(sections: sections),
+                        toolName: call.name,
+                        status: status,
+                        durationMs: call.durationMs,
+                        subagentType: call.subagentType,
+                        teamMemberName: call.teamMemberName,
+                        teamName: call.teamName
+                    )))
+                }
             }
 
             let bodySections: [Section] = subEntries.isEmpty
@@ -917,11 +925,17 @@ struct ClaudeTranscriptBuilder {
         var startTime: Date
         var lastTimestamp: Date?
         var lastMessageUuid: String?
-        var assistantText: String = ""
-        var thinkingText: String = ""
+        /// Ordered log of sub-entry events as they arrive in the JSONL.
+        /// `flushPendingTurn` walks this once to project arrival-order
+        /// `[AgentEntry.SubEntry]` — thinking, assistant text, and tool
+        /// invocations interleave as the model emitted them, instead of
+        /// the legacy `[thinking?, …tools, assistantText?]` shape.
+        var subEntryEvents: [PendingSubEntry] = []
         var toolCalls: [String: AgentToolCall] = [:]
         var toolCallOrder: [String] = []
         var toolStartedAt: [String: Date] = [:]
+        var thinkingCounter: Int = 0
+        var assistantTextCounter: Int = 0
         var model: String?
         var usage: AgentEntry.TokenUsage = .zero
         var countedUsageMessageIds: Set<String> = []
@@ -934,6 +948,15 @@ struct ClaudeTranscriptBuilder {
             self.usage.cacheReadTokens += usage.cacheReadInputTokens ?? 0
             self.usage.cacheCreationTokens += usage.cacheCreationInputTokens ?? 0
         }
+    }
+
+    /// Per-event payload appended to `PendingTurn.subEntryEvents` as
+    /// blocks land. Tool metadata stays in `PendingTurn.toolCalls`;
+    /// only the **arrival-order signal** flows through this enum.
+    fileprivate enum PendingSubEntry {
+        case thinking(text: String, timestamp: Date?, id: EntryID)
+        case assistantText(text: String, timestamp: Date?, id: EntryID)
+        case toolUse(toolUseId: String)
     }
 
     // MARK: - Classification
@@ -1029,20 +1052,26 @@ struct ClaudeTranscriptBuilder {
         switch content {
         case .text(let str):
             let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { appendAssistantText(trimmed, ctx: &ctx) }
+            if !trimmed.isEmpty {
+                appendAssistantText(trimmed, timestamp: line.timestamp, ctx: &ctx)
+            }
         case .blocks(let blocks):
             for block in blocks {
                 switch block.type {
                 case "text":
-                    if let t = block.text { appendAssistantText(t, ctx: &ctx) }
+                    if let t = block.text {
+                        appendAssistantText(t, timestamp: line.timestamp, ctx: &ctx)
+                    }
                 case "thinking":
-                    if let t = block.thinking { appendThinkingText(t, ctx: &ctx) }
+                    if let t = block.thinking {
+                        appendThinkingText(t, timestamp: line.timestamp, ctx: &ctx)
+                    }
                 case "tool_use":
                     appendToolUse(block, timestamp: line.timestamp, ctx: &ctx)
                 case "tool_result":
                     attachToolResult(block, timestamp: line.timestamp, ctx: &ctx)
                 case "image":
-                    appendAssistantText("[image]", ctx: &ctx)
+                    appendAssistantText("[image]", timestamp: line.timestamp, ctx: &ctx)
                 default:
                     break
                 }
@@ -1050,20 +1079,46 @@ struct ClaudeTranscriptBuilder {
         }
     }
 
-    private func appendAssistantText(_ text: String, ctx: inout BuildContext) {
+    private func appendAssistantText(
+        _ text: String,
+        timestamp: Date?,
+        ctx: inout BuildContext
+    ) {
         guard ctx.pendingTurn != nil else { return }
-        if !ctx.pendingTurn!.assistantText.isEmpty {
-            ctx.pendingTurn!.assistantText.append("\n")
-        }
-        ctx.pendingTurn!.assistantText.append(text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let idx = ctx.pendingTurn!.assistantTextCounter
+        ctx.pendingTurn!.assistantTextCounter += 1
+        let id = EntryID.derived(
+            parent: ctx.pendingTurn!.id,
+            kind: "assistantText-\(idx)"
+        )
+        ctx.pendingTurn!.subEntryEvents.append(.assistantText(
+            text: trimmed,
+            timestamp: timestamp,
+            id: id
+        ))
     }
 
-    private func appendThinkingText(_ text: String, ctx: inout BuildContext) {
+    private func appendThinkingText(
+        _ text: String,
+        timestamp: Date?,
+        ctx: inout BuildContext
+    ) {
         guard ctx.pendingTurn != nil else { return }
-        if !ctx.pendingTurn!.thinkingText.isEmpty {
-            ctx.pendingTurn!.thinkingText.append("\n")
-        }
-        ctx.pendingTurn!.thinkingText.append(text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let idx = ctx.pendingTurn!.thinkingCounter
+        ctx.pendingTurn!.thinkingCounter += 1
+        let id = EntryID.derived(
+            parent: ctx.pendingTurn!.id,
+            kind: "thinking-\(idx)"
+        )
+        ctx.pendingTurn!.subEntryEvents.append(.thinking(
+            text: trimmed,
+            timestamp: timestamp,
+            id: id
+        ))
     }
 
     private func appendToolUse(
@@ -1089,6 +1144,7 @@ struct ClaudeTranscriptBuilder {
         )
         if ctx.pendingTurn?.toolCalls[id] == nil {
             ctx.pendingTurn?.toolCallOrder.append(id)
+            ctx.pendingTurn?.subEntryEvents.append(.toolUse(toolUseId: id))
         }
         ctx.pendingTurn?.toolCalls[id] = call
         if let timestamp {
@@ -1139,6 +1195,7 @@ struct ClaudeTranscriptBuilder {
             )
             if ctx.pendingTurn?.toolCalls[id] == nil {
                 ctx.pendingTurn?.toolCallOrder.append(id)
+                ctx.pendingTurn?.subEntryEvents.append(.toolUse(toolUseId: id))
             }
             ctx.pendingTurn?.toolCalls[id] = synthetic
         }

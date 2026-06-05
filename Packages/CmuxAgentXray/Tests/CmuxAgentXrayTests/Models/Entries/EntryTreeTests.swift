@@ -18,14 +18,16 @@ struct EntryTreeTests {
 
     private func makeAgent(id: String = "a1") -> AgentEntry {
         let thinking = ThinkingEntry(
-            id: .derived(parent: id, kind: "thinking"),
+            id: .derived(parent: id, kind: "thinking-0"),
             parentEntryID: .fromJSONL(id),
             timestamp: nil,
             header: Header(icon: .thinking, name: "Thinking"),
-            body: Body(sections: [.text(["I should..."], style: .thinking)])
+            body: Body(sections: [.text(["I should..."], style: .thinking)]),
+            wordCount: 2
         )
         let tool = ToolEntry(
             id: .fromJSONL("\(id)-tool-1"),
+            parentEntryID: .fromJSONL(id),
             timestamp: nil,
             header: Header(icon: .tool(named: "Read"), name: "Read", title: "/foo.swift"),
             body: Body(sections: [.text(["{ \"path\": \"/foo.swift\" }"], style: .normal)]),
@@ -75,7 +77,7 @@ struct EntryTreeTests {
         #expect(turn.subEntries.count == 2)
 
         let thinking = turn.subEntries[0]
-        #expect(thinking.id.stableString == "d:thinking:a1")
+        #expect(thinking.id.stableString == "d:thinking-0:a1")
         #expect(thinking.header.name == "Thinking")
 
         let tool = turn.subEntries[1]

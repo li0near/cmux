@@ -138,28 +138,55 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
 
 // MARK: - Sub-entry concrete types
 
+/// Common contract for the three concrete `AgentEntry.SubEntry`
+/// variants. Captures the fields every sub-entry surfaces — id,
+/// parent reference, timestamp, header, body — so callers that need
+/// the uniform shape can program against the protocol instead of
+/// switching on the enum.
+public protocol AgentSubEntry: Identifiable, Equatable, Sendable
+where ID == EntryID {
+    /// Stable id of this sub-entry. Within a single turn, ids are
+    /// unique across all sub-entry kinds.
+    var id: EntryID { get }
+    /// Id of the enclosing `AgentEntry` turn.
+    var parentEntryID: EntryID { get }
+    /// Wall-clock timestamp of the underlying JSONL line, when
+    /// available.
+    var timestamp: Date? { get }
+    /// Display header (icon, name, trailing pills).
+    var header: Header { get }
+    /// Renderable body (text section, optionally cap-truncated by
+    /// the view layer).
+    var body: Body { get }
+}
+
 /// Extended-thinking projection — one `thinking` content block inside an
 /// assistant message. Body holds the reasoning text in a single `.text`
 /// section with `style: .thinking`.
-public struct ThinkingEntry: Identifiable, Equatable, Sendable {
+public struct ThinkingEntry: AgentSubEntry {
     public let id: EntryID
     public let parentEntryID: EntryID
     public let timestamp: Date?
     public let header: Header
     public let body: Body
+    /// Word count of the thinking text — drives the trailing `N words`
+    /// pill on the sub-entry header.
+    public let wordCount: Int
 
     public init(
         id: EntryID,
         parentEntryID: EntryID,
         timestamp: Date?,
         header: Header,
-        body: Body
+        body: Body,
+        wordCount: Int
     ) {
         self.id = id
         self.parentEntryID = parentEntryID
         self.timestamp = timestamp
         self.header = header
         self.body = body
+        self.wordCount = wordCount
     }
 }
 
@@ -168,8 +195,9 @@ public struct ThinkingEntry: Identifiable, Equatable, Sendable {
 /// sub-agent, the spawned transcript appears as a trailing
 /// `.subentries(...)` section. The renderer policy decides whether to
 /// surface the sub-transcript inline or as a link to a detail tab.
-public struct ToolEntry: Identifiable, Equatable, Sendable {
+public struct ToolEntry: AgentSubEntry {
     public let id: EntryID
+    public let parentEntryID: EntryID
     public let timestamp: Date?
     public let header: Header
     public let body: Body
@@ -190,6 +218,7 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
 
     public init(
         id: EntryID,
+        parentEntryID: EntryID,
         timestamp: Date?,
         header: Header,
         body: Body,
@@ -201,6 +230,7 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         teamName: String? = nil
     ) {
         self.id = id
+        self.parentEntryID = parentEntryID
         self.timestamp = timestamp
         self.header = header
         self.body = body
@@ -250,17 +280,21 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     }
 }
 
-/// Final assistant-text projection of a turn. Body is empty
-/// (Variant A header-only): the click opens the full text in a sibling
-/// detail tab, never inline. `fullBody` carries the entire text the
-/// detail tab renders; `wordCount` is the pre-counted "N words" pill.
-public struct AssistantTextEntry: Identifiable, Equatable, Sendable {
+/// One assistant-text block from a turn — projection of a `text`
+/// content block inside an assistant message. Multiple `AssistantTextEntry`
+/// sub-entries can appear in a single `AgentEntry`, interleaved with
+/// `ThinkingEntry` and `ToolEntry` in JSONL arrival order. Body carries
+/// the text in a single `.text` section so the renderer caps it inline
+/// with the standard overflow link, identical to how tool input/result
+/// blocks are surfaced.
+public struct AssistantTextEntry: AgentSubEntry {
     public let id: EntryID
     public let parentEntryID: EntryID
     public let timestamp: Date?
     public let header: Header
-    public let body: Body  // always empty by convention; carried for protocol uniformity
-    public let fullBody: String
+    public let body: Body
+    /// Word count of the text — drives the trailing `N words` pill on
+    /// the sub-entry header.
     public let wordCount: Int
 
     public init(
@@ -268,15 +302,14 @@ public struct AssistantTextEntry: Identifiable, Equatable, Sendable {
         parentEntryID: EntryID,
         timestamp: Date?,
         header: Header,
-        fullBody: String,
+        body: Body,
         wordCount: Int
     ) {
         self.id = id
         self.parentEntryID = parentEntryID
         self.timestamp = timestamp
         self.header = header
-        self.body = .empty
-        self.fullBody = fullBody
+        self.body = body
         self.wordCount = wordCount
     }
 }

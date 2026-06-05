@@ -15,11 +15,8 @@ extension AgentEntryView {
     func toolSection(tool: ToolEntry) -> some View {
         let key = tool.id.stableString
         let isExpanded = isSubEntryExpanded(key)
-        let toolName = tool.toolName
-        let title = tool.header.title ?? ""
         let isError = tool.status == .error
         let isPending = tool.status == .pending
-        let durationText: String? = tool.durationMs.map { "\($0) ms" }
         /// Shared 3-state accent for icon + name. Predecessor coloured
         /// only the icon by status (name stayed primary), but per
         /// dogfood feedback we keep them symmetric: `.error` → red,
@@ -31,50 +28,36 @@ extension AgentEntryView {
             case .ok:      return palette.green
             }
         }()
+        let trailing: [TrailingItem] = tool.durationMs.map {
+            [.duration("\($0) ms")]
+        } ?? []
 
         VStack(alignment: .leading, spacing: 2) {
             Button {
                 onToggleExpansion(.tool(toolID: key))
             } label: {
-                HStack(spacing: Theme.Spacing.subRowIconText) {
-                    if let icon = tool.header.icon {
-                        Image(systemName: icon.systemName(expanded: isExpanded))
-                            .font(Theme.SubRow.icon)
-                            .foregroundStyle(statusAccent)
-                            .symbolEffect(
-                                .pulse,
-                                options: .repeating,
-                                isActive: isPending
-                            )
-                            .frame(width: Theme.Metric.subRowIconWidth)
+                subEntryHeader(
+                    icon: tool.header.icon,
+                    isExpanded: isExpanded,
+                    iconColor: statusAccent,
+                    nameAccent: statusAccent,
+                    name: tool.toolName,
+                    title: tool.header.title,
+                    trailing: trailing,
+                    extras: {
+                        if let chip = tool.subagentType, !chip.isEmpty {
+                            Text(chip)
+                                .font(Theme.SubRow.summary)
+                                .foregroundStyle(palette.magenta)
+                                .lineLimit(1)
+                        }
                     }
-                    Text(toolName)
-                        .font(Theme.Row.name)
-                        .foregroundStyle(statusAccent)
-                        .lineLimit(1)
-                    if let chip = tool.subagentType, !chip.isEmpty {
-                        Text(chip)
-                            .font(Theme.SubRow.summary)
-                            .foregroundStyle(palette.magenta)
-                            .lineLimit(1)
-                    }
-                    if !title.isEmpty {
-                        Text(title)
-                            .font(Theme.Row.summary)
-                            .foregroundStyle(palette.primary.opacity(Theme.Opacity.detail))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    Spacer(minLength: Theme.Spacing.tight)
-                    if let durationText {
-                        Text(durationText)
-                            .font(Theme.SubRow.meta)
-                            .foregroundStyle(palette.dim)
-                    }
-                }
-                .padding(.leading, Theme.Indent.subRow)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+                )
+                .symbolEffect(
+                    .pulse,
+                    options: .repeating,
+                    isActive: isPending
+                )
             }
             .buttonStyle(.plain)
             .hoverHighlight(palette: palette)
@@ -103,44 +86,6 @@ extension AgentEntryView {
                     }
                 }
                 .padding(.leading, Theme.Indent.nestedSubRow)
-            }
-        }
-    }
-
-    /// Tool input/result with `.standard` caps (30 lines / 3 KiB).
-    /// Truncated body renders inline; if overflow, a ↗ "Open detail"
-    /// link routes the full content to a sibling detail tab.
-    /// Font matches sub-row body (11pt mono) — predecessor parity;
-    /// previous 12pt + 4pt block-spacing felt heavy.
-    private func cappedTextBlock(
-        _ text: String,
-        color: Color,
-        onOpenDetail: @escaping () -> Void
-    ) -> some View {
-        let content = ExpandableContent.make(
-            from: [text],
-            caps: .standard,
-            displayMode: .compact
-        )
-        return VStack(alignment: .leading, spacing: 2) {
-            if !content.inlineBody.isEmpty {
-                Text(content.inlineBody)
-                    .font(Theme.SubRow.summary)
-                    .foregroundStyle(color)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(Theme.Padding.expandedBodyBlock)
-                    .background(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.expandedBodyBlock)
-                            .fill(palette.expandedBackground)
-                    )
-                    .textSelection(.enabled)
-            }
-            if content.overflow {
-                OpenDetailLinkView(
-                    totalLines: content.totalLines,
-                    palette: palette,
-                    action: onOpenDetail
-                )
             }
         }
     }

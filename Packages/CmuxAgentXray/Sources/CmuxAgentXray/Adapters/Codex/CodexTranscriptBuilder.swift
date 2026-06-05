@@ -150,13 +150,13 @@ struct CodexTranscriptBuilder {
             var subEntries: [AgentEntry.SubEntry] = []
             let trimmed = assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
-                let words = trimmed.split { $0.isWhitespace || $0.isNewline }.count
+                let words = wordCount(trimmed)
                 subEntries.append(.assistantText(AssistantTextEntry(
                     id: .derived(parent: id, kind: "assistantText"),
                     parentEntryID: .fromJSONL(id),
                     timestamp: startTime,
                     header: Header(
-                        icon: .agent,
+                        icon: .assistantText,
                         name: String(
                             localized: "agentXray.entry.assistantText.label",
                             defaultValue: "Assistant",
@@ -165,7 +165,7 @@ struct CodexTranscriptBuilder {
                         trailing: [.wordCount("\(words) words")],
                         timestamp: startTime
                     ),
-                    fullBody: assistantText,
+                    body: Body(sections: [.text([trimmed], style: .normal)]),
                     wordCount: words
                 )))
             }

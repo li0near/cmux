@@ -73,7 +73,7 @@ public struct AgentEntryView: View {
 
             if isExpanded {
                 ForEach(entry.subEntries, id: \.id.stableString) { sub in
-                    subEntrySection(sub: sub, parentEntryID: entryID)
+                    subEntrySection(sub: sub)
                 }
             }
         }
@@ -85,13 +85,10 @@ public struct AgentEntryView: View {
     /// Dispatch on the typed `AgentEntry.SubEntry` so each kind gets
     /// its bespoke per-kind chrome via the matching extension file.
     @ViewBuilder
-    private func subEntrySection(
-        sub: AgentEntry.SubEntry,
-        parentEntryID: String
-    ) -> some View {
+    private func subEntrySection(sub: AgentEntry.SubEntry) -> some View {
         switch sub {
         case .thinking(let t):
-            thinkingSection(thinking: t, parentEntryID: parentEntryID)
+            thinkingSection(thinking: t)
         case .tool(let tool):
             toolSection(tool: tool)
         case .assistantText(let a):

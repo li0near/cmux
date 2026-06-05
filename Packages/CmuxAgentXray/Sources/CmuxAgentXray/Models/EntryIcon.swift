@@ -34,8 +34,17 @@ extension EntryIcon {
     )
     /// Agent entry header (Claude / Codex).
     public static let agent = EntryIcon(collapsed: "microbe", expanded: "microbe.fill")
+    /// Assistant-text sub-entry — distinct from the turn header so the
+    /// parent/child relationship reads visually.
+    public static let assistantText = EntryIcon(
+        collapsed: "microbe.circle",
+        expanded: "microbe.circle.fill"
+    )
     /// Thinking sub-entry.
-    public static let thinking = EntryIcon(collapsed: "brain", expanded: "brain.fill")
+    public static let thinking = EntryIcon(
+        collapsed: "brain.head.profile",
+        expanded: "brain.head.profile.fill"
+    )
     /// System line (local-command output, generic).
     public static let system = EntryIcon(collapsed: "terminal", expanded: "terminal.fill")
     /// Compact-summary entry. Same glyph collapsed/expanded.

@@ -9,19 +9,27 @@ extension AgentXrayPanel {
     public enum ExpansionToggle: Equatable, Sendable {
         /// Top-level entry header (one entry per agent turn / user prompt).
         case entry(id: String)
-        /// Agent turn's thinking sub-entry (derived id).
-        case thinking(parentEntryID: String)
+        /// Agent turn's thinking sub-entry. Multiple per turn — keyed by
+        /// the sub-entry's own stable id, not by parent + derived suffix.
+        case thinking(subEntryID: String)
+        /// Agent turn's assistant-text sub-entry. Multiple per turn —
+        /// each block (interleaved with tools / thinking) toggles
+        /// independently.
+        case assistantText(subEntryID: String)
         /// Tool sub-entry inside an agent turn (mirrored JSONL id).
         case tool(toolID: String)
 
-        /// Lookup key into `currentExpanded`. Thinking is the one
-        /// derived sub-id; all others are direct JSONL ids.
+        /// Lookup key into `currentExpanded`. All cases use the
+        /// underlying id directly — the legacy `derived(parent:kind:)`
+        /// scheme used for thinking is gone now that thinking entries
+        /// each have their own stable id.
         public var key: String {
             switch self {
-            case .entry(let id), .tool(let id):
+            case .entry(let id),
+                 .tool(let id),
+                 .thinking(let id),
+                 .assistantText(let id):
                 return id
-            case .thinking(let parent):
-                return EntryID.derived(parent: parent, kind: "thinking").stableString
             }
         }
     }
@@ -113,22 +121,15 @@ extension AgentXrayPanel {
             if observedEntryIDs.insert(id).inserted {
                 if entries.branchEntryIDs.contains(id) {
                     currentExpanded.insert(id)
-                    if case .agent = entry, isActive {
-                        currentExpanded.insert(
-                            EntryID.derived(parent: id, kind: "thinking").stableString
-                        )
-                    }
                 } else if isActive {
                     currentExpanded.insert(id)
                 }
             }
             if case .agent(let turn) = entry {
                 for sub in turn.subEntries {
-                    if case .tool(let tool) = sub {
-                        let toolID = tool.id.stableString
-                        if observedEntryIDs.insert(toolID).inserted && isActive {
-                            currentExpanded.insert(toolID)
-                        }
+                    let subID = sub.id.stableString
+                    if observedEntryIDs.insert(subID).inserted && isActive {
+                        currentExpanded.insert(subID)
                     }
                 }
             }
