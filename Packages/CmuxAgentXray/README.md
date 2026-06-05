@@ -73,85 +73,21 @@ for the protocol surface.
 
 ## Session attach resolution
 
-`AgentSessionResolver` (`Sources/CmuxAgentXray/Streaming/AgentSessionResolver.swift`)
-answers a single question on every focus event: **which Claude/Codex session
-is running in the currently focused terminal panel?** The answer joins two
-pieces of state cmux already maintains as authoritative — no host-process-tree
-scanning, no on-disk heuristics, no argv scraping.
+`AgentSessionResolver`
+(`Sources/CmuxAgentXray/Streaming/AgentSessionResolver.swift`) answers
+the focus-event question **which Claude/Codex session is running in
+the currently focused terminal panel?**. Three paths in priority order:
 
-### Resolution flow
+1. **Restored snapshot** — auto-resume after cmux restart.
+2. **Live PID + hook record** — fresh panels, `/new` mid-session.
+3. **Remote attach (claude only)** — SSH terminals where the user has
+   pasted a session id into the inline prompt.
 
-```
-focus event (debounced 150 ms)
-        │
-        ▼
-┌──────────────────────────┐
-│ resolver.resolve(panel)  │
-└────────────┬─────────────┘
-             ▼
-   ╔═══ Path 1: restored snapshot ═══╗
-   ║ restoredAgentSnapshot(panelID)? ║
-   ╚════════╤══════════════════╤═════╝
-            ▼ found            ▼ nil
-   build claude transcript     │
-   path from (cwd, sid);       │
-   return synthesized          │
-   ResolvedAgentSession        ▼
-                     ╔═══ Path 2: live PID + hook ═══╗
-                     ║ for pid in agentPIDs(panelID):║
-                     ║   findAgentHookRecord(pid)?   ║
-                     ╚═════╤═══════════════════╤═════╝
-                           ▼ match             ▼ none
-                  return synthesized           │
-                  ResolvedAgentSession         ▼
-                  (sessionID + transcriptPath  nil
-                  from hook record)          (Detached)
-```
-
-| # | Path | Source-of-truth | Handles |
-|---|---|---|---|
-| 1 | Restored snapshot | `Workspace.restoredAgentSnapshotsByPanelId[panelID]` — cmux's session-restoration index, pre-mapped onto the fresh panel UUID | Auto-resume after cmux restart, before agent has spawned or its hook has fired |
-| 2 | Live PID + hook record | (a) `CmuxTopProcessSnapshot.captureCached(...).pids(forCMUXSurfaceID:)` reading `CMUX_SURFACE_ID` env vars set by `applyManagedCmuxContextEnvironment` at shell spawn; (b) `~/.cmuxterm/{claude,codex}-hook-sessions.json` joined by PID | Fresh panels post-boot, `/new` mid-session (hook record upserts; live record beats stale snapshot) |
-
-Path 1's transcript path may not exist on disk yet — `JSONLTail` handles
-missing files via exponential-backoff open retries and starts streaming the
-moment the agent creates it. Codex restoration leaves `transcriptPath` nil
-(date-bucketed layout requires extra info).
-
-### Auto-resume timeline
-
-```
-cmux restart   shell spawned   agent spawned   SessionStart
-                (env injected)  (--resume id)   hook fires
-     │                │               │              │
-     │           [Path 1 hits ─────────────────▶]    │
-     │                │               │              │
-     │                │           [Path 2 hits ─────▶]
-     ▼                ▼               ▼              ▼
-   t=0           ~few-100 ms       ~few-100 ms     ~1 s
-```
-
-Path 1 attaches the panel before the agent process exists; Path 2 takes
-over once the hook record is on disk and reflects every subsequent
-`/new`-style session change.
-
-### Stable across cmux restart
-
-Both sources deliberately survive cmux app restart: the hook store is a JSON
-file on disk; the restored-snapshot index rebuilds from cmux's session
-snapshot. Volatile signals deliberately **not used** as load-bearing:
-`Workspace.id` / `Panel.id` UUIDs (freshly minted on every launch),
-`Workspace.agentPIDs` registry (in-memory; only populated by `set_agent_pid`
-during `SessionStart`, empty for surviving processes after restart),
-per-record `(workspaceId, surfaceId)` hook-store keys (stale post-restart).
-
-### Failure modes
-
-- Hook hasn't fired yet → path 2 returns nil briefly; resolves on next event.
-- Hook handler misconfigured → panel stays detached. We don't fabricate a
-  session we can't prove exists.
-- Two agents in one panel → first PID with a hook record wins (same
-  behaviour as cmux's own panel-PID registry).
+Comprehensive flow diagrams, per-path internals, the Phase-18
+hook-before-first-prompt fix, the remote-`$HOME` resolver, the
+`RemoteSessionStore`, the ControlPath piggyback, the per-tab SSH
+inference, the auto-resume timeline, and the failure-mode table all
+live in **[`docs/SessionAttach.md`](docs/SessionAttach.md)**.
 
 ## Build and test
 
