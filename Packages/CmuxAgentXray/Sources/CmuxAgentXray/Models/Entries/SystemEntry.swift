@@ -11,24 +11,23 @@ public import Foundation
 /// for header content.
 public struct SystemEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
-    public let timestamp: Date?
     public let header: Header
     public let body: Body
     public let subType: SubType
 
     public init(
         id: EntryID,
-        timestamp: Date?,
         header: Header,
         body: Body,
         subType: SubType
     ) {
         self.id = id
-        self.timestamp = timestamp
         self.header = header
         self.body = body
         self.subType = subType
     }
+
+    public var timestamp: Date? { header.timeMarker?.clockDate }
 
     /// Closed enumeration of every observed JSONL `system.subtype`
     /// flavour, plus a forward-compat `.other(_)` escape hatch. Case

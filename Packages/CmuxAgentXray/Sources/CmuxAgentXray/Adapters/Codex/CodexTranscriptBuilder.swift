@@ -123,7 +123,6 @@ struct CodexTranscriptBuilder {
     private func makeUser(id: String, text: String, timestamp: Date) -> UserEntry {
         UserEntry(
             id: .fromJSONL(id),
-            timestamp: timestamp,
             header: Header(
                 icon: .user,
                 name: String(
@@ -131,7 +130,7 @@ struct CodexTranscriptBuilder {
                     defaultValue: "User",
                     bundle: .module
                 ),
-                timestamp: timestamp
+                timeMarker: .clock(timestamp)
             ),
             body: .text([text]),
             promptId: nil,
@@ -151,10 +150,10 @@ struct CodexTranscriptBuilder {
             let trimmed = assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 let words = wordCount(trimmed)
-                subEntries.append(.assistantText(AssistantTextEntry(
+                subEntries.append(.text(TextSubEntry(
+                    kind: .assistant,
                     id: .derived(parent: id, kind: "assistantText"),
                     parentEntryID: .fromJSONL(id),
-                    timestamp: startTime,
                     header: Header(
                         icon: .assistantText,
                         name: String(
@@ -163,7 +162,7 @@ struct CodexTranscriptBuilder {
                             bundle: .module
                         ),
                         trailing: [.wordCount("\(words) words")],
-                        timestamp: startTime
+                        timeMarker: .clock(startTime)
                     ),
                     body: Body(sections: [.text([trimmed], style: .normal)]),
                     wordCount: words
@@ -171,7 +170,6 @@ struct CodexTranscriptBuilder {
             }
             return AgentEntry(
                 id: .fromJSONL(id),
-                timestamp: startTime,
                 header: Header(
                     icon: .agent,
                     name: String(
@@ -180,7 +178,7 @@ struct CodexTranscriptBuilder {
                         bundle: .module
                     ),
                     label: model,
-                    timestamp: startTime
+                    timeMarker: .clock(startTime)
                 ),
                 body: Body(sections: []),  // Codex turns surface only via subEntries
                 usage: .zero,

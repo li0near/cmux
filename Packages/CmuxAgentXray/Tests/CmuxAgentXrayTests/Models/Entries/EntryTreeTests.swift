@@ -10,17 +10,20 @@ struct EntryTreeTests {
     private func makeUser(id: String = "u1") -> UserEntry {
         UserEntry(
             id: .fromJSONL(id),
-            timestamp: Date(timeIntervalSince1970: 1_000),
-            header: Header(name: "User", title: "Hello"),
+            header: Header(
+                name: "User",
+                title: "Hello",
+                timeMarker: .clock(Date(timeIntervalSince1970: 1_000))
+            ),
             body: .text(["Hello"])
         )
     }
 
     private func makeAgent(id: String = "a1") -> AgentEntry {
-        let thinking = ThinkingEntry(
+        let thinking = TextSubEntry(
+            kind: .thinking,
             id: .derived(parent: id, kind: "thinking-0"),
             parentEntryID: .fromJSONL(id),
-            timestamp: nil,
             header: Header(icon: .thinking, name: "Thinking"),
             body: Body(sections: [.text(["I should..."], style: .thinking)]),
             wordCount: 2
@@ -28,20 +31,22 @@ struct EntryTreeTests {
         let tool = ToolEntry(
             id: .fromJSONL("\(id)-tool-1"),
             parentEntryID: .fromJSONL(id),
-            timestamp: nil,
             header: Header(icon: .tool(named: "Read"), name: "Read", title: "/foo.swift"),
             body: Body(sections: [.text(["{ \"path\": \"/foo.swift\" }"], style: .normal)]),
-            toolName: "Read",
             status: .ok
         )
         return AgentEntry(
             id: .fromJSONL(id),
-            timestamp: Date(timeIntervalSince1970: 1_001),
-            header: Header(icon: .agent, name: "Claude", label: "Sonnet 4.5"),
+            header: Header(
+                icon: .agent,
+                name: "Claude",
+                label: "Sonnet 4.5",
+                timeMarker: .clock(Date(timeIntervalSince1970: 1_001))
+            ),
             body: Body(sections: [.subentries([])]),
             usage: AgentEntry.TokenUsage(inputTokens: 100, outputTokens: 50),
             stopReason: "end_turn",
-            subEntries: [.thinking(thinking), .tool(tool)]
+            subEntries: [.text(thinking), .tool(tool)]
         )
     }
 

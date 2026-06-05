@@ -3,7 +3,7 @@ import SwiftUI
 /// Unified header renderer. Consumes a `Header` value and renders a
 /// horizontal pill row:
 ///
-///     [icon]  [name]  [label]  [title]  [trailing items…]  [timestamp]
+///     [icon]  [name]  [label]  [title]  [trailing items…]  [timeMarker]
 ///
 /// Every Entry variant routes through this same view. Variant-specific
 /// effects (queued-pulse, streaming-pulse) ride on top via the
@@ -68,8 +68,8 @@ struct EntryHeaderView: View {
             ForEach(Array(header.trailing.enumerated()), id: \.offset) { _, item in
                 trailingItemView(item)
             }
-            if let timestamp = header.timestamp {
-                Text(formatTimestamp(timestamp))
+            if let marker = header.timeMarker {
+                Text(marker.displayString)
                     .font(Theme.Row.meta)
                     .foregroundStyle(palette.dim)
             }
@@ -85,19 +85,13 @@ struct EntryHeaderView: View {
             Text(s)
                 .font(Theme.Row.meta)
                 .foregroundStyle(palette.dim)
-        case .pill(let s), .duration(let s), .wordCount(let s):
+        case .pill(let s), .wordCount(let s):
             MetadataPill(text: s, palette: palette)
         case .statusDot(let kind):
             StatusDotView(kind: kind, palette: palette)
         case .tokenPill(let usage):
             TokenPillView(usage: usage, palette: palette)
         }
-    }
-
-    private func formatTimestamp(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: date)
     }
 }
 

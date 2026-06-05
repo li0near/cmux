@@ -9,26 +9,20 @@ extension AgentXrayPanel {
     public enum ExpansionToggle: Equatable, Sendable {
         /// Top-level entry header (one entry per agent turn / user prompt).
         case entry(id: String)
-        /// Agent turn's thinking sub-entry. Multiple per turn — keyed by
-        /// the sub-entry's own stable id, not by parent + derived suffix.
-        case thinking(subEntryID: String)
-        /// Agent turn's assistant-text sub-entry. Multiple per turn —
-        /// each block (interleaved with tools / thinking) toggles
-        /// independently.
-        case assistantText(subEntryID: String)
+        /// Agent turn's text sub-entry (thinking or assistant) — keyed
+        /// by the sub-entry's stable id. Multiple per turn; each
+        /// toggles independently.
+        case text(subEntryID: String)
         /// Tool sub-entry inside an agent turn (mirrored JSONL id).
         case tool(toolID: String)
 
-        /// Lookup key into `currentExpanded`. All cases use the
-        /// underlying id directly — the legacy `derived(parent:kind:)`
-        /// scheme used for thinking is gone now that thinking entries
-        /// each have their own stable id.
+        /// Lookup key into `currentExpanded`. Every case uses the
+        /// underlying id directly.
         public var key: String {
             switch self {
             case .entry(let id),
                  .tool(let id),
-                 .thinking(let id),
-                 .assistantText(let id):
+                 .text(let id):
                 return id
             }
         }

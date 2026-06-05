@@ -15,7 +15,6 @@ extension AgentEntryView {
     func toolSection(tool: ToolEntry) -> some View {
         let key = tool.id.stableString
         let isExpanded = isSubEntryExpanded(key)
-        let isError = tool.status == .error
         let isPending = tool.status == .pending
         /// Shared 3-state accent for icon + name. Predecessor coloured
         /// only the icon by status (name stayed primary), but per
@@ -28,9 +27,7 @@ extension AgentEntryView {
             case .ok:      return palette.green
             }
         }()
-        let trailing: [TrailingItem] = tool.durationMs.map {
-            [.duration("\($0) ms")]
-        } ?? []
+        let timeMarker: TimeMarker? = tool.durationMs.map { .duration($0) }
 
         VStack(alignment: .leading, spacing: 2) {
             Button {
@@ -43,7 +40,7 @@ extension AgentEntryView {
                     nameAccent: statusAccent,
                     name: tool.toolName,
                     title: tool.header.title,
-                    trailing: trailing,
+                    timeMarker: timeMarker,
                     extras: {
                         if let chip = tool.subagentType, !chip.isEmpty {
                             Text(chip)
@@ -63,26 +60,17 @@ extension AgentEntryView {
             .hoverHighlight(palette: palette)
 
             if isExpanded {
-                let inputDetail = tool.inputDetail ?? ""
-                let resultDetail = tool.resultDetail ?? ""
-                VStack(alignment: .leading, spacing: 2) {
-                    if !inputDetail.isEmpty {
-                        cappedTextBlock(
-                            inputDetail,
-                            color: palette.primary.opacity(0.85),
-                            onOpenDetail: {
-                                onOpenDetail(.toolInput(entryID: parentEntryIDString(of: tool), toolEntryID: tool.id.stableString))
-                            }
-                        )
-                    }
-                    if !resultDetail.isEmpty {
-                        cappedTextBlock(
-                            resultDetail,
-                            color: isError ? palette.red : palette.primary.opacity(0.85),
-                            onOpenDetail: {
-                                onOpenDetail(.toolResult(entryID: parentEntryIDString(of: tool), toolEntryID: tool.id.stableString))
-                            }
-                        )
+                cappedBody(tool.body) { sectionIndex in
+                    if sectionIndex == 0 {
+                        onOpenDetail(.toolInput(
+                            entryID: parentEntryIDString(of: tool),
+                            toolEntryID: tool.id.stableString
+                        ))
+                    } else {
+                        onOpenDetail(.toolResult(
+                            entryID: parentEntryIDString(of: tool),
+                            toolEntryID: tool.id.stableString
+                        ))
                     }
                 }
                 .padding(.leading, Theme.Indent.nestedSubRow)

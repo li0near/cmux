@@ -208,7 +208,6 @@ struct ClaudeTranscriptBuilder {
             if recapBody.isEmpty { return }
             ctx.entries.append(.system(SystemEntry(
                 id: .fromJSONL(id),
-                timestamp: ts,
                 header: Header(
                     icon: .recap,
                     name: String(
@@ -216,7 +215,7 @@ struct ClaudeTranscriptBuilder {
                         defaultValue: "Recap",
                         bundle: .module
                     ),
-                    timestamp: ts
+                    timeMarker: .clock(ts)
                 ),
                 body: .text([recapBody]),
                 subType: .recap
@@ -227,7 +226,6 @@ struct ClaudeTranscriptBuilder {
                   let prRepository = line.prRepository else { return }
             ctx.entries.append(.synthesized(SynthesizedEntry(
                 id: .derived(parent: id, kind: "prLink"),
-                timestamp: ts,
                 header: Header(
                     icon: .prLink,
                     title: String(
@@ -235,7 +233,7 @@ struct ClaudeTranscriptBuilder {
                         defaultValue: "PR #\(prNumber) · \(prRepository)",
                         bundle: .module
                     ),
-                    timestamp: ts
+                    timeMarker: .clock(ts)
                 ),
                 body: .empty,
                 kind: .prLink(prNumber: prNumber, url: prUrl, repository: prRepository)
@@ -258,11 +256,10 @@ struct ClaudeTranscriptBuilder {
                 let title = args.map { "/\(name) \($0)" } ?? "/\(name)"
                 ctx.entries.append(.system(SystemEntry(
                     id: .fromJSONL(id),
-                    timestamp: ts,
                     header: Header(
                         icon: .slashCommand,
                         title: title,
-                        timestamp: ts
+                        timeMarker: .clock(ts)
                     ),
                     body: .empty,
                     subType: .slashCmdInput(name: name, args: args)
@@ -284,8 +281,7 @@ struct ClaudeTranscriptBuilder {
                       )
                 ctx.entries.append(.system(SystemEntry(
                     id: .fromJSONL(id),
-                    timestamp: ts,
-                    header: Header(icon: .system, name: label, timestamp: ts),
+                    header: Header(icon: .system, name: label, timeMarker: .clock(ts)),
                     body: Body(sections: [.text([b], style: isStderr ? .error : .normal)]),
                     subType: .slashCmdOutput(isStderr: isStderr)
                 )))
@@ -296,7 +292,6 @@ struct ClaudeTranscriptBuilder {
             if case let .systemReminder(b) = ClaudeContentDetector.classify(body) {
                 ctx.entries.append(.system(SystemEntry(
                     id: .fromJSONL(id),
-                    timestamp: ts,
                     header: Header(
                         icon: .systemReminder,
                         name: String(
@@ -304,7 +299,7 @@ struct ClaudeTranscriptBuilder {
                             defaultValue: "System reminder",
                             bundle: .module
                         ),
-                        timestamp: ts
+                        timeMarker: .clock(ts)
                     ),
                     body: .text([b]),
                     subType: .systemReminder
@@ -314,7 +309,6 @@ struct ClaudeTranscriptBuilder {
             if case let .skillInvocation(name, basePath, b) = ClaudeContentDetector.classify(body) {
                 ctx.entries.append(.system(SystemEntry(
                     id: .fromJSONL(id),
-                    timestamp: ts,
                     header: Header(
                         icon: .skill,
                         name: String(
@@ -323,7 +317,7 @@ struct ClaudeTranscriptBuilder {
                             bundle: .module
                         ),
                         title: basePath,
-                        timestamp: ts
+                        timeMarker: .clock(ts)
                     ),
                     body: .text([b]),
                     subType: .skill(name: name, basePath: basePath)
@@ -333,7 +327,6 @@ struct ClaudeTranscriptBuilder {
             if case let .contextUsage(b) = ClaudeContentDetector.classify(body) {
                 ctx.entries.append(.system(SystemEntry(
                     id: .fromJSONL(id),
-                    timestamp: ts,
                     header: Header(
                         icon: .contextInfo,
                         name: String(
@@ -341,7 +334,7 @@ struct ClaudeTranscriptBuilder {
                             defaultValue: "Context usage",
                             bundle: .module
                         ),
-                        timestamp: ts
+                        timeMarker: .clock(ts)
                     ),
                     body: .text([b]),
                     subType: .contextUsage
@@ -352,7 +345,6 @@ struct ClaudeTranscriptBuilder {
             if trimmed.isEmpty { return }
             ctx.entries.append(.system(SystemEntry(
                 id: .fromJSONL(id),
-                timestamp: ts,
                 header: Header(
                     icon: .systemReminder,
                     name: String(
@@ -360,7 +352,7 @@ struct ClaudeTranscriptBuilder {
                         defaultValue: "System reminder",
                         bundle: .module
                     ),
-                    timestamp: ts
+                    timeMarker: .clock(ts)
                 ),
                 body: .text([trimmed]),
                 subType: .systemReminder
@@ -414,12 +406,11 @@ struct ClaudeTranscriptBuilder {
             }
             ctx.entries.append(.system(SystemEntry(
                 id: .fromJSONL(id),
-                timestamp: ts,
                 header: Header(
                     icon: .planMode,
                     name: phaseName,
                     title: planBasename,
-                    timestamp: ts
+                    timeMarker: .clock(ts)
                 ),
                 body: .empty,
                 subType: .planMode(
@@ -434,7 +425,6 @@ struct ClaudeTranscriptBuilder {
             let snippet = line.attachment?.snippet
             ctx.entries.append(.system(SystemEntry(
                 id: .fromJSONL(id),
-                timestamp: ts,
                 header: Header(
                     icon: .editedTextFile,
                     name: String(
@@ -442,7 +432,7 @@ struct ClaudeTranscriptBuilder {
                         defaultValue: "External edit · \(basename)",
                         bundle: .module
                     ),
-                    timestamp: ts
+                    timeMarker: .clock(ts)
                 ),
                 body: snippet.map { Body.text([$0]) } ?? .empty,
                 subType: .editedTextFile(path: filename)
@@ -501,13 +491,12 @@ struct ClaudeTranscriptBuilder {
             : []
         return UserEntry(
             id: .fromJSONL(id),
-            timestamp: timestamp,
             header: Header(
                 icon: icon,
                 name: userRoleLabel(isQueued: wasQueued, isQueuedPending: isQueuedPending),
                 title: preview.isEmpty ? nil : preview,
                 trailing: trailing,
-                timestamp: timestamp
+                timeMarker: timestamp.map { .clock($0) }
             ),
             body: .text([text]),
             promptId: promptId,
@@ -524,13 +513,12 @@ struct ClaudeTranscriptBuilder {
             : []
         return UserEntry(
             id: .fromJSONL(p.id),
-            timestamp: p.timestamp,
             header: Header(
                 icon: .queuedUser,
                 name: userRoleLabel(isQueued: true, isQueuedPending: true),
                 title: preview.isEmpty ? nil : preview,
                 trailing: trailing,
-                timestamp: p.timestamp
+                timeMarker: p.timestamp.map { .clock($0) }
             ),
             body: .text([p.text]),
             promptId: nil,
@@ -580,8 +568,7 @@ struct ClaudeTranscriptBuilder {
             let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
             return SystemEntry(
                 id: .fromJSONL(line.stableId),
-                timestamp: line.timestamp,
-                header: Header(icon: .system, name: label, timestamp: line.timestamp),
+                header: Header(icon: .system, name: label, timeMarker: line.timestamp.map { .clock($0) }),
                 body: .text([trimmed]),
                 subType: .localCommand(input: trimmed)
             )
@@ -596,8 +583,7 @@ struct ClaudeTranscriptBuilder {
         let stripped = stripCommandOutputTags(raw)
         return SystemEntry(
             id: .fromJSONL(line.stableId),
-            timestamp: line.timestamp,
-            header: Header(icon: .system, name: label, timestamp: line.timestamp),
+            header: Header(icon: .system, name: label, timeMarker: line.timestamp.map { .clock($0) }),
             body: .text([stripped]),
             subType: .localCommand(input: stripped)
         )
@@ -619,8 +605,7 @@ struct ClaudeTranscriptBuilder {
         }
         return CompactEntry(
             id: .fromJSONL(line.stableId),
-            timestamp: line.timestamp,
-            header: Header(icon: .compact, name: label, timestamp: line.timestamp),
+            header: Header(icon: .compact, name: label, timeMarker: line.timestamp.map { .clock($0) }),
             body: .text([summary])
         )
     }
@@ -648,12 +633,11 @@ struct ClaudeTranscriptBuilder {
         )
         return SynthesizedEntry(
             id: .derived(parent: branch.branchRootUuid, kind: "branchLink"),
-            timestamp: timestamp,
             header: Header(
                 icon: .branchLink,
                 name: title,
                 title: subtitle,
-                timestamp: timestamp
+                timeMarker: .clock(timestamp)
             ),
             body: Body(sections: [.subentries(branchEntries)]),
             kind: .branchLink(
@@ -719,10 +703,10 @@ struct ClaudeTranscriptBuilder {
             for event in pending.subEntryEvents {
                 switch event {
                 case .thinking(let text, let ts, let id):
-                    subEntries.append(.thinking(ThinkingEntry(
+                    subEntries.append(.text(TextSubEntry(
+                        kind: .thinking,
                         id: id,
                         parentEntryID: parentEntryID,
-                        timestamp: ts ?? pending.startTime,
                         header: Header(
                             icon: .thinking,
                             name: String(
@@ -731,17 +715,17 @@ struct ClaudeTranscriptBuilder {
                                 bundle: .module
                             ),
                             trailing: [.wordCount("\(wordCount(text)) words")],
-                            timestamp: ts ?? pending.startTime
+                            timeMarker: .clock(ts ?? pending.startTime)
                         ),
                         body: Body(sections: [.text([text], style: .thinking)]),
                         wordCount: wordCount(text)
                     )))
                 case .assistantText(let text, let ts, let id):
                     let words = wordCount(text)
-                    subEntries.append(.assistantText(AssistantTextEntry(
+                    subEntries.append(.text(TextSubEntry(
+                        kind: .assistant,
                         id: id,
                         parentEntryID: parentEntryID,
-                        timestamp: ts ?? pending.lastTimestamp ?? pending.startTime,
                         header: Header(
                             icon: .assistantText,
                             name: String(
@@ -750,7 +734,7 @@ struct ClaudeTranscriptBuilder {
                                 bundle: .module
                             ),
                             trailing: [.wordCount("\(words) words")],
-                            timestamp: ts ?? pending.lastTimestamp ?? pending.startTime
+                            timeMarker: .clock(ts ?? pending.lastTimestamp ?? pending.startTime)
                         ),
                         body: Body(sections: [.text([text], style: .normal)]),
                         wordCount: words
@@ -772,16 +756,13 @@ struct ClaudeTranscriptBuilder {
                     subEntries.append(.tool(ToolEntry(
                         id: .fromJSONL(call.id),
                         parentEntryID: parentEntryID,
-                        timestamp: nil,
                         header: Header(
                             icon: .tool(named: call.name),
                             name: call.name,
                             title: call.summary,
-                            trailing: call.durationMs.map { [.duration("\($0) ms")] } ?? [],
-                            timestamp: nil
+                            timeMarker: call.durationMs.map { .duration($0) }
                         ),
                         body: Body(sections: sections),
-                        toolName: call.name,
                         status: status,
                         durationMs: call.durationMs,
                         subagentType: call.subagentType,
@@ -810,13 +791,12 @@ struct ClaudeTranscriptBuilder {
 
             entries.append(.agent(AgentEntry(
                 id: .fromJSONL(pending.id),
-                timestamp: pending.startTime,
                 header: Header(
                     icon: .agent,
                     name: agentLabel,
                     label: pending.model.flatMap(ClaudeModelNameMap.friendlyName(for:)),
                     trailing: trailing,
-                    timestamp: pending.startTime
+                    timeMarker: .clock(pending.startTime)
                 ),
                 body: Body(sections: bodySections),
                 usage: pending.usage,
@@ -842,23 +822,18 @@ struct ClaudeTranscriptBuilder {
             // is only present so Body.sections is uniform across all
             // entries.
             switch s {
-            case .thinking(let t):
+            case .text(let t):
+                let kindLabel = t.kind == .thinking ? "thinking" : "assistantText"
                 return .system(SystemEntry(
-                    id: t.id, timestamp: t.timestamp,
+                    id: t.id,
                     header: t.header, body: t.body,
-                    subType: .other("thinking")
+                    subType: .other(kindLabel)
                 ))
             case .tool(let t):
                 return .system(SystemEntry(
-                    id: t.id, timestamp: t.timestamp,
+                    id: t.id,
                     header: t.header, body: t.body,
                     subType: .other("tool")
-                ))
-            case .assistantText(let a):
-                return .system(SystemEntry(
-                    id: a.id, timestamp: a.timestamp,
-                    header: a.header, body: a.body,
-                    subType: .other("assistantText")
                 ))
             }
         }
@@ -900,12 +875,11 @@ struct ClaudeTranscriptBuilder {
                 let ts = line.timestamp ?? .distantPast
                 entries.append(.synthesized(SynthesizedEntry(
                     id: .derived(parent: branch.branchRootUuid, kind: "branchLink"),
-                    timestamp: ts,
                     header: Header(
                         icon: .branchLink,
                         name: title,
                         title: subtitle,
-                        timestamp: ts
+                        timeMarker: .clock(ts)
                     ),
                     body: Body(sections: [.subentries(branchEntries)]),
                     kind: .branchLink(

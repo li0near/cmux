@@ -12,6 +12,7 @@ extension AgentEntryView {
     ///     [title? (Theme.Row.summary, dim, middle-truncated)]
     ///     [Spacer]
     ///     [trailing pills (Theme.SubRow.meta, dim)]
+    ///     [timeMarker (e.g. "X ms" for tools)]
     ///
     /// Sub-entries thus render uniformly regardless of kind. The
     /// `extras` builder is for the rare per-kind affordances (today
@@ -26,6 +27,7 @@ extension AgentEntryView {
         name: String,
         title: String? = nil,
         trailing: [TrailingItem] = [],
+        timeMarker: TimeMarker? = nil,
         @ViewBuilder extras: () -> Extras = { EmptyView() }
     ) -> some View {
         HStack(spacing: Theme.Spacing.subRowIconText) {
@@ -51,6 +53,11 @@ extension AgentEntryView {
             ForEach(Array(trailing.enumerated()), id: \.offset) { _, item in
                 subEntryTrailingItem(item)
             }
+            if let timeMarker {
+                Text(timeMarker.displayString)
+                    .font(Theme.SubRow.meta)
+                    .foregroundStyle(palette.dim)
+            }
         }
         .padding(.leading, Theme.Indent.subRow)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -64,7 +71,6 @@ extension AgentEntryView {
     private func subEntryTrailingItem(_ item: TrailingItem) -> some View {
         switch item {
         case .text(let s),
-             .duration(let s),
              .wordCount(let s),
              .pill(let s):
             Text(s)

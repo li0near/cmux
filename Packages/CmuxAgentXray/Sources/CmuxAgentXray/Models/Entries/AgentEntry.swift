@@ -11,7 +11,6 @@ public import Foundation
 /// walk children uniformly via `body.sections` regardless of variant.
 public struct AgentEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
-    public let timestamp: Date?
     public let header: Header
     public let body: Body
 
@@ -46,7 +45,6 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
 
     public init(
         id: EntryID,
-        timestamp: Date?,
         header: Header,
         body: Body,
         usage: TokenUsage,
@@ -58,7 +56,6 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
         subEntries: [SubEntry] = []
     ) {
         self.id = id
-        self.timestamp = timestamp
         self.header = header
         self.body = body
         self.usage = usage
@@ -70,43 +67,45 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
         self.subEntries = subEntries
     }
 
-    /// Type-system-narrowed child kinds. These three variants only ever
+    /// Wall-clock timestamp of the turn's start, projected from
+    /// `header.timeMarker.clock`. Nil when the header has no clock
+    /// marker.
+    public var timestamp: Date? { header.timeMarker?.clockDate }
+
+    /// Type-system-narrowed child kinds. `.text` covers both thinking
+    /// and final assistant text (discriminated by `TextSubEntry.kind`);
+    /// `.tool` covers tool invocations. These two variants only ever
     /// appear inside an `AgentEntry` — they never exist as top-level
     /// transcript entries.
     public enum SubEntry: Identifiable, Equatable, Sendable {
-        case thinking(ThinkingEntry)
+        case text(TextSubEntry)
         case tool(ToolEntry)
-        case assistantText(AssistantTextEntry)
 
         public var id: EntryID {
             switch self {
-            case .thinking(let t):       return t.id
-            case .tool(let t):           return t.id
-            case .assistantText(let a):  return a.id
+            case .text(let t):  return t.id
+            case .tool(let t):  return t.id
             }
         }
 
         public var header: Header {
             switch self {
-            case .thinking(let t):       return t.header
-            case .tool(let t):           return t.header
-            case .assistantText(let a):  return a.header
+            case .text(let t):  return t.header
+            case .tool(let t):  return t.header
             }
         }
 
         public var body: Body {
             switch self {
-            case .thinking(let t):       return t.body
-            case .tool(let t):           return t.body
-            case .assistantText(let a):  return a.body
+            case .text(let t):  return t.body
+            case .tool(let t):  return t.body
             }
         }
 
         public var timestamp: Date? {
             switch self {
-            case .thinking(let t):       return t.timestamp
-            case .tool(let t):           return t.timestamp
-            case .assistantText(let a):  return a.timestamp
+            case .text(let t):  return t.timestamp
+            case .tool(let t):  return t.timestamp
             }
         }
     }
@@ -138,56 +137,59 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
 
 // MARK: - Sub-entry concrete types
 
-/// Common contract for the three concrete `AgentEntry.SubEntry`
-/// variants. Captures the fields every sub-entry surfaces — id,
-/// parent reference, timestamp, header, body — so callers that need
-/// the uniform shape can program against the protocol instead of
-/// switching on the enum.
-public protocol AgentSubEntry: Identifiable, Equatable, Sendable
-where ID == EntryID {
-    /// Stable id of this sub-entry. Within a single turn, ids are
-    /// unique across all sub-entry kinds.
-    var id: EntryID { get }
-    /// Id of the enclosing `AgentEntry` turn.
-    var parentEntryID: EntryID { get }
-    /// Wall-clock timestamp of the underlying JSONL line, when
-    /// available.
-    var timestamp: Date? { get }
-    /// Display header (icon, name, trailing pills).
-    var header: Header { get }
-    /// Renderable body (text section, optionally cap-truncated by
-    /// the view layer).
-    var body: Body { get }
-}
+/// `TextSubEntry` and `ToolEntry` carry the same shape — `id`,
+/// `parentEntryID`, `timestamp` (computed from `header.timeMarker`),
+/// `header`, `body` — but a protocol formalizing that contract bought
+/// nothing because the enum `AgentEntry.SubEntry` is the dispatch and
+/// equality surface (existentials don't synthesize Equatable). The two
+/// concrete types conform to `Identifiable, Equatable, Sendable`
+/// directly.
 
-/// Extended-thinking projection — one `thinking` content block inside an
-/// assistant message. Body holds the reasoning text in a single `.text`
-/// section with `style: .thinking`.
-public struct ThinkingEntry: AgentSubEntry {
+/// One assistant-side text block — either model "thinking" reasoning
+/// or an "assistant" response message. Both share the same shape; the
+/// `kind` enum drives per-kind chrome at the view layer (icon, color,
+/// italic flag, localized label) while the data model stays unified.
+///
+/// Multiple `TextSubEntry` sub-entries can appear in a single
+/// `AgentEntry`, interleaved with `ToolEntry` in JSONL arrival order.
+/// Body carries the text in a single `.text` section so the renderer
+/// caps it inline with the standard overflow link, identical to how
+/// tool input/result blocks are surfaced.
+public struct TextSubEntry: Identifiable, Equatable, Sendable {
+    /// Discriminator between thinking blocks and final assistant text
+    /// blocks. Drives view-layer styling without splitting the data
+    /// model.
+    public enum Kind: Equatable, Sendable {
+        case thinking
+        case assistant
+    }
+
+    public let kind: Kind
     public let id: EntryID
     public let parentEntryID: EntryID
-    public let timestamp: Date?
     public let header: Header
     public let body: Body
-    /// Word count of the thinking text — drives the trailing `N words`
-    /// pill on the sub-entry header.
+    /// Word count of the text — drives the trailing `N words` pill on
+    /// the sub-entry header.
     public let wordCount: Int
 
     public init(
+        kind: Kind,
         id: EntryID,
         parentEntryID: EntryID,
-        timestamp: Date?,
         header: Header,
         body: Body,
         wordCount: Int
     ) {
+        self.kind = kind
         self.id = id
         self.parentEntryID = parentEntryID
-        self.timestamp = timestamp
         self.header = header
         self.body = body
         self.wordCount = wordCount
     }
+
+    public var timestamp: Date? { header.timeMarker?.clockDate }
 }
 
 /// One tool invocation inside an assistant turn. Body normally carries
@@ -195,15 +197,12 @@ public struct ThinkingEntry: AgentSubEntry {
 /// sub-agent, the spawned transcript appears as a trailing
 /// `.subentries(...)` section. The renderer policy decides whether to
 /// surface the sub-transcript inline or as a link to a detail tab.
-public struct ToolEntry: AgentSubEntry {
+public struct ToolEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
     public let parentEntryID: EntryID
-    public let timestamp: Date?
     public let header: Header
     public let body: Body
 
-    /// Tool name as reported by the agent (e.g. "Read", "Bash").
-    public let toolName: String
     /// Three-state tool status. `pending` = awaiting result; `ok` =
     /// completed without error; `error` = result was an error.
     public let status: Status
@@ -219,10 +218,8 @@ public struct ToolEntry: AgentSubEntry {
     public init(
         id: EntryID,
         parentEntryID: EntryID,
-        timestamp: Date?,
         header: Header,
         body: Body,
-        toolName: String,
         status: Status,
         durationMs: Int? = nil,
         subagentType: String? = nil,
@@ -231,16 +228,24 @@ public struct ToolEntry: AgentSubEntry {
     ) {
         self.id = id
         self.parentEntryID = parentEntryID
-        self.timestamp = timestamp
         self.header = header
         self.body = body
-        self.toolName = toolName
         self.status = status
         self.durationMs = durationMs
         self.subagentType = subagentType
         self.teamMemberName = teamMemberName
         self.teamName = teamName
     }
+
+    /// Wall-clock timestamp, projected from `header.timeMarker.clock`.
+    /// Tools normally carry `.duration` instead, so this returns nil.
+    public var timestamp: Date? { header.timeMarker?.clockDate }
+
+    /// Tool name (e.g. "Read", "Bash"). The builder always sets
+    /// `header.name` to the JSONL `name` field for tool sub-entries —
+    /// this accessor surfaces it as a non-optional convenience for
+    /// detail-tab routing and the view layer.
+    public var toolName: String { header.name ?? "" }
 
     public enum Status: Equatable, Sendable {
         case pending, ok, error
@@ -253,22 +258,10 @@ public struct ToolEntry: AgentSubEntry {
     ///   sections[0]            — `.text([input], .normal)`
     ///   sections[1] (optional) — `.text([result], .normal/.error)`
     ///   trailing `.subentries` (optional) — sub-agent transcript
-    /// The accessors below project that convention into per-slot
-    /// values for detail-tab resolution and tests, without committing
-    /// to a new field on the struct.
-
-    /// Inline text content for the tool's input slot.
-    public var inputDetail: String? {
-        guard case .text(let blocks, _) = body.sections.first else { return nil }
-        return blocks.joined(separator: "\n")
-    }
-
-    /// Inline text content for the tool's result slot, if any.
-    public var resultDetail: String? {
-        guard body.sections.count >= 2,
-              case .text(let blocks, _) = body.sections[1] else { return nil }
-        return blocks.joined(separator: "\n")
-    }
+    ///
+    /// The renderer walks `body.sections` directly and applies each
+    /// section's `TextStyle` automatically — no per-section accessors
+    /// are needed. The builder owns the convention; consumers iterate.
 
     /// Sub-agent transcript carried on the tool, if any. Walks
     /// `body.sections` for the first `.subentries(...)` payload.
@@ -280,36 +273,5 @@ public struct ToolEntry: AgentSubEntry {
     }
 }
 
-/// One assistant-text block from a turn — projection of a `text`
-/// content block inside an assistant message. Multiple `AssistantTextEntry`
-/// sub-entries can appear in a single `AgentEntry`, interleaved with
-/// `ThinkingEntry` and `ToolEntry` in JSONL arrival order. Body carries
-/// the text in a single `.text` section so the renderer caps it inline
-/// with the standard overflow link, identical to how tool input/result
-/// blocks are surfaced.
-public struct AssistantTextEntry: AgentSubEntry {
-    public let id: EntryID
-    public let parentEntryID: EntryID
-    public let timestamp: Date?
-    public let header: Header
-    public let body: Body
-    /// Word count of the text — drives the trailing `N words` pill on
-    /// the sub-entry header.
-    public let wordCount: Int
-
-    public init(
-        id: EntryID,
-        parentEntryID: EntryID,
-        timestamp: Date?,
-        header: Header,
-        body: Body,
-        wordCount: Int
-    ) {
-        self.id = id
-        self.parentEntryID = parentEntryID
-        self.timestamp = timestamp
-        self.header = header
-        self.body = body
-        self.wordCount = wordCount
-    }
-}
+// (`AssistantTextEntry` and `ThinkingEntry` are gone — use
+//  `TextSubEntry(kind: .assistant, ...)` and `TextSubEntry(kind: .thinking, ...)`.)

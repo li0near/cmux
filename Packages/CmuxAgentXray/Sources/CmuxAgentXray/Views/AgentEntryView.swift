@@ -87,12 +87,10 @@ public struct AgentEntryView: View {
     @ViewBuilder
     private func subEntrySection(sub: AgentEntry.SubEntry) -> some View {
         switch sub {
-        case .thinking(let t):
-            thinkingSection(thinking: t)
+        case .text(let t):
+            textSection(text: t)
         case .tool(let tool):
             toolSection(tool: tool)
-        case .assistantText(let a):
-            assistantTextSection(assistantText: a)
         }
     }
 }

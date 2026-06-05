@@ -5,7 +5,6 @@ public import Foundation
 /// (e.g., a queue marker with no visible content).
 public struct UserEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
-    public let timestamp: Date?
     public let header: Header
     public let body: Body
 
@@ -22,7 +21,6 @@ public struct UserEntry: Identifiable, Equatable, Sendable {
 
     public init(
         id: EntryID,
-        timestamp: Date?,
         header: Header,
         body: Body,
         promptId: String? = nil,
@@ -30,11 +28,15 @@ public struct UserEntry: Identifiable, Equatable, Sendable {
         isQueuedPending: Bool = false
     ) {
         self.id = id
-        self.timestamp = timestamp
         self.header = header
         self.body = body
         self.promptId = promptId
         self.wasQueued = wasQueued
         self.isQueuedPending = isQueuedPending
     }
+
+    /// Wall-clock timestamp of this entry, projected from the header's
+    /// `timeMarker.clock` payload. Nil when the header has no clock
+    /// marker.
+    public var timestamp: Date? { header.timeMarker?.clockDate }
 }

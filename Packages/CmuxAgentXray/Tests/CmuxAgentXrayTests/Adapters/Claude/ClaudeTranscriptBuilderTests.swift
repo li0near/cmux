@@ -50,7 +50,6 @@ struct ClaudeTranscriptBuilderTests {
             Issue.record("No AgentEntry in transcript")
             return AgentEntry(
                 id: .fromJSONL("missing"),
-                timestamp: nil,
                 header: Header(),
                 body: .empty,
                 usage: .zero
@@ -139,9 +138,10 @@ struct ClaudeTranscriptBuilderTests {
 
         let kinds: [String] = agent.subEntries.map { sub in
             switch sub {
-            case .thinking:       return "thinking"
-            case .tool:           return "tool"
-            case .assistantText:  return "assistantText"
+            case .text(let t):
+                return t.kind == .thinking ? "thinking" : "assistantText"
+            case .tool:
+                return "tool"
             }
         }
         #expect(kinds == ["assistantText", "tool", "assistantText", "tool", "assistantText"])
@@ -158,7 +158,7 @@ struct ClaudeTranscriptBuilderTests {
         #expect(agent.subEntries.count == 3)
 
         let thinkingCount = agent.subEntries.filter {
-            if case .thinking = $0 { return true }
+            if case .text(let t) = $0, t.kind == .thinking { return true }
             return false
         }.count
         #expect(thinkingCount == 2)
@@ -177,9 +177,10 @@ struct ClaudeTranscriptBuilderTests {
         let agent = try buildAgentEntry(assistantLines: lines)
         let kinds: [String] = agent.subEntries.map { sub in
             switch sub {
-            case .thinking:       return "thinking"
-            case .tool:           return "tool"
-            case .assistantText:  return "assistantText"
+            case .text(let t):
+                return t.kind == .thinking ? "thinking" : "assistantText"
+            case .tool:
+                return "tool"
             }
         }
         #expect(kinds == ["thinking", "assistantText", "tool", "thinking", "assistantText", "tool"])

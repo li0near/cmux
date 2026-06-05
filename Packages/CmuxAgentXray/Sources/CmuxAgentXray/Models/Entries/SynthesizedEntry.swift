@@ -9,24 +9,23 @@ public import Foundation
 ///   body is empty; click opens the PR URL externally.
 public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
-    public let timestamp: Date?
     public let header: Header
     public let body: Body
     public let kind: Kind
 
     public init(
         id: EntryID,
-        timestamp: Date?,
         header: Header,
         body: Body,
         kind: Kind
     ) {
         self.id = id
-        self.timestamp = timestamp
         self.header = header
         self.body = body
         self.kind = kind
     }
+
+    public var timestamp: Date? { header.timeMarker?.clockDate }
 
     /// Closed enum over the cmux-invented row kinds. New synthesized
     /// rows land here.

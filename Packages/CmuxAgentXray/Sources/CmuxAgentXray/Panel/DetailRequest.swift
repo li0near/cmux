@@ -6,15 +6,13 @@
 ///
 /// Cases follow the panel's content surfaces; payloads carry the entry
 /// id (and sub-entry id where required) needed to look up the entry in
-/// the live stream. `thinking` and `assistantResponse` carry both the
-/// parent agent-turn id (for entry lookup) and the specific sub-entry
-/// id (because a single turn now contains multiple of each, interleaved
-/// with tools).
+/// the live stream. `textBlock` covers both thinking and assistant
+/// text sub-entries (a single turn now contains multiple of either,
+/// interleaved with tools).
 public enum DetailRequest: Equatable, Sendable {
     case userPrompt(entryID: String)
-    case thinking(entryID: String, subEntryID: String)
+    case textBlock(entryID: String, subEntryID: String)
     case systemOutput(entryID: String)
-    case assistantResponse(entryID: String, subEntryID: String)
     case skillBody(entryID: String)
     case slashCommandBody(entryID: String)
     case systemReminderBody(entryID: String)
@@ -41,8 +39,7 @@ public enum DetailRequest: Equatable, Sendable {
              .systemReminderBody(let id),
              .recapBody(let id):
             return id
-        case .thinking(let id, _),
-             .assistantResponse(let id, _):
+        case .textBlock(let id, _):
             return id
         case .toolInput(let id, _),
              .toolResult(let id, _),

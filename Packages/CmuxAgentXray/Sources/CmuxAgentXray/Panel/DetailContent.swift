@@ -93,26 +93,28 @@ extension DetailContent {
                 kind: .userPrompt
             )
 
-        case .thinking(let id, let subEntryID):
+        case .textBlock(let id, let subEntryID):
             guard case .agent(let turn) = entry, turn.id.stableString == id else { return nil }
-            var thinkingBody: String?
+            var matched: TextSubEntry?
             for sub in turn.subEntries {
-                if case .thinking(let t) = sub, t.id.stableString == subEntryID {
-                    thinkingBody = t.body.textContent
+                if case .text(let t) = sub, t.id.stableString == subEntryID {
+                    matched = t
                     break
                 }
             }
-            guard let body = thinkingBody else { return nil }
+            guard let text = matched else { return nil }
+            let body = text.body.textContent
             guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let isThinking = text.kind == .thinking
             return DetailContent(
                 title: localized(
-                    "agentXray.detail.title.thinking",
-                    defaultValue: "Thinking"
+                    isThinking ? "agentXray.detail.title.thinking" : "agentXray.detail.title.assistantResponse",
+                    defaultValue: isThinking ? "Thinking" : "Assistant response"
                 ),
                 subtitle: subtitleLines(timestamp, lineCount: lineCount(body)),
                 body: body,
                 sourceEntryID: id,
-                kind: .thinking
+                kind: isThinking ? .thinking : .assistantResponse
             )
 
         case .systemOutput(let id):
@@ -134,7 +136,7 @@ extension DetailContent {
             guard case .agent(let turn) = entry,
                   turn.id.stableString == entryID,
                   let tool = turn.subEntries.toolEntry(withID: toolID),
-                  let inputDetail = tool.inputDetail else { return nil }
+                  let inputDetail = sectionText(tool.body, index: 0) else { return nil }
             guard !inputDetail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return DetailContent(
                 title: localized(
@@ -151,7 +153,7 @@ extension DetailContent {
             guard case .agent(let turn) = entry,
                   turn.id.stableString == entryID,
                   let tool = turn.subEntries.toolEntry(withID: toolID),
-                  let resultDetail = tool.resultDetail else { return nil }
+                  let resultDetail = sectionText(tool.body, index: 1) else { return nil }
             guard !resultDetail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return DetailContent(
                 title: localized(
@@ -165,28 +167,6 @@ extension DetailContent {
                     toolName: tool.toolName,
                     isError: tool.status == .error
                 )
-            )
-
-        case .assistantResponse(let id, let subEntryID):
-            guard case .agent(let turn) = entry, turn.id.stableString == id else { return nil }
-            var assistantBody: String?
-            for sub in turn.subEntries {
-                if case .assistantText(let a) = sub, a.id.stableString == subEntryID {
-                    assistantBody = a.body.textContent
-                    break
-                }
-            }
-            guard let body = assistantBody else { return nil }
-            guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            return DetailContent(
-                title: localized(
-                    "agentXray.detail.title.assistantResponse",
-                    defaultValue: "Assistant response"
-                ),
-                subtitle: subtitleLines(timestamp, lineCount: lineCount(body)),
-                body: body,
-                sourceEntryID: id,
-                kind: .assistantResponse
             )
 
         case .abandonedBranch(let branchRootUuid):
@@ -331,6 +311,15 @@ extension DetailContent {
 
     private static func lineCount(_ s: String) -> Int {
         s.split(separator: "\n", omittingEmptySubsequences: false).count
+    }
+
+    /// Concatenated text of a `Body`'s `.text` section at `index`,
+    /// joined by `\n`. Returns nil if the section doesn't exist or
+    /// isn't a text section.
+    private static func sectionText(_ body: Body, index: Int) -> String? {
+        guard index >= 0, index < body.sections.count,
+              case .text(let blocks, _) = body.sections[index] else { return nil }
+        return blocks.joined(separator: "\n")
     }
 
     /// Subtitle template `"from HH:mm:ss"`.
