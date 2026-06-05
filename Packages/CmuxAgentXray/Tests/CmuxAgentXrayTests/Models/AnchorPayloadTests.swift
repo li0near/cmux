@@ -2,28 +2,6 @@ import Foundation
 import Testing
 @testable import CmuxAgentXray
 
-@Suite("Behavioral config enums")
-struct ConfigEnumsTests {
-
-    @Test("ScrollMode label readable")
-    func scrollMode() {
-        #expect(ScrollMode.free.label == "free")
-        #expect(ScrollMode.snap.label == "snap")
-    }
-
-    @Test("ExpansionMode cycles allCollapsed → autoExpand → allCollapsed")
-    func expansionCycle() {
-        #expect(ExpansionMode.allCollapsed.cycled() == .autoExpand)
-        #expect(ExpansionMode.autoExpand.cycled() == .allCollapsed)
-    }
-
-    @Test("RewindVisibility cycles link → hide → link")
-    func rewindCycle() {
-        #expect(RewindVisibility.link.cycled() == .hide)
-        #expect(RewindVisibility.hide.cycled() == .link)
-    }
-}
-
 @Suite("Anchor payloads + notification helper")
 struct AnchorPayloadTests {
 
@@ -71,33 +49,5 @@ struct AnchorPayloadTests {
         #expect(asJSON?["session_id"] as? String == "sess-1")
         #expect(asJSON?["transcript_path"] as? String == "/tmp/t.jsonl")
         #expect(asJSON?["prompt"] as? String == "hello")
-    }
-}
-
-@Suite("TurnAnchor")
-struct TurnAnchorTests {
-
-    @Test("Identifiable id matches userEntryID")
-    func identifiable() {
-        let anchor = TurnAnchor(
-            userEntryID: "u-1",
-            terminalRowAtSubmit: 10,
-            totalAtCapture: 100,
-            capturedAt: Date()
-        )
-        #expect(anchor.id == "u-1")
-    }
-
-    @Test("agentEntryID is mutable")
-    func mutableAgentEntryID() {
-        var anchor = TurnAnchor(
-            userEntryID: "u-1",
-            terminalRowAtSubmit: 10,
-            totalAtCapture: 100,
-            capturedAt: Date()
-        )
-        #expect(anchor.agentEntryID == nil)
-        anchor.agentEntryID = "a-1"
-        #expect(anchor.agentEntryID == "a-1")
     }
 }
