@@ -230,7 +230,7 @@ public struct TranscriptView: View {
                 firstPromptPreview: firstPromptPreview,
                 palette: palette,
                 onOpenDetail: {
-                    panel.openDetail(request: .abandonedBranch(branchRootUuid: rootUUID))
+                    panel.openDetail(request: .bodySection(targetID: rootUUID, sectionIndex: 0))
                 }
             )
             .id(entry.id.stableString)
@@ -267,33 +267,24 @@ public struct TranscriptView: View {
         .id(entryID)
     }
 
-    /// Per-kind detail surface mapping. Drives the "↗ Open detail"
-    /// link rendered by `EntryBodyView` when an entry's inline body
-    /// overflows its caps. Returns nil for entries that have no
-    /// detail surface (e.g. PR-link external URL — opening is
-    /// handled separately).
+    /// Default detail-tab routing for entries whose body has a single
+    /// section the renderer treats as the canonical "open detail"
+    /// surface. Tools / text sub-entries route per-section from inside
+    /// `AgentEntryView+*` instead. Returns nil for entries with no
+    /// such surface (PR-link external URL, agent-turn header).
     private func defaultDetailRequest(for entry: Entry) -> DetailRequest? {
         let id = entry.id.stableString
         switch entry {
-        case .user:
-            return .userPrompt(entryID: id)
-        case .system(let sys):
-            switch sys.subType {
-            case .skill:           return .skillBody(entryID: id)
-            case .systemReminder:  return .systemReminderBody(entryID: id)
-            case .recap:           return .recapBody(entryID: id)
-            case .slashCmdInput,
-                 .slashCmdOutput:  return .slashCommandBody(entryID: id)
-            case .localCommand,
-                 .contextUsage,
-                 .planMode,
-                 .editedTextFile,
-                 .other:
-                return .systemOutput(entryID: id)
+        case .user, .system, .compact:
+            return .bodySection(targetID: id, sectionIndex: 0)
+        case .synthesized(let s):
+            switch s.kind {
+            case .branchLink:
+                return .bodySection(targetID: id, sectionIndex: 0)
+            case .prLink:
+                return nil
             }
-        case .compact:
-            return .systemOutput(entryID: id)
-        case .synthesized, .agent:
+        case .agent:
             return nil
         }
     }

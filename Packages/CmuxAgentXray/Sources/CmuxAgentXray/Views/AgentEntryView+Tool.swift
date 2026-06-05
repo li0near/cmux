@@ -61,17 +61,10 @@ extension AgentEntryView {
 
             if isExpanded {
                 cappedBody(tool.body) { sectionIndex in
-                    if sectionIndex == 0 {
-                        onOpenDetail(.toolInput(
-                            entryID: parentEntryIDString(of: tool),
-                            toolEntryID: tool.id.stableString
-                        ))
-                    } else {
-                        onOpenDetail(.toolResult(
-                            entryID: parentEntryIDString(of: tool),
-                            toolEntryID: tool.id.stableString
-                        ))
-                    }
+                    onOpenDetail(.bodySection(
+                        targetID: tool.id.stableString,
+                        sectionIndex: sectionIndex
+                    ))
                 }
                 .padding(.leading, Theme.Indent.nestedSubRow)
             }

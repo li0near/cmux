@@ -38,10 +38,10 @@ extension AgentEntryView {
             .hoverHighlight(palette: palette)
 
             if isExpanded {
-                cappedBody(text.body) { _ in
-                    onOpenDetail(.textBlock(
-                        entryID: text.parentEntryID.stableString,
-                        subEntryID: key
+                cappedBody(text.body) { sectionIndex in
+                    onOpenDetail(.bodySection(
+                        targetID: text.id.stableString,
+                        sectionIndex: sectionIndex
                     ))
                 }
                 .padding(.leading, Theme.Indent.nestedSubRow)

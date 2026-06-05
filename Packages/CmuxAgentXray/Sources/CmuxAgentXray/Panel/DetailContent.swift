@@ -67,16 +67,49 @@ extension DetailContent {
 
     /// Build a `DetailContent` from a `DetailRequest` and the source
     /// `Entry` looked up in the live transcript. Returns nil when the
-    /// request can't be resolved (entry-variant mismatch, missing tool
-    /// id, empty content slice).
+    /// request can't be resolved (target id miss, missing section).
+    /// `targetID` may identify either the top-level entry itself or
+    /// one of its agent-turn sub-entries; the resolver classifies
+    /// per-kind from the matched entry's variant + section index.
     public static func resolve(
         request: DetailRequest,
         entry: Entry
     ) -> DetailContent? {
         let timestamp = formatTimestamp(entry.timestamp)
         switch request {
-        case .userPrompt(let id):
-            guard case .user(let user) = entry, user.id.stableString == id else { return nil }
+        case .bodySection(let targetID, let sectionIndex):
+            // Top-level entry — addressable by its own id.
+            if entry.id.stableString == targetID {
+                return resolveTopLevel(
+                    entry,
+                    sectionIndex: sectionIndex,
+                    timestamp: timestamp
+                )
+            }
+            // Agent sub-entry — addressable by its derived id.
+            if case .agent(let turn) = entry {
+                for sub in turn.subEntries where sub.id.stableString == targetID {
+                    return resolveSubEntry(
+                        sub,
+                        sectionIndex: sectionIndex,
+                        timestamp: timestamp
+                    )
+                }
+            }
+            return nil
+        }
+    }
+
+    /// Resolve a `.bodySection` request whose target is a top-level
+    /// `Entry`. The variant + section combine to pick the
+    /// `DetailContent.Kind`.
+    private static func resolveTopLevel(
+        _ entry: Entry,
+        sectionIndex: Int,
+        timestamp: String
+    ) -> DetailContent? {
+        switch entry {
+        case .user(let user):
             let body = user.body.textContent
             guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return DetailContent(
@@ -89,37 +122,15 @@ extension DetailContent {
                     defaultValue: "from \(timestamp) · \(body.count) chars"
                 ),
                 body: body,
-                sourceEntryID: id,
+                sourceEntryID: user.id.stableString,
                 kind: .userPrompt
             )
 
-        case .textBlock(let id, let subEntryID):
-            guard case .agent(let turn) = entry, turn.id.stableString == id else { return nil }
-            var matched: TextSubEntry?
-            for sub in turn.subEntries {
-                if case .text(let t) = sub, t.id.stableString == subEntryID {
-                    matched = t
-                    break
-                }
-            }
-            guard let text = matched else { return nil }
-            let body = text.body.textContent
-            guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            let isThinking = text.kind == .thinking
-            return DetailContent(
-                title: localized(
-                    isThinking ? "agentXray.detail.title.thinking" : "agentXray.detail.title.assistantResponse",
-                    defaultValue: isThinking ? "Thinking" : "Assistant response"
-                ),
-                subtitle: subtitleLines(timestamp, lineCount: lineCount(body)),
-                body: body,
-                sourceEntryID: id,
-                kind: isThinking ? .thinking : .assistantResponse
-            )
+        case .system(let sys):
+            return resolveSystem(sys, timestamp: timestamp)
 
-        case .systemOutput(let id):
-            guard case .system(let sys) = entry, sys.id.stableString == id else { return nil }
-            let body = sys.body.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .compact(let c):
+            let body = c.body.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !body.isEmpty else { return nil }
             return DetailContent(
                 title: localized(
@@ -128,57 +139,18 @@ extension DetailContent {
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
                 body: body,
-                sourceEntryID: id,
+                sourceEntryID: c.id.stableString,
                 kind: .systemOutput
             )
 
-        case .toolInput(let entryID, let toolID):
-            guard case .agent(let turn) = entry,
-                  turn.id.stableString == entryID,
-                  let tool = turn.subEntries.toolEntry(withID: toolID),
-                  let inputDetail = sectionText(tool.body, index: 0) else { return nil }
-            guard !inputDetail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            return DetailContent(
-                title: localized(
-                    "agentXray.detail.title.toolInput",
-                    defaultValue: "Tool input · \(tool.toolName)"
-                ),
-                subtitle: subtitleFromTimestamp(timestamp),
-                body: inputDetail,
-                sourceEntryID: entryID,
-                kind: .toolInput(toolName: tool.toolName)
-            )
-
-        case .toolResult(let entryID, let toolID):
-            guard case .agent(let turn) = entry,
-                  turn.id.stableString == entryID,
-                  let tool = turn.subEntries.toolEntry(withID: toolID),
-                  let resultDetail = sectionText(tool.body, index: 1) else { return nil }
-            guard !resultDetail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            return DetailContent(
-                title: localized(
-                    "agentXray.detail.title.toolResult",
-                    defaultValue: "Tool result · \(tool.toolName)"
-                ),
-                subtitle: subtitleFromTimestamp(timestamp),
-                body: resultDetail,
-                sourceEntryID: entryID,
-                kind: .toolResult(
-                    toolName: tool.toolName,
-                    isError: tool.status == .error
-                )
-            )
-
-        case .abandonedBranch(let branchRootUuid):
-            guard case .synthesized(let s) = entry,
-                  case .branchLink(
-                    let rootUuid,
-                    let rewindIndex,
-                    let totalRewinds,
-                    let entryCount,
-                    let firstPromptPreview
-                  ) = s.kind,
-                  rootUuid == branchRootUuid else { return nil }
+        case .synthesized(let s):
+            guard case .branchLink(
+                let rootUuid,
+                let rewindIndex,
+                let totalRewinds,
+                let entryCount,
+                let firstPromptPreview
+            ) = s.kind else { return nil }
             let preview = firstPromptPreview ?? localized(
                 "agentXray.detail.body.noPromptPreview",
                 defaultValue: "(no prompt preview)"
@@ -193,7 +165,7 @@ extension DetailContent {
                     defaultValue: "\(entryCount) entries · diverged at \(timestamp)"
                 ),
                 body: preview,
-                sourceEntryID: branchRootUuid,
+                sourceEntryID: rootUuid,
                 kind: .abandonedBranch(
                     rewindIndex: rewindIndex,
                     totalRewinds: totalRewinds
@@ -201,35 +173,21 @@ extension DetailContent {
                 entries: s.body.subentriesContent.isEmpty ? nil : s.body.subentriesContent
             )
 
-        case .subagentTranscript(let entryID, let toolID):
-            guard case .agent(let turn) = entry,
-                  turn.id.stableString == entryID,
-                  let tool = turn.subEntries.toolEntry(withID: toolID),
-                  let transcript = tool.sidechainTranscript,
-                  !transcript.isEmpty else { return nil }
-            return DetailContent(
-                title: localized(
-                    "agentXray.detail.title.subagentTranscript",
-                    defaultValue: "Sub-agent transcript · \(tool.toolName)"
-                ),
-                subtitle: localized(
-                    "agentXray.detail.subtitle.subagentTranscript",
-                    defaultValue: "from \(timestamp) · \(transcript.count) entries"
-                ),
-                body: "",
-                sourceEntryID: entryID,
-                kind: .subagentTranscript(
-                    toolName: tool.toolName,
-                    subagentType: tool.subagentType
-                ),
-                entries: transcript
-            )
+        case .agent:
+            // AgentEntry's body is `.subentries(...)` only — its
+            // detail is reached via individual sub-entries, not a
+            // top-level open.
+            return nil
+        }
+    }
 
-        case .skillBody(let id):
-            guard case .system(let sys) = entry,
-                  sys.id.stableString == id,
-                  case .skill(let name, let basePath) = sys.subType else { return nil }
-            let body = sys.body.textContent
+    private static func resolveSystem(
+        _ sys: SystemEntry,
+        timestamp: String
+    ) -> DetailContent? {
+        let id = sys.id.stableString
+        switch sys.subType {
+        case .skill(let name, let basePath):
             return DetailContent(
                 title: localized(
                     "agentXray.detail.title.skill",
@@ -239,15 +197,11 @@ extension DetailContent {
                     "agentXray.detail.subtitle.skill",
                     defaultValue: "from \(timestamp) · \(basePath ?? "")"
                 ),
-                body: body,
+                body: sys.body.textContent,
                 sourceEntryID: id,
                 kind: .skillBody(skillName: name)
             )
-
-        case .slashCommandBody(let id):
-            guard case .system(let sys) = entry,
-                  sys.id.stableString == id,
-                  case .slashCmdInput(let name, let args) = sys.subType else { return nil }
+        case .slashCmdInput(let name, let args):
             let body = args ?? ""
             guard !body.isEmpty else { return nil }
             return DetailContent(
@@ -260,37 +214,131 @@ extension DetailContent {
                 sourceEntryID: id,
                 kind: .slashCommandBody(commandName: name)
             )
-
-        case .systemReminderBody(let id):
-            guard case .system(let sys) = entry,
-                  sys.id.stableString == id,
-                  case .systemReminder = sys.subType else { return nil }
-            let body = sys.body.textContent
+        case .slashCmdOutput:
+            let body = sys.body.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !body.isEmpty else { return nil }
+            return DetailContent(
+                title: localized(
+                    "agentXray.detail.title.slashCommand",
+                    defaultValue: "Slash command output"
+                ),
+                subtitle: subtitleFromTimestamp(timestamp),
+                body: body,
+                sourceEntryID: id,
+                kind: .slashCommandBody(commandName: "")
+            )
+        case .systemReminder:
             return DetailContent(
                 title: localized(
                     "agentXray.detail.title.systemReminder",
                     defaultValue: "System reminder"
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
-                body: body,
+                body: sys.body.textContent,
                 sourceEntryID: id,
                 kind: .systemReminderBody
             )
-
-        case .recapBody(let id):
-            guard case .system(let sys) = entry,
-                  sys.id.stableString == id,
-                  case .recap = sys.subType else { return nil }
-            let body = sys.body.textContent
+        case .recap:
             return DetailContent(
                 title: localized(
                     "agentXray.detail.title.recap",
                     defaultValue: "Recap"
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
-                body: body,
+                body: sys.body.textContent,
                 sourceEntryID: id,
                 kind: .recapBody
+            )
+        case .localCommand, .contextUsage, .planMode, .editedTextFile, .other:
+            let body = sys.body.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !body.isEmpty else { return nil }
+            return DetailContent(
+                title: localized(
+                    "agentXray.detail.title.systemOutput",
+                    defaultValue: "System output"
+                ),
+                subtitle: subtitleFromTimestamp(timestamp),
+                body: body,
+                sourceEntryID: id,
+                kind: .systemOutput
+            )
+        }
+    }
+
+    /// Resolve a `.bodySection` request whose target is one of an
+    /// agent turn's sub-entries (text or tool). The sub-entry kind +
+    /// `sectionIndex` combine to pick the `DetailContent.Kind`.
+    private static func resolveSubEntry(
+        _ sub: AgentEntry.SubEntry,
+        sectionIndex: Int,
+        timestamp: String
+    ) -> DetailContent? {
+        switch sub {
+        case .text(let text):
+            let body = text.body.textContent
+            guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let isThinking = text.kind == .thinking
+            return DetailContent(
+                title: localized(
+                    isThinking ? "agentXray.detail.title.thinking" : "agentXray.detail.title.assistantResponse",
+                    defaultValue: isThinking ? "Thinking" : "Assistant response"
+                ),
+                subtitle: subtitleLines(timestamp, lineCount: lineCount(body)),
+                body: body,
+                sourceEntryID: text.id.stableString,
+                kind: isThinking ? .thinking : .assistantResponse
+            )
+
+        case .tool(let tool):
+            // Section 0 = input, 1 = result text, 2+ = sub-agent
+            // transcript (`.subentries`).
+            if sectionIndex == 2 || (sectionIndex == 1 && tool.body.sections.count >= 3) {
+                guard let transcript = tool.sidechainTranscript,
+                      !transcript.isEmpty else { return nil }
+                return DetailContent(
+                    title: localized(
+                        "agentXray.detail.title.subagentTranscript",
+                        defaultValue: "Sub-agent transcript · \(tool.toolName)"
+                    ),
+                    subtitle: localized(
+                        "agentXray.detail.subtitle.subagentTranscript",
+                        defaultValue: "from \(timestamp) · \(transcript.count) entries"
+                    ),
+                    body: "",
+                    sourceEntryID: tool.id.stableString,
+                    kind: .subagentTranscript(
+                        toolName: tool.toolName,
+                        subagentType: tool.subagentType
+                    ),
+                    entries: transcript
+                )
+            }
+            guard let text = sectionText(tool.body, index: sectionIndex) else { return nil }
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            if sectionIndex == 0 {
+                return DetailContent(
+                    title: localized(
+                        "agentXray.detail.title.toolInput",
+                        defaultValue: "Tool input · \(tool.toolName)"
+                    ),
+                    subtitle: subtitleFromTimestamp(timestamp),
+                    body: text,
+                    sourceEntryID: tool.id.stableString,
+                    kind: .toolInput(toolName: tool.toolName)
+                )
+            }
+            return DetailContent(
+                title: localized(
+                    "agentXray.detail.title.toolResult",
+                    defaultValue: "Tool result · \(tool.toolName)"
+                ),
+                subtitle: subtitleFromTimestamp(timestamp),
+                body: text,
+                sourceEntryID: tool.id.stableString,
+                kind: .toolResult(
+                    toolName: tool.toolName,
+                    isError: tool.status == .error
+                )
             )
         }
     }
