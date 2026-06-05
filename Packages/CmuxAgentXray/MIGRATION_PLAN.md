@@ -32,6 +32,7 @@ after every phase completes so a fresh session can resume mid-migration.
 | 17b AttachStage feature | ✅ done | `agentxray` @ 17b commit | New `Models/AttachStage.swift` (6-case enum: idle / awaitingSession / sessionHooked / locatingTranscript / streamingNoEntries / streaming(turnCount:, tokenTotal:)) with `derive(resolvedSession:entries:)` static. `StatusBarView` rewired for 3-color glyph precedence (red / yellow / green) per `VISUAL_PASS_REVIEW.md` §1: red on `stream.error != nil` or `.idle` / `.awaitingSession`; yellow on `.sessionHooked` / `.locatingTranscript` / `.streamingNoEntries`; green on `.streaming(...)`. Stream-error message overrides title text. New xcstrings keys: `agentXray.statusBar.{detached,attached,sessionHooked,locatingTranscript,streamingNoEntries,streamError}`. Today only `idle` / `streamingNoEntries` / `streaming` are derived; intermediate stages are reserved for future attach lifecycle instrumentation. |
 | 17c Behavioural correctness batch | ✅ done | `agentxray` @ 17c commit | All 12 items in `PARITY_PUNCH_LIST.md` Group 1 ✅. New in `TranscriptView`: `EntryAnchorsKey` PreferenceKey (per-entry `Anchor<CGRect>` aggregation) + `@State currentTopVisibleID` + `handleEntryAnchorsChange` GeometryProxy resolver; `ScrollViewReader`-wrapped scroll-routing helpers (`scrollForFilter` / `scrollTarget`); `.onChange(of: panel.entriesFilter)` → snap-only scroll, `.onChange(of: panel.resolvedSession?.sessionID)` → tail-snap on session change, `.onChange(of: panel.bulkState)` arms (`.expand` materialize-kick scrolls to `currentTopVisibleID` inside a `.disablesAnimations` transaction; `.collapse` clamps via `scrollForFilter`); inner-VStack wrapper `.id("cmux-agentxray-layout-\(layoutRevision)")` for collapse-outcome remount; boundary-id'd zero-height `Color.clear` markers before each user entry (`beforeTurnBoundaryID`) and at the tail (`tailBoundaryID(for:)`) — predecessor parity (no visible hairline). Detail-mode rendering: when `DetailContent.entries` non-nil, render via `EntryView` rows in `.fullDetail` mode (abandoned-branch / sub-agent transcripts). `triggerFlash` gate added on cmux-app side at `AgentXrayPanelHost.triggerFlash` (`NotificationPaneFlashSettings.isEnabled()` early-return, matching every other cmux panel). Verified parity for already-present items: DetailRequest 12-case enum (1.8), `pendingClaudeAnchorsBySessionID` queue + drain (1.10), `applyModeFlip` asymmetry (1.12). |
 | 17d Forward-looking deferrals beyond parity | ✅ swept | rolled up | F (branchLink defaultValue alignment) ✅ done; H (AsyncStream focus pipeline / Phase 12) ✅ done. PARITY Groups 3/4/5 audit pass: Group 3 (15 items) → all ✅ (color rules + nestedSubRow indent fixed; rest within tolerance), Group 4 (4 items) → all ✅ (kind-glyph header + Kind→glyph mapping added), Group 5 (6 items) → all ✅. Items A (TextStyle diff cases) / B (inline sub-agent transcripts) / C (ToolEntry shape evolution) / G (xcstrings SPM-build-time pre-compile) explicitly stay deferred — speculative future work or build-tooling investment without a current consumer (per CLAUDE.md "don't pre-solve hypothetical future requirements"). |
+| 18 Dogfood: session-attach + host-adapter overhaul | ✅ done | `agentxray` @ `1c49bdf29` … `e12028d9b` (8 commits) | Post-migration dogfood pass on the auto-attach pipeline. Host-adapter restructured into 3 files (was 6) — `AgentXrayPanelHost` → `AgentXrayPanelAdapter`, `WorkspaceFocusObserver` + `WorkspaceScrollbarBridge` folded into a now-truly-workspace-scoped `AgentXrayWorkspaceHost`, `cmuxApp+AgentXrayDebugMenu.swift` deleted. Production logger seam (`AgentXrayLogger` protocol + `AgentXrayWorkspaceLogger` routing `.debug`→`cmuxDebugLog`, `.info`+→`os.Logger`); package's `Internal/DebugLog.swift` removed. Resolver completely rewritten: drops hook-store-keyed-on-`(workspaceId,surfaceId)` (stale across cmux restart) and TTY scrape (Ghostty doesn't expose PTY fd) in favour of two paths joining cmux's authoritative state — Path 1 (`Workspace.restoredAgentSnapshotsByPanelId[panelID]` → snapshot-direct synthesis for auto-resume cases pre-spawn) + Path 2 (`CmuxTopProcessSnapshot.captureCached(...).pids(forCMUXSurfaceID:)` env-var-scoped scanner → `findAgentHookRecord(byPID:)` join → live record). SSH transport infrastructure (`RemoteJSONLStream` over existing ControlMaster, `SessionTransport` enum, `JSONLLineFramer` with byte-level UTF-8 carry shared by local + remote tails). Session attach resolution flow documented in package README (flow diagram + auto-resume timeline). Tests: 20/20 → 46/46. New §16 ledger items J–N track residual deferrals from this pass. |
 
 ---
 
@@ -1373,6 +1374,89 @@ Append-only. Each entry: phase, date, branch tip, notable findings. New session 
   Verification: swift build green; swift test 20/20 green;
     xcodebuild cmux scheme green via `./scripts/reload.sh --tag
     agentxray`.
+
+[Phase 18 — Dogfood: session-attach + host-adapter overhaul]
+  2026-06-05 -> agentxray @ 1c49bdf29 … e12028d9b (8 commits)
+  Post-migration dogfood pass triggered by user-reported "auto-attach
+    fails after cmux restart for restored claude sessions". Investigation
+    found two architectural problems beneath the symptom:
+    1. The host adapter's separation of concerns was off:
+       AgentXrayWorkspaceHost was per-panel despite its name, so three
+       panels = three observers; scrollbar state was split across a
+       process-singleton + per-panel host; WorkspaceFocusObserver and
+       Workspace+AgentXray each carried slices of related logic.
+    2. The session resolver leaned on identifiers that go stale across
+       cmux restart (workspaceId / surfaceId UUIDs are freshly minted;
+       agentPIDs registry is in-memory; surfaceTTYNames carries dead
+       device names; Ghostty's C API doesn't expose pty_fd or pid).
+  Eight commits land the rework:
+    1c49bdf29  Host-adapter restructure: AgentXrayPanelHost →
+                AgentXrayPanelAdapter; AgentXrayWorkspaceHost truly
+                workspace-scoped (lazy-init via
+                Workspace.agentXrayWorkspaceHostLazy()); folds in
+                WorkspaceFocusObserver + WorkspaceScrollbarBridge;
+                deletes cmuxApp+AgentXrayDebugMenu.swift placeholder.
+                File count in Sources/Panels/AgentXray/ goes 6 → 4
+                (3 Swift + new README.md documenting the seam).
+    81c4bf101  Production logger seam: AgentXrayLogger protocol +
+                NoOpAgentXrayLogger default; AgentXrayWorkspaceLogger
+                routes .debug → cmuxDebugLog (DEBUG, file ring
+                buffer), .info/.notice/.warning/.error → os.Logger
+                (subsystem com.cmuxterm.app, category AgentXray,
+                .public privacy). Package's Internal/DebugLog.swift
+                deleted. Two existing call sites migrated; unknown-
+                JSONL-type promoted from .debug → .warning so schema
+                drift is visible in sysdiagnose.
+    b74fb2506  Live session attach via libproc: drops hook-store +
+                TTY-resume paths; enumerates running processes via
+                proc_listallpids, filters by basename + cwd. Passed
+                tests in isolation but required follow-up — see 533f
+                and 31a76 below.
+    e82d16ea5  SSH transport scaffolding: JSONLLineFramer (byte-level
+                UTF-8-safe carry, fixes a pre-existing data-loss
+                class on multi-byte codepoints at chunk boundaries),
+                RemoteJSONLStream (ssh exec tail -F over existing
+                ControlMaster), SessionTransport enum on
+                ResolvedAgentSession with .local/.remote(SSHTransport).
+    533f18949  Resolver collapse to single source-of-truth: dropped
+                libproc walk + cwd filter + argv scrape + mtime
+                fallback in favour of cmux's panel→PID registry +
+                hook record by PID. Discovered post-merge that
+                Workspace.agentPIDs is in-memory and wiped on app
+                restart; auto-resume case still failed.
+    31a7654ca  Resolver final shape: scanner-based PID lookup
+                (CmuxTopProcessSnapshot.captureCached(...)
+                .pids(forCMUXSurfaceID:) — env-var-scoped, survives
+                restart) + restored-snapshot fast path (path 1 reads
+                Workspace.restoredAgentSnapshotsByPanelId for
+                pre-spawn auto-resume cases). Two disjoint paths
+                covering two real cases; user-confirmed working.
+    8e2186128  README: documented the resolution flow in prose.
+    e12028d9b  README: replaced verbose prose with ASCII flow diagram
+                + auto-resume timeline diagram per user feedback.
+  Architectural pollution discovered + cleaned during dogfood: dev
+    build's session snapshot at
+    ~/Library/Application Support/cmux/session-com.cmuxterm.app.debug
+    .agentxray*.json had panel UUIDs overlapping with the user's
+    production cmux's panel UUIDs, causing VaultAgentProcessScanner
+    to bind production-cmux claudes (PID 66701, this conversation's
+    session) into the dev build's restorable-agent index. Polluted
+    snapshot files moved to Trash; subsequent dogfood with clean
+    state confirmed the resolver works end-to-end.
+  Verification: swift build green; swift test 46/46 (was 20/20);
+    reload.sh --tag agentxray builds cmux app green; user-confirmed
+    dogfood: restored claude sessions auto-attach faster than they
+    used to (path 1 resolves before agent spawns), fresh sessions
+    hook before user types anything (path 2 picks up the new claude
+    PID via env-var scanner the moment SessionStart hook writes its
+    record).
+  Residual deferrals tracked in §16: J (SSH "Set session id" UI), K
+    (daemon-side process enumeration over RPC), L (codex restored-
+    snapshot transcriptPath), M (auto-resume command no longer
+    appears in PTY scrollback — upstream change in cmux #4777, may
+    be deliberate; AgentX-ray no longer depends on it), N (more
+    aggressive split of AgentXrayWorkspaceHost — investigated,
+    rejected; left a note for future revisit).
 ```
 
 ## §15 Bug-fix ledger (autonomous fixes during port)
@@ -1482,6 +1566,62 @@ I. Top-level `CmuxAgentXrayPanelView` is currently a minimal port of the
    panel-level view. Each is independently re-portable from
    `cmux-swiftui/Sources/Panels/AgentInspector/AgentInspectorPanelView.swift`
    on top of the existing AgentXrayPanel API surface.
+J. SSH "Set session id" UI affordance — Phase 18 shipped the SSH
+   transport infrastructure (`RemoteJSONLStream` over the existing
+   ControlMaster socket, `SessionTransport.remote(SSHTransport)`,
+   dispatch in `TranscriptStream`), but the UI affordance for the user
+   to configure a sessionId for a remote panel is unimplemented. Without
+   it, remote panels resolve to nil and show "Detached". Natural
+   surfaces: command palette entry + AgentX-ray panel header overflow
+   menu + `UserDefaults` persistence keyed by (workspace title, panel
+   cwd, agentKind). The resolver's path 2 already builds the
+   `ResolvedAgentSession` once given a sessionId; only the UI is
+   missing.
+K. Daemon-side process enumeration over RPC for remote workspaces —
+   would let remote panels auto-resolve (no manual sessionId entry)
+   like local ones. Requires modifying `cmuxd-remote`
+   (`daemon/remote/cmd/cmuxd-remote/main.go`) to add an `agent.list`
+   or equivalent RPC method that returns `(panelID → claude/codex PIDs
+   + cwd + transcriptPath)`, plus a manifest bump for baked cloud-VM
+   images. Out of scope for the AgentX-ray fork-side work; needs
+   coordination with the cmux daemon team. *(Stays deferred — depends
+   on upstream daemon work.)*
+L. Codex restored-snapshot transcriptPath resolution — Phase 18 path 1
+   returns nil for codex because codex sessions live in date-bucketed
+   `~/.codex/sessions/<year>/<month>/<day>/<sid>.jsonl` directories
+   that the snapshot doesn't carry. Codex via path 2 (live PID + hook
+   record) still works — the hook record carries the explicit
+   transcriptPath. So this is only a path-1 latency gap (slower attach
+   for restored codex; resolves once the agent spawns and fires its
+   SessionStart hook). Trivial fix when someone has a codex repro:
+   either embed the transcriptPath in the snapshot (cmux-side change)
+   or walk the date directories at resolve time. *(Stays deferred —
+   no impact on the common claude case; codex via path 2 already
+   works.)*
+M. Upstream cmux change `#4777` ("Launch restored agent sessions via
+   startup commands", commit 17f529f63) replaced the pre-existing
+   "type `cd … && env … claude --resume <id>` into the panel's PTY"
+   restore mechanism with a script-based shell-argv mechanism. The
+   user-visible behaviour change: the resume command no longer appears
+   in the panel's scrollback. AgentX-ray no longer depends on this
+   either way (Phase 18 paths 1 + 2 cover the restore case via cmux's
+   `restoredAgentSnapshotsByPanelId` + env-var-scoped scanner), so this
+   is purely an upstream UX question. Worth confirming with the cmux
+   team whether the scrollback-disappearance was deliberate before
+   filing anything. *(Stays deferred — out of AgentX-ray scope; upstream
+   to investigate.)*
+N. More aggressive split of `AgentXrayWorkspaceHost` (file currently
+   ~500 lines) into per-workspace context + per-panel adapter as
+   separate types — investigated during Phase 18 commit 1 design.
+   Rejected at the time because every pipeline (focus + scrollbar +
+   anchor + per-panel registry) is a sub-responsibility of the host
+   adapter with no other consumers; splitting would be folder-
+   structure-as-module-structure (CLAUDE.md anti-pattern). The current
+   shape uses MARK-organized sections inside one file. Worth
+   revisiting only if a future need (additional consumer, test seam,
+   SwiftUI Environment injection point) emerges. *(Stays deferred —
+   no current forcing function; documented for future reference so we
+   don't re-litigate.)*
 ```
 
 ## §17 Open questions resolved (audit trail)
