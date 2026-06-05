@@ -84,7 +84,7 @@ public struct EntryView: View {
     }
 
     /// Variant-specific accent color override. nil = palette.primary.
-    /// Per-kind color rules per `PARITY_PUNCH_LIST.md` §3.3 + §3.14:
+    /// Per-kind color rules:
     ///   user            → blue (queued or normal)
     ///   agent           → claude
     ///   system          → per-subType:

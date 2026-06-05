@@ -171,11 +171,11 @@ CMUX_ZIG=/opt/homebrew/opt/zig@0.15/bin/zig \
 ## Status
 
 This package landed in cmux on **2026-06-04**. **All migration phases
-are complete** — phases 1–15 plus 17pre / 17a / 17b / 17c / 17d. The
-parity punch-list (`PARITY_PUNCH_LIST.md`) is fully ✅ closed across
-its 5 groups (Group 1 behavioural correctness, Group 2 visual parity,
-Group 3 per-row layout, Group 4 detail-mode chrome, Group 5 polish).
-Phase 12 (AsyncStream focus pipeline) closed via 17d.
+are complete** — phases 1–15 plus 17pre / 17a / 17b / 17c / 17d. Every
+parity row across the 5 groups (Group 1 behavioural correctness,
+Group 2 visual parity, Group 3 per-row layout, Group 4 detail-mode
+chrome, Group 5 polish) shipped ✅; Phase 12 (AsyncStream focus
+pipeline) closed via 17d.
 
 **Current state:** dogfood iterations against the spike-parity bar
 landed on top of the migration commits — see `git log` on the
@@ -197,18 +197,15 @@ future requirements" — none block current functionality.
 1. `MIGRATION_PLAN.md` (sibling file) — full phase plan, status table
    (§1), progress log (§14), bug-fix ledger (§15), deferred-task
    ledger (§16), origin cross-reference (§18).
-2. `PARITY_PUNCH_LIST.md` (sibling file) — canonical 87-finding
-   checklist of every behavioural / visual gap. All ✅ closed.
-3. `VISUAL_PASS_REVIEW.md` (sibling file) — historical user-signed-off
-   spec for the visual-parity commit (icons, `Theme.swift` tokens,
-   `HoverHighlight` modifier, file moves, renames). Reflects landed
-   state.
+2. `FORK_NOTES.md` (sibling file) — upstream-touch surface ledger;
+   update on any fork-side edit outside the package.
+3. `Sources/Panels/AgentXray/README.md` — cmux-app-target adapter
+   seam; how the package mounts into the host app.
 
-Upstream-touch surface is tracked in `FORK_NOTES.md` (sibling file).
 The `AttachStage` feature (status-bar attach-progress labels) and the
 behavioural-correctness batch (`scrollForFilter`,
-`InspectorRowAnchorsKey`, bulk-action handlers, etc.) follow the
-visual-parity commit per the plan §1 row 17a/17b/17c.
+`InspectorRowAnchorsKey`, bulk-action handlers, etc.) shipped on top
+of the visual-parity commit — see plan §1 rows 17a/17b/17c.
 
 ## Conventions (must read)
 

@@ -6,8 +6,7 @@ import Foundation
 /// only observes the bookend states: nothing-attached and
 /// transcript-streaming).
 ///
-/// Mapping to the 3-color status-bar precedence per
-/// `VISUAL_PASS_REVIEW.md` §1:
+/// Mapping to the 3-color status-bar precedence:
 ///
 ///   `.idle`, `.awaitingSession`     → RED   "Detached" / placeholder
 ///   `.sessionHooked(sessionID:)`,

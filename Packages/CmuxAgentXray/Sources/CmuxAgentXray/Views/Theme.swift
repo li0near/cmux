@@ -81,9 +81,8 @@ public enum Theme {
         public static let subRow: CGFloat = Metric.rowIconWidth + Spacing.rowIconText
         /// Nested content (tool input/result inside the tool sub-row)
         /// aligns just past the row's icon column:
-        /// `subRow + rowIconWidth` = 36pt. Predecessor parity
-        /// (PARITY_PUNCH_LIST §3.8 — formula
-        /// `expandedIndent + iconColumnWidth`).
+        /// `subRow + rowIconWidth` = 36pt. Predecessor parity:
+        /// formula `expandedIndent + iconColumnWidth`.
         public static let nestedSubRow: CGFloat = Indent.subRow + Metric.rowIconWidth
     }
 

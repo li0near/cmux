@@ -4,7 +4,7 @@ public import SwiftUI
 ///
 ///     [glyph]  attached <session>           scroll: snap   ↻ ⇲ ⇣⇡ ⇡⇣
 ///
-/// 3-color glyph precedence (per `VISUAL_PASS_REVIEW.md` §1):
+/// 3-color glyph precedence:
 ///   1. stream error or no resolved session → **red**
 ///   2. session but no entries yet           → **yellow** (stage label)
 ///   3. else                                 → **green** (attached title)

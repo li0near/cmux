@@ -456,8 +456,7 @@ public struct TranscriptView: View {
     }
 
     /// SF Symbol name for the leading glyph in the detail-mode header,
-    /// mapped from `DetailContent.Kind`. Mirrors predecessor mapping
-    /// (PARITY_PUNCH_LIST §4.4).
+    /// mapped from `DetailContent.Kind`. Mirrors predecessor mapping.
     private func detailKindIcon(for kind: DetailContent.Kind) -> String? {
         switch kind {
         case .userPrompt:           return EntryIcon.user.collapsed
