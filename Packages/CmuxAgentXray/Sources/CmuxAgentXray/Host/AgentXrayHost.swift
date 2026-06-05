@@ -74,6 +74,13 @@ public protocol AgentXrayHost: AnyObject {
     /// which store the record came from.
     func findAgentHookRecord(byPID pid: Int32) -> AgentHookSessionMatch?
 
+    /// Look up cmux's `restoredAgentSnapshotsByPanelId[panelId]` for
+    /// auto-resumed panels. Pre-mapped onto the fresh panel UUID at
+    /// restoration time. Returns nil for panels that weren't restored
+    /// (e.g. fresh panels created post-boot) or whose restored agent
+    /// kind isn't `.claude` / `.codex`.
+    func restoredAgentSnapshot(forPanelID panelID: UUID) -> RestoredAgentSnapshot?
+
     // MARK: Panel intent → cmux side actions
 
     /// Open a detail tab in the same workspace pane as the live panel

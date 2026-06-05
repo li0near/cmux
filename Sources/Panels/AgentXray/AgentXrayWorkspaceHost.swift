@@ -181,16 +181,28 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
 
     // MARK: - AgentXrayHost: live agent registry
 
-    /// Read cmux's panel-scoped agent PID registry. Backed by
-    /// `Workspace.agentRuntimeState(forPanelId:)`. Empty if no agent
-    /// has registered for the panel yet (e.g. claude hasn't fired its
-    /// `set_agent_pid` CLI call).
+    /// Live agent PIDs running in the given panel. Returns every
+    /// process whose `CMUX_SURFACE_ID` env var matches `panelID` —
+    /// includes the shell, the agent, and any descendants (cmux sets
+    /// the env at shell spawn time and claude/codex inherit it).
+    /// The resolver iterates the returned PIDs and the one with a
+    /// matching hook record (claude/codex) wins.
+    ///
+    /// Backed by `CmuxTopProcessSnapshot.captureCached` rather than
+    /// `Workspace.agentRuntimeState(forPanelId:)`. The latter only
+    /// populates after the SessionStart hook fires `set_agent_pid`,
+    /// so it's empty during the spawn-to-hook window AND after cmux
+    /// app restart for surviving agents. Env-var-scoped detection
+    /// catches every process the cmux app spawned, regardless of
+    /// hook lifecycle.
     func agentPIDs(forPanelID panelID: UUID) -> [Int32] {
-        guard let workspace,
-              let runtime = workspace.agentRuntimeState(forPanelId: panelID) else {
-            return []
+        let snapshot = CmuxTopProcessSnapshot.captureCached(
+            includeProcessDetails: false,
+            maximumAge: 1.5
+        )
+        return snapshot.pids(forCMUXSurfaceID: panelID).compactMap { pid in
+            Int32(exactly: pid)
         }
-        return Array(runtime.agentPIDs.values)
     }
 
     /// Walk both hook stores looking for a record whose `pid` field
@@ -206,6 +218,33 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
             return match
         }
         return nil
+    }
+
+    /// Mirror cmux's `Workspace.restoredAgentSnapshotsByPanelId[panelId]`
+    /// into the package's value-typed view. cmux pre-maps the
+    /// restoration record onto the fresh panel UUID at restore time
+    /// (see `RestorableAgentSessionIndex`), so this is panel-bound and
+    /// unambiguous. Filtered to claude/codex; other kinds (grok,
+    /// copilot, etc.) return nil — AgentX-ray doesn't render them.
+    func restoredAgentSnapshot(forPanelID panelID: UUID) -> RestoredAgentSnapshot? {
+        guard let workspace,
+              let raw = workspace.restoredAgentSnapshotsByPanelId[panelID],
+              let workingDirectory = raw.workingDirectory?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              !workingDirectory.isEmpty else {
+            return nil
+        }
+        let kind: ResolvedAgentSession.AgentKind
+        switch raw.kind {
+        case .claude: kind = .claude
+        case .codex:  kind = .codex
+        default:      return nil
+        }
+        return RestoredAgentSnapshot(
+            agentKind: kind,
+            sessionID: raw.sessionId,
+            workingDirectory: workingDirectory
+        )
     }
 
     private static func scanHookStore(
@@ -359,6 +398,9 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
             },
             hookRecordForPID: { [weak self] pid in
                 self?.findAgentHookRecord(byPID: pid)
+            },
+            restoredSnapshotForPanel: { [weak self] panelID in
+                self?.restoredAgentSnapshot(forPanelID: panelID)
             }
         )
         let resolved = resolver.resolve(
@@ -367,9 +409,10 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
         )
         #if DEBUG
         let pidCount = agentPIDs(forPanelID: panelUUID).count
+        let hasSnapshot = restoredAgentSnapshot(forPanelID: panelUUID) != nil
         cmuxDebugLog("""
             agentXray.focus.resolve panel=\(panelUUID.uuidString.prefix(8)) \
-            agentPIDCount=\(pidCount) \
+            agentPIDCount=\(pidCount) hasRestoredSnapshot=\(hasSnapshot) \
             kind=\(resolved?.agentKind.rawValue ?? "nil") \
             sessionPresent=\(resolved?.sessionID != nil) \
             transcriptPathPresent=\(resolved?.transcriptPath != nil)

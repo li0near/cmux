@@ -11,11 +11,15 @@ struct AgentSessionResolverTests {
 
     private func makeResolver(
         pidsForPanel: [UUID: [Int32]] = [:],
-        hookRecords: [Int32: AgentHookSessionMatch] = [:]
+        hookRecords: [Int32: AgentHookSessionMatch] = [:],
+        restoredSnapshots: [UUID: RestoredAgentSnapshot] = [:],
+        claudeProjectsRoot: String = "/Users/test/.claude/projects"
     ) -> AgentSessionResolver {
         AgentSessionResolver(
             agentPIDsForPanel: { panelID in pidsForPanel[panelID] ?? [] },
-            hookRecordForPID: { pid in hookRecords[pid] }
+            hookRecordForPID: { pid in hookRecords[pid] },
+            restoredSnapshotForPanel: { panelID in restoredSnapshots[panelID] },
+            claudeProjectsRoot: claudeProjectsRoot
         )
     }
 
@@ -168,5 +172,96 @@ struct AgentSessionResolverTests {
             workspaceID: Self.testWorkspaceID
         )
         #expect(resolved?.sessionID == "SECOND")
+    }
+
+    // MARK: - Path 1: restored snapshot synthesis
+
+    @Test("Restored snapshot resolves immediately, even before any agent PID exists")
+    func restoredSnapshotResolvesPreSpawn() {
+        // Auto-resume scenario: panel restored, agent process not yet
+        // spawned. Snapshot synthesizes a session; transcriptPath
+        // points at the (not-yet-existing) Claude transcript file.
+        let resolver = makeResolver(
+            pidsForPanel: [:],  // no PIDs registered yet
+            hookRecords: [:],
+            restoredSnapshots: [
+                Self.testPanelID: RestoredAgentSnapshot(
+                    agentKind: .claude,
+                    sessionID: "SESSION-RESTORED",
+                    workingDirectory: "/Users/test/myproject"
+                )
+            ]
+        )
+
+        let resolved = resolver.resolve(
+            panelID: Self.testPanelID,
+            workspaceID: Self.testWorkspaceID
+        )
+        #expect(resolved?.agentKind == .claude)
+        #expect(resolved?.sessionID == "SESSION-RESTORED")
+        #expect(resolved?.cwd == "/Users/test/myproject")
+        #expect(resolved?.transcriptPath ==
+            "/Users/test/.claude/projects/-Users-test-myproject/SESSION-RESTORED.jsonl")
+    }
+
+    @Test("Path 1 wins over path 2 when both available")
+    func snapshotTakesPrecedenceOverHookRecord() {
+        // Edge case: snapshot says session A, hook record says
+        // session B. cmux's snapshot is the canonical "what was
+        // restored" source; path 2 is for fresh / live cases.
+        let pid: Int32 = 12345
+        let resolver = makeResolver(
+            pidsForPanel: [Self.testPanelID: [pid]],
+            hookRecords: [
+                pid: AgentHookSessionMatch(
+                    agentKind: .claude,
+                    sessionID: "SESSION-FROM-HOOK",
+                    cwd: "/x",
+                    transcriptPath: "/x/SESSION-FROM-HOOK.jsonl"
+                )
+            ],
+            restoredSnapshots: [
+                Self.testPanelID: RestoredAgentSnapshot(
+                    agentKind: .claude,
+                    sessionID: "SESSION-FROM-SNAPSHOT",
+                    workingDirectory: "/Users/test/myproject"
+                )
+            ]
+        )
+        let resolved = resolver.resolve(
+            panelID: Self.testPanelID,
+            workspaceID: Self.testWorkspaceID
+        )
+        #expect(resolved?.sessionID == "SESSION-FROM-SNAPSHOT")
+    }
+
+    @Test("Codex snapshot resolves with nil transcriptPath (date-bucketed layout)")
+    func codexSnapshotNilTranscript() {
+        let resolver = makeResolver(
+            restoredSnapshots: [
+                Self.testPanelID: RestoredAgentSnapshot(
+                    agentKind: .codex,
+                    sessionID: "CODEX-RESTORED",
+                    workingDirectory: "/x"
+                )
+            ]
+        )
+        let resolved = resolver.resolve(
+            panelID: Self.testPanelID,
+            workspaceID: Self.testWorkspaceID
+        )
+        #expect(resolved?.agentKind == .codex)
+        #expect(resolved?.sessionID == "CODEX-RESTORED")
+        #expect(resolved?.transcriptPath == nil)
+    }
+
+    @Test("No snapshot, no PIDs → falls through to nil")
+    func noSnapshotNoPIDs() {
+        let resolver = makeResolver()
+        let resolved = resolver.resolve(
+            panelID: Self.testPanelID,
+            workspaceID: Self.testWorkspaceID
+        )
+        #expect(resolved == nil)
     }
 }

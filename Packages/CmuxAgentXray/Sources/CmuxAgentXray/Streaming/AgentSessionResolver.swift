@@ -97,6 +97,27 @@ public struct AgentHookSessionMatch: Equatable, Sendable {
     }
 }
 
+/// Mirror of cmux's `restoredAgentSnapshotsByPanelId[panelId]` for one
+/// panel — the kind / sessionID / cwd of an auto-resumed agent that's
+/// being respawned by cmux's restoration flow but may not have a live
+/// PID yet. Lets the resolver synthesize a `ResolvedAgentSession`
+/// before the agent process exists.
+public struct RestoredAgentSnapshot: Equatable, Sendable {
+    public let agentKind: ResolvedAgentSession.AgentKind
+    public let sessionID: String
+    public let workingDirectory: String
+
+    public init(
+        agentKind: ResolvedAgentSession.AgentKind,
+        sessionID: String,
+        workingDirectory: String
+    ) {
+        self.agentKind = agentKind
+        self.sessionID = sessionID
+        self.workingDirectory = workingDirectory
+    }
+}
+
 /// Resolves a panel's `ResolvedAgentSession` by joining two pieces of
 /// state cmux already maintains as authoritative source-of-truth:
 ///
@@ -135,16 +156,27 @@ public struct AgentHookSessionMatch: Equatable, Sendable {
 public struct AgentSessionResolver: Sendable {
     public typealias AgentPIDsForPanel = @MainActor (UUID) -> [Int32]
     public typealias HookRecordForPID = @MainActor (Int32) -> AgentHookSessionMatch?
+    public typealias RestoredSnapshotForPanel = @MainActor (UUID) -> RestoredAgentSnapshot?
 
     private let agentPIDsForPanel: AgentPIDsForPanel
     private let hookRecordForPID: HookRecordForPID
+    private let restoredSnapshotForPanel: RestoredSnapshotForPanel
+    private let claudeProjectsRoot: String
 
     public init(
         agentPIDsForPanel: @escaping AgentPIDsForPanel,
-        hookRecordForPID: @escaping HookRecordForPID
+        hookRecordForPID: @escaping HookRecordForPID,
+        restoredSnapshotForPanel: @escaping RestoredSnapshotForPanel,
+        claudeProjectsRoot: String = AgentSessionResolver.defaultClaudeProjectsRoot
     ) {
         self.agentPIDsForPanel = agentPIDsForPanel
         self.hookRecordForPID = hookRecordForPID
+        self.restoredSnapshotForPanel = restoredSnapshotForPanel
+        self.claudeProjectsRoot = claudeProjectsRoot
+    }
+
+    public static var defaultClaudeProjectsRoot: String {
+        NSString(string: "~/.claude/projects").expandingTildeInPath
     }
 
     @MainActor
@@ -152,6 +184,36 @@ public struct AgentSessionResolver: Sendable {
         panelID: UUID,
         workspaceID: String
     ) -> ResolvedAgentSession? {
+        // Path 1: restored-snapshot synthesis. Handles the auto-resume
+        // case where cmux's restoration has scheduled an agent for the
+        // panel but the agent process may not have spawned yet (or has
+        // spawned but its SessionStart hook hasn't fired). cmux pre-
+        // maps the restored data onto the fresh panel UUID at restore
+        // time, so this is panel-bound and not ambiguous.
+        //
+        // The synthesized `transcriptPath` may not exist on disk yet;
+        // `JSONLTail` handles missing files via exponential-backoff
+        // open retries and starts streaming as soon as the agent
+        // creates the file.
+        if let snap = restoredSnapshotForPanel(panelID) {
+            let path = transcriptPath(
+                forKind: snap.agentKind,
+                sessionID: snap.sessionID,
+                cwd: snap.workingDirectory
+            )
+            return ResolvedAgentSession(
+                agentKind: snap.agentKind,
+                sessionID: snap.sessionID,
+                workspaceID: workspaceID,
+                surfaceID: panelID.uuidString,
+                cwd: snap.workingDirectory,
+                transcriptPath: path
+            )
+        }
+
+        // Path 2: live PID + hook record. Handles fresh panels (user
+        // started claude after cmux was running) and `/new` mid-session
+        // (snapshot is stale; live hook record reflects the new id).
         for pid in agentPIDsForPanel(panelID) {
             guard let match = hookRecordForPID(pid) else { continue }
             return ResolvedAgentSession(
@@ -164,5 +226,30 @@ public struct AgentSessionResolver: Sendable {
             )
         }
         return nil
+    }
+
+    private func transcriptPath(
+        forKind kind: ResolvedAgentSession.AgentKind,
+        sessionID: String,
+        cwd: String
+    ) -> String? {
+        switch kind {
+        case .claude:
+            let encoded = (cwd as NSString)
+                .standardizingPath
+                .replacingOccurrences(of: "/", with: "-")
+            return URL(fileURLWithPath: claudeProjectsRoot, isDirectory: true)
+                .appendingPathComponent(encoded, isDirectory: true)
+                .appendingPathComponent("\(sessionID).jsonl", isDirectory: false)
+                .path
+        case .codex:
+            // Codex sessions live in date-bucketed
+            // `~/.codex/sessions/<year>/<month>/<day>/<sid>.jsonl`
+            // dirs; cmux's restored snapshot doesn't carry the
+            // bucket. Path 2 (hook record) carries the path
+            // explicitly when available; for snapshot-only
+            // resolution we leave it nil and let `JSONLTail` no-op.
+            return nil
+        }
     }
 }
