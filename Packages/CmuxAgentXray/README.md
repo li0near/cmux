@@ -87,7 +87,7 @@ Comprehensive flow diagrams, per-path internals, the Phase-18
 hook-before-first-prompt fix, the remote-`$HOME` resolver, the
 `RemoteSessionStore`, the ControlPath piggyback, the per-tab SSH
 inference, the auto-resume timeline, and the failure-mode table all
-live in **[`docs/SessionAttach.md`](docs/SessionAttach.md)**.
+live in **[`docs/session-attach.md`](docs/session-attach.md)**.
 
 ## Build and test
 
