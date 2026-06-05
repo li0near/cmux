@@ -164,7 +164,9 @@ J. ~~SSH "Set session id" UI affordance — Phase 18 shipped the SSH
    remote `/new` (Change link is the user-controlled escape hatch);
    per-tab inferred ssh has `controlPath: nil` so each subprocess
    opens a fresh ssh connection (workspace-level remote rides
-   ControlMaster correctly).
+   ControlMaster correctly). Full flow diagrams (resolver decision
+   tree + path 1/2/3 timelines + per-tab SSH inference + ControlPath
+   piggyback wiring) live in `docs/session-attach.md`.
 K. Daemon-side process enumeration over RPC for remote workspaces —
    would let remote panels auto-resolve (no manual sessionId entry)
    like local ones. Requires modifying `cmuxd-remote`
