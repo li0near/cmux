@@ -31,6 +31,14 @@ JSONL file
   ⇄  Host            (cmux app integration via AgentXrayHost protocol)
 ```
 
+### Parser reference
+
+How each Claude JSONL line type / subtype / `<xml-style>` wrapper /
+attachment discriminator maps to a `ClaudeLineRouting` value and an
+`Entry` — tree form, table form, and the maintenance guide for adding
+new branches — lives in
+**[`docs/claude-jsonl-mapping.md`](docs/claude-jsonl-mapping.md)**.
+
 ## Vocabulary
 
 - **Entry** — umbrella enum for every transcript item. Five top-level cases:
