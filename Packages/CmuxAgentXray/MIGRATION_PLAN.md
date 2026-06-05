@@ -104,7 +104,30 @@ A. TextStyle expansion — diffAdded/diffRemoved/codeMonospace cases when diff r
 B. Sub-agent transcript inline rendering — currently link-only; future: inline expand inside ToolEntry's body.subentries. *(Stays deferred — future UX evolution.)*
 C. ToolEntry shape — likely to evolve as tool-call UX changes (user noted "I think it will change in the future"). *(Stays deferred — speculative.)*
 D. ~~Notification name `cmuxClaudePromptSubmitted` — currently defined in cmux app; explore moving definition into package to remove one upstream touch.~~ **✅ DONE in Phase 2** — moved to `Packages/CmuxAgentXray/Sources/CmuxAgentXray/Models/ClaudeAnchorPayload.swift`; see §15 entry from Phase 2 commit `18ff88fa5`.
-E. Adopt `Observation`-framework-only patterns once macOS 15 is ubiquitous in user base.
+E. cmux-app-side `Sources/Panels/AgentXray/` retains three
+   `ObservableObject` / Combine surfaces (verified post-Phase-18 via
+   `grep -rE 'import Combine|ObservableObject|@Published|AnyCancellable'`):
+     - `AgentXrayPanelAdapter` conforms `Panel, ObservableObject` with
+       `@Published titleTick: Int` (lines 25 / 49). Gated on cmux's
+       `Panel` protocol convention — every cmux panel matches.
+     - `AgentXrayWorkspaceHost` exposes `@Published currentFocus:
+       ResolvedAgentSession?` (line 74) + `workspaceBridge:
+       AnyCancellable?` (line 76) sinking `Workspace.objectWillChange`
+       via Combine. Gated on `Workspace` itself being an
+       `ObservableObject`.
+     - `HostCancellable` (lines 505+) wraps `AnyCancellable` for the
+       host protocol's observation tokens. Same gate as above.
+   Migrate to `@Observable` + `AsyncStream` once (a) cmux's `Panel`
+   protocol drops the `ObservableObject` requirement AND (b)
+   `Workspace` becomes `@Observable`. Both are cmux-wide architectural
+   changes, not AgentX-ray-scoped. The package itself
+   (`Packages/CmuxAgentXray/Sources/`) is already `@Observable`-only —
+   the only remaining `ObservableObject` / Combine references in the
+   package are doc-comment text in `Behavior/Anchors/TurnAnchorStore`
+   and `Host/Cancellable.swift`. *(Stays deferred — gated on upstream
+   cmux modernization, not on macOS-floor or user-base ubiquity. The
+   original entry's "macOS 15 ubiquitous in user base" framing was
+   loose; Observation framework is macOS 14+ which we already target.)*
 F. ~~Align defaultValue at the two `agentXray.entry.branchLink.title` call sites in
    ClaudeTranscriptBuilder so source-side defaults match (cosmetic; runtime
    output already identical via the xcstrings entry).~~ **✅ DONE in 17d** — both sites now use `\(branch.rewindIndex) of \(totalRewinds)` with a hoisted local at the second call site.
