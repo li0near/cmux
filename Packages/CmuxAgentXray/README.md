@@ -73,21 +73,12 @@ for the protocol surface.
 
 ## Session attach resolution
 
-`AgentSessionResolver`
-(`Sources/CmuxAgentXray/Streaming/AgentSessionResolver.swift`) answers
-the focus-event question **which Claude/Codex session is running in
-the currently focused terminal panel?**. Three paths in priority order:
-
-1. **Restored snapshot** — auto-resume after cmux restart.
-2. **Live PID + hook record** — fresh panels, `/new` mid-session.
-3. **Remote attach (claude only)** — SSH terminals where the user has
-   pasted a session id into the inline prompt.
-
-Comprehensive flow diagrams, per-path internals, the Phase-18
-hook-before-first-prompt fix, the remote-`$HOME` resolver, the
-`RemoteSessionStore`, the ControlPath piggyback, the per-tab SSH
-inference, the auto-resume timeline, and the failure-mode table all
-live in **[`docs/session-attach.md`](docs/session-attach.md)**.
+How AgentX-ray decides which Claude/Codex session is running in the
+focused terminal and streams its transcript. See
+**[`docs/session-attach.md`](docs/session-attach.md)** for the full
+flow diagrams, three resolution paths, the Phase-18 hook-before-first-
+prompt fix, remote-`$HOME` resolution, `RemoteSessionStore`, the
+ControlPath piggyback, per-tab SSH inference, and failure modes.
 
 ## Build and test
 

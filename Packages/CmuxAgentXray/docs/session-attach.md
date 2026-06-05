@@ -11,6 +11,13 @@ authoritative — no host-wide process-tree scan, no argv scraping, no
 mtime heuristics. Three resolution paths run in priority order; the
 first one that yields a usable session wins.
 
+## Three paths at a glance
+
+1. **Restored snapshot** — auto-resume after cmux restart.
+2. **Live PID + hook record** — fresh panels, `/new` mid-session.
+3. **Remote attach (claude only)** — SSH terminals where the user has
+   pasted a session id into the inline prompt.
+
 ---
 
 ## High-level state machine
