@@ -122,6 +122,93 @@ struct AgentSessionResolverTests {
         #expect(resolved == nil)
     }
 
+    @Test("Hook record without transcriptPath → resolver returns nil (regression)")
+    func hookRecordWithoutTranscriptPath() {
+        // Regression repro: claude's SessionStart hook fires immediately
+        // when claude starts (bare `claude`, no `--resume`, no prompt
+        // yet). The hook record is written with sessionID + cwd + pid,
+        // but `transcriptPath` is nil/empty (claude hasn't created or
+        // disclosed the .jsonl path yet). If the resolver returns a
+        // session for this incomplete record, `TranscriptStream.attach`
+        // early-returns because the path is empty, leaving the panel
+        // "Hooked" (resolvedSession != nil) with NO `JSONLTail`
+        // watching anything. When the user sends the first prompt and
+        // claude appends to the .jsonl, nothing observes the file —
+        // the panel stays empty even after the writes.
+        //
+        // Correct behaviour (pre-Phase 18): treat the record as not
+        // yet ready, return nil. The panel stays detached until the
+        // hook record's next update (e.g. prompt-submit) populates
+        // `transcriptPath`; the store watcher then fires another
+        // recompute and the panel hooks + streams cleanly.
+        let pid: Int32 = 12345
+        let resolver = makeResolver(
+            pidsForPanel: [Self.testPanelID: [pid]],
+            hookRecords: [
+                pid: AgentHookSessionMatch(
+                    agentKind: .claude,
+                    sessionID: "SESSION-NO-PATH",
+                    cwd: "/Users/test/myproject",
+                    transcriptPath: nil
+                )
+            ]
+        )
+        let resolved = resolver.resolve(
+            panelID: Self.testPanelID,
+            workspaceID: Self.testWorkspaceID
+        )
+        #expect(resolved == nil)
+    }
+
+    @Test("Hook record with empty transcriptPath → resolver returns nil")
+    func hookRecordWithEmptyTranscriptPath() {
+        let pid: Int32 = 12345
+        let resolver = makeResolver(
+            pidsForPanel: [Self.testPanelID: [pid]],
+            hookRecords: [
+                pid: AgentHookSessionMatch(
+                    agentKind: .claude,
+                    sessionID: "SESSION-EMPTY-PATH",
+                    cwd: "/x",
+                    transcriptPath: ""
+                )
+            ]
+        )
+        let resolved = resolver.resolve(
+            panelID: Self.testPanelID,
+            workspaceID: Self.testWorkspaceID
+        )
+        #expect(resolved == nil)
+    }
+
+    @Test("Skips PIDs whose record has nil transcriptPath, returns first usable one")
+    func skipsRecordsWithoutTranscriptPath() {
+        let firstPID: Int32 = 11111
+        let secondPID: Int32 = 22222
+        let resolver = makeResolver(
+            pidsForPanel: [Self.testPanelID: [firstPID, secondPID]],
+            hookRecords: [
+                firstPID: AgentHookSessionMatch(
+                    agentKind: .claude,
+                    sessionID: "FIRST-NO-PATH",
+                    cwd: "/x",
+                    transcriptPath: nil  // SessionStart raced ahead of path discovery
+                ),
+                secondPID: AgentHookSessionMatch(
+                    agentKind: .claude,
+                    sessionID: "SECOND-WITH-PATH",
+                    cwd: "/x",
+                    transcriptPath: "/x/SECOND-WITH-PATH.jsonl"
+                )
+            ]
+        )
+        let resolved = resolver.resolve(
+            panelID: Self.testPanelID,
+            workspaceID: Self.testWorkspaceID
+        )
+        #expect(resolved?.sessionID == "SECOND-WITH-PATH")
+    }
+
     @Test("Multiple PIDs: first one with a hook record wins")
     func multiplePIDsFirstMatchWins() {
         // Order in [Int32] is the iteration order — first match wins.
