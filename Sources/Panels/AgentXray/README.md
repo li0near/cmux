@@ -129,6 +129,10 @@ Workspace
 
 - `Packages/CmuxAgentXray/Sources/CmuxAgentXray/Host/AgentXrayHost.swift`
   — the protocol this folder implements.
-- `Packages/CmuxAgentXray/README.md` — package overview.
+- `Packages/CmuxAgentXray/README.md` — package overview, including the
+  **Session attach resolution** section which documents how this folder's
+  `agentPIDs(forPanelID:)`, `findAgentHookRecord(byPID:)`, and
+  `restoredAgentSnapshot(forPanelID:)` implementations feed
+  `AgentSessionResolver`'s two-path resolution flow.
 - `Packages/CmuxAgentXray/FORK_NOTES.md` — upstream-touch ledger
   (which cmux files this folder requires changes to).
