@@ -43,6 +43,9 @@ public struct Body: Equatable, Sendable {
 public enum Section: Equatable, Sendable {
     /// Inline text block(s) rendered in a gray background. The `style`
     /// drives per-section visual treatment (italic, error red, etc.).
+    /// Detail-tab rendering hint (markdown / json / code / diff) is
+    /// **derived at resolve time** by the detail resolver — it is NOT
+    /// stored on the Section. Inline rendering only ever uses `style`.
     case text([String], style: TextStyle)
     /// Inline image (user-pasted or tool-returned). Base64 lazy-decoded
     /// at render time. See ``ImageSource``.
@@ -71,8 +74,18 @@ public enum TextStyle: Equatable, Sendable {
     case thinking
     /// Red foreground — used for tool error results.
     case error
-    // Future cases (deferred until corresponding feature lands; tracked
-    // in plan §16): diffAdded, diffRemoved, codeMonospace.
+    /// Green foreground — used for added lines in unified-diff
+    /// rendering. Ships with Phase D's foundation; the detail-tab
+    /// diff renderer (follow-up PR) consumes the style alongside
+    /// ``ContentType/diff``.
+    case diffAdded
+    /// Red foreground — used for removed lines in unified-diff
+    /// rendering.
+    case diffRemoved
+    /// Monospace foreground — used for code spans inside markdown
+    /// or for a fully-monospaced code section (alongside
+    /// ``ContentType/code(language:)``).
+    case codeMonospace
 }
 
 // MARK: - Convenience accessors
