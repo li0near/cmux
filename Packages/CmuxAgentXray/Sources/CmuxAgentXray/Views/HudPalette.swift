@@ -68,6 +68,24 @@ public struct HudPalette: Sendable {
             opacity: 1
         )
     }
+
+    /// Resolve an abstract ``PaletteRole`` (Models layer) to a concrete
+    /// SwiftUI `Color` against this palette. Lets DetailContent and
+    /// other Models/Panel types carry semantic accent intent without
+    /// depending on SwiftUI.
+    public func color(for role: PaletteRole) -> Color {
+        switch role {
+        case .primary: return primary
+        case .dim:     return dim
+        case .cyan:    return cyan
+        case .yellow:  return yellow
+        case .green:   return green
+        case .magenta: return magenta
+        case .red:     return red
+        case .blue:    return blue
+        case .claude:  return claude
+        }
+    }
 }
 
 /// Glyph vocabulary lifted from claude-hud — single-character

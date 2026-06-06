@@ -431,15 +431,12 @@ public struct TranscriptView: View {
     /// plain-text body.
     private func detailView(content: DetailContent) -> some View {
         let palette = HudPalette(foreground: appearance.foregroundColor)
-        let icon = detailKindIcon(for: content.kind)
-        let accent = detailKindAccent(for: content.kind, palette: palette)
+        let accent = palette.color(for: content.accent)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: Theme.Spacing.rowIconText) {
-                if let icon {
-                    Image(systemName: icon)
-                        .font(Theme.DetailPanel.heading)
-                        .foregroundStyle(accent)
-                }
+                Image(systemName: content.icon.collapsed)
+                    .font(Theme.DetailPanel.heading)
+                    .foregroundStyle(accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(content.title)
                         .font(Theme.DetailPanel.heading)
@@ -462,44 +459,6 @@ public struct TranscriptView: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: appearance.contentBackgroundColor))
-    }
-
-    /// SF Symbol name for the leading glyph in the detail-mode header,
-    /// mapped from `DetailContent.Kind`. Mirrors predecessor mapping.
-    private func detailKindIcon(for kind: DetailContent.Kind) -> String? {
-        switch kind {
-        case .userPrompt:           return EntryIcon.user.collapsed
-        case .thinking:             return EntryIcon.thinking.collapsed
-        case .systemOutput:         return EntryIcon.system.collapsed
-        case .toolInput(let name),
-             .toolResult(let name, _):
-            return EntryIcon.tool(named: name).collapsed
-        case .assistantResponse:    return EntryIcon.agent.collapsed
-        case .abandonedBranch:      return EntryIcon.branchLink.collapsed
-        case .subagentTranscript:   return EntryIcon.tool(named: "Task").collapsed
-        case .skillBody:            return EntryIcon.skill.collapsed
-        case .slashCommandBody:     return EntryIcon.slashCommand.collapsed
-        case .systemReminderBody:   return EntryIcon.systemReminder.collapsed
-        case .recapBody:            return EntryIcon.recap.collapsed
-        }
-    }
-
-    /// Accent color for the leading glyph, matching the per-kind rules
-    /// from `EntryView.kindAccentColor` so the detail header reads as
-    /// a continuation of the live entry.
-    private func detailKindAccent(for kind: DetailContent.Kind, palette: HudPalette) -> Color {
-        switch kind {
-        case .userPrompt:                   return palette.blue
-        case .thinking, .assistantResponse: return palette.claude
-        case .systemOutput, .slashCommandBody, .skillBody, .recapBody:
-            return palette.cyan
-        case .systemReminderBody:           return palette.yellow
-        case .toolResult(_, let isError):
-            return isError ? palette.red : palette.primary
-        case .toolInput, .subagentTranscript:
-            return palette.primary
-        case .abandonedBranch:              return palette.dim
-        }
     }
 
     private func detailBodyText(_ body: String, palette: HudPalette) -> some View {

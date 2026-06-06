@@ -16,16 +16,27 @@ public struct DetailContent: Equatable, Sendable {
     /// (e.g. "from entry at 14:23:01 · 1.2k lines").
     public let subtitle: String?
     /// Full unfolded body text — rendered without truncation when
-    /// `entries` is nil.
+    /// ``contentType`` is `.plainText`.
     public let body: String
     /// Source entry id, kept for future cross-references / search.
     public let sourceEntryID: String
-    /// Discriminator for styling (color of the title accent, glyph).
-    public let kind: Kind
-    /// Optional entry transcript. When non-nil, the detail view
-    /// renders these entries using the standard `EntryView` instead of
-    /// the plain `body` text. Used for abandoned-branch and sub-agent
-    /// transcript surfaces.
+    /// Leading glyph in the detail-mode header. Resolver picks the
+    /// canonical ``EntryIcon`` for the source variant; the view reads
+    /// `icon.collapsed` (detail header is always in collapsed-icon
+    /// state).
+    public let icon: EntryIcon
+    /// Accent color for the leading glyph. Carried as a semantic role
+    /// so DetailContent stays SwiftUI-free; the view resolves via
+    /// `HudPalette.color(for:)`.
+    public let accent: PaletteRole
+    /// How the body should be rendered. ``ContentType/transcript`` is
+    /// used for surfaces backed by `entries` (abandoned-branch and
+    /// sub-agent transcripts); everything else is ``ContentType/plainText``.
+    public let contentType: ContentType
+    /// Optional entry transcript. When non-nil and `contentType` is
+    /// ``ContentType/transcript``, the detail view renders these
+    /// entries using the standard `EntryView` instead of the plain
+    /// `body` text.
     public let entries: [Entry]?
 
     public init(
@@ -33,31 +44,19 @@ public struct DetailContent: Equatable, Sendable {
         subtitle: String? = nil,
         body: String,
         sourceEntryID: String,
-        kind: Kind,
+        icon: EntryIcon,
+        accent: PaletteRole,
+        contentType: ContentType = .plainText,
         entries: [Entry]? = nil
     ) {
         self.title = title
         self.subtitle = subtitle
         self.body = body
         self.sourceEntryID = sourceEntryID
-        self.kind = kind
+        self.icon = icon
+        self.accent = accent
+        self.contentType = contentType
         self.entries = entries
-    }
-
-    /// Closed enumeration over the surfaces a detail tab can render.
-    public enum Kind: Equatable, Sendable {
-        case userPrompt
-        case thinking
-        case systemOutput
-        case toolInput(toolName: String)
-        case toolResult(toolName: String, isError: Bool)
-        case assistantResponse
-        case abandonedBranch(rewindIndex: Int, totalRewinds: Int)
-        case subagentTranscript(toolName: String, subagentType: String?)
-        case skillBody(skillName: String)
-        case slashCommandBody(commandName: String)
-        case systemReminderBody
-        case recapBody
     }
 }
 
@@ -101,8 +100,8 @@ extension DetailContent {
     }
 
     /// Resolve a `.bodySection` request whose target is a top-level
-    /// `Entry`. The variant + section combine to pick the
-    /// `DetailContent.Kind`.
+    /// `Entry`. The variant + section combine to pick the icon, accent,
+    /// and content-type triple.
     private static func resolveTopLevel(
         _ entry: Entry,
         sectionIndex: Int,
@@ -123,7 +122,8 @@ extension DetailContent {
                 ),
                 body: body,
                 sourceEntryID: user.id.stableString,
-                kind: .userPrompt
+                icon: EntryIcon.user,
+                accent: .blue
             )
 
         case .system(let sys):
@@ -140,7 +140,8 @@ extension DetailContent {
                 subtitle: subtitleFromTimestamp(timestamp),
                 body: body,
                 sourceEntryID: c.id.stableString,
-                kind: .systemOutput
+                icon: EntryIcon.system,
+                accent: .cyan
             )
 
         case .synthesized(let s):
@@ -155,6 +156,7 @@ extension DetailContent {
                 "agentXray.detail.body.noPromptPreview",
                 defaultValue: "(no prompt preview)"
             )
+            let transcript = s.body.subentriesContent
             return DetailContent(
                 title: localized(
                     "agentXray.detail.title.abandonedBranch",
@@ -166,11 +168,10 @@ extension DetailContent {
                 ),
                 body: preview,
                 sourceEntryID: rootUuid,
-                kind: .abandonedBranch(
-                    rewindIndex: rewindIndex,
-                    totalRewinds: totalRewinds
-                ),
-                entries: s.body.subentriesContent.isEmpty ? nil : s.body.subentriesContent
+                icon: EntryIcon.branchLink,
+                accent: .dim,
+                contentType: transcript.isEmpty ? .plainText : .transcript,
+                entries: transcript.isEmpty ? nil : transcript
             )
 
         case .agent:
@@ -199,7 +200,8 @@ extension DetailContent {
                 ),
                 body: sys.body.textContent,
                 sourceEntryID: id,
-                kind: .skillBody(skillName: name)
+                icon: EntryIcon.skill,
+                accent: .cyan
             )
         case .slashCmdInput(let name, let args):
             let body = args ?? ""
@@ -212,7 +214,8 @@ extension DetailContent {
                 subtitle: subtitleFromTimestamp(timestamp),
                 body: body,
                 sourceEntryID: id,
-                kind: .slashCommandBody(commandName: name)
+                icon: EntryIcon.slashCommand,
+                accent: .cyan
             )
         case .slashCmdOutput:
             let body = sys.body.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -225,7 +228,8 @@ extension DetailContent {
                 subtitle: subtitleFromTimestamp(timestamp),
                 body: body,
                 sourceEntryID: id,
-                kind: .slashCommandBody(commandName: "")
+                icon: EntryIcon.slashCommand,
+                accent: .cyan
             )
         case .systemReminder:
             return DetailContent(
@@ -236,7 +240,8 @@ extension DetailContent {
                 subtitle: subtitleFromTimestamp(timestamp),
                 body: sys.body.textContent,
                 sourceEntryID: id,
-                kind: .systemReminderBody
+                icon: EntryIcon.systemReminder,
+                accent: .yellow
             )
         case .recap:
             return DetailContent(
@@ -247,7 +252,8 @@ extension DetailContent {
                 subtitle: subtitleFromTimestamp(timestamp),
                 body: sys.body.textContent,
                 sourceEntryID: id,
-                kind: .recapBody
+                icon: EntryIcon.recap,
+                accent: .cyan
             )
         case .localCommand, .contextUsage, .planMode, .editedTextFile, .other:
             let body = sys.body.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -260,14 +266,16 @@ extension DetailContent {
                 subtitle: subtitleFromTimestamp(timestamp),
                 body: body,
                 sourceEntryID: id,
-                kind: .systemOutput
+                icon: EntryIcon.system,
+                accent: .cyan
             )
         }
     }
 
     /// Resolve a `.bodySection` request whose target is one of an
     /// agent turn's sub-entries (text or tool). The sub-entry kind +
-    /// `sectionIndex` combine to pick the `DetailContent.Kind`.
+    /// `sectionIndex` combine to pick the icon, accent, and
+    /// content-type triple.
     private static func resolveSubEntry(
         _ sub: AgentEntry.SubEntry,
         sectionIndex: Int,
@@ -286,7 +294,8 @@ extension DetailContent {
                 subtitle: subtitleLines(timestamp, lineCount: lineCount(body)),
                 body: body,
                 sourceEntryID: text.id.stableString,
-                kind: isThinking ? .thinking : .assistantResponse
+                icon: isThinking ? EntryIcon.thinking : EntryIcon.agent,
+                accent: .claude
             )
 
         case .tool(let tool):
@@ -306,10 +315,9 @@ extension DetailContent {
                     ),
                     body: "",
                     sourceEntryID: tool.id.stableString,
-                    kind: .subagentTranscript(
-                        toolName: tool.toolName,
-                        subagentType: tool.subagentType
-                    ),
+                    icon: EntryIcon.tool(named: "Task"),
+                    accent: .primary,
+                    contentType: .transcript,
                     entries: transcript
                 )
             }
@@ -324,7 +332,8 @@ extension DetailContent {
                     subtitle: subtitleFromTimestamp(timestamp),
                     body: text,
                     sourceEntryID: tool.id.stableString,
-                    kind: .toolInput(toolName: tool.toolName)
+                    icon: EntryIcon.tool(named: tool.toolName),
+                    accent: .primary
                 )
             }
             return DetailContent(
@@ -335,10 +344,8 @@ extension DetailContent {
                 subtitle: subtitleFromTimestamp(timestamp),
                 body: text,
                 sourceEntryID: tool.id.stableString,
-                kind: .toolResult(
-                    toolName: tool.toolName,
-                    isError: tool.status == .error
-                )
+                icon: EntryIcon.tool(named: tool.toolName),
+                accent: tool.status == .error ? .red : .primary
             )
         }
     }

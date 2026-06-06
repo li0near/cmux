@@ -94,36 +94,14 @@ cyan chip in the sub-row header (alongside the existing magenta
 
 ### Tier 3 — medium (multi-file, design-level)
 
-#### T3.1. `DetailContent.Kind` → `ContentType` swap
+#### T3.1. ~~`DetailContent.Kind` → `ContentType` swap~~ **(landed)**
 
-(Was Phase A of plan stage 7b — explicitly deferred from commit `eabac5f5e`.)
-
-Drop `DetailContent.Kind` enum (with payloads like `.toolInput(toolName:)`,
-`.toolResult(toolName:isError:)`, `.subagentTranscript(toolName:subagentType:)`,
-`.abandonedBranch(rewindIndex:totalRewinds:)`, etc.) and replace with:
-
-```swift
-public enum ContentType: Equatable, Sendable {
-    case plainText
-    case transcript   // .subentries section
-    // T5.x adds .markdown, .code, .json, .diff
-}
-```
-
-Move per-Kind metadata (toolName, isError, etc.) into **direct fields**
-on `DetailContent`:
-- `title: String` (existing)
-- `subtitle: String?` (existing)
-- `icon: EntryIcon` (new — was derived from Kind)
-- `accent: PaletteRole` (new — was derived from Kind)
-- `contentType: ContentType` (new)
-- `body: String` / `entries: [Entry]?` (existing)
-
-`TranscriptView.detailKindIcon(for:)` and `detailKindAccent(for:palette:)`
-(`Views/TranscriptView.swift:478, 499`) are the only Kind readers.
-Migrate them to read the new direct fields. Resolver computes the
-direct fields at resolve time from entry context (already does this for
-title/subtitle).
+Phase A of the 2026-06-07 refactor. `DetailContent.Kind` (11 cases) dropped;
+direct fields `icon: EntryIcon`, `accent: PaletteRole`, `contentType: ContentType`
+populated by each resolver arm. New types: `Models/PaletteRole.swift`,
+`Panel/ContentType.swift`. New extension: `HudPalette.color(for:)`.
+`TranscriptView.detailKindIcon(for:)` + `detailKindAccent(for:palette:)`
+deleted; the detail-mode header reads direct fields.
 
 #### T3.2. Persisted-output wrapper detection
 
