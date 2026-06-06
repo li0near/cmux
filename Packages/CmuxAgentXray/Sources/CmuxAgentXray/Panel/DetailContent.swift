@@ -352,7 +352,14 @@ extension DetailContent {
                 body: text,
                 sourceEntryID: tool.id.stableString,
                 icon: EntryIcon.tool(named: tool.toolName),
-                accent: tool.status == .error ? .red : .primary
+                accent: tool.status == .error ? .red : .primary,
+                // Phase E: shape-sniff the result text for rich
+                // detail-tab rendering. Inline rendering ignores the
+                // contentType — only the detail tab dispatches.
+                contentType: DetailContentShapeSniffer.sniff(
+                    text: text,
+                    mcpServer: tool.mcpServer
+                )
             )
         }
     }

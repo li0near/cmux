@@ -452,7 +452,7 @@ public struct TranscriptView: View {
             if let entries = content.entries, !entries.isEmpty {
                 detailEntriesList(entries: entries, palette: palette)
             } else {
-                detailBodyText(content.body, palette: palette)
+                detailBodyText(content.body, contentType: content.contentType, palette: palette)
             }
         }
         .padding(.horizontal, 16)
@@ -461,14 +461,39 @@ public struct TranscriptView: View {
         .background(Color(nsColor: appearance.contentBackgroundColor))
     }
 
-    private func detailBodyText(_ body: String, palette: HudPalette) -> some View {
+    /// Detail-mode body renderer. Dispatches on `contentType` to pick
+    /// the matching foundation stub view (Phase D scaffolding):
+    ///  - `.plainText` / `.transcript` (transcript handled separately) →
+    ///    plain `Text(...)`.
+    ///  - `.markdown` → ``MarkdownSectionView`` (stub).
+    ///  - `.code(language:)` → ``CodeSectionView`` (stub).
+    ///  - `.json` → ``JsonSectionView`` (stub; pretty-prints).
+    ///  - `.diff` → ``DiffSectionView`` (stub; per-line +/- coloring).
+    /// Rich rendering ships in follow-up PRs per renderer.
+    @ViewBuilder
+    private func detailBodyText(_ body: String, contentType: ContentType, palette: HudPalette) -> some View {
         ScrollView {
-            Text(body)
-                .font(Theme.DetailPanel.body)
-                .foregroundStyle(palette.primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(Theme.Padding.expandedBodyBlock)
+            switch contentType {
+            case .plainText, .transcript:
+                Text(body)
+                    .font(Theme.DetailPanel.body)
+                    .foregroundStyle(palette.primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Theme.Padding.expandedBodyBlock)
+            case .markdown:
+                MarkdownSectionView(text: body, palette: palette)
+                    .padding(Theme.Padding.expandedBodyBlock)
+            case .code(let language):
+                CodeSectionView(text: body, language: language, palette: palette)
+                    .padding(Theme.Padding.expandedBodyBlock)
+            case .json:
+                JsonSectionView(text: body, palette: palette)
+                    .padding(Theme.Padding.expandedBodyBlock)
+            case .diff:
+                DiffSectionView(text: body, palette: palette)
+                    .padding(Theme.Padding.expandedBodyBlock)
+            }
         }
     }
 
