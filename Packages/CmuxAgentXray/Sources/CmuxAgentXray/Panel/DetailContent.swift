@@ -141,7 +141,12 @@ extension DetailContent {
                 body: body,
                 sourceEntryID: c.id.stableString,
                 icon: EntryIcon.system,
-                accent: .cyan
+                // Match `EntryView.kindAccentColor`'s live-row mapping
+                // for `.compact` (`palette.dim`). The pre-Phase-A code
+                // mistakenly mapped to `.cyan` via the legacy
+                // `Kind.systemOutput`; corrected here so live row +
+                // detail header read identically.
+                accent: .dim
             )
 
         case .synthesized(let s):
@@ -369,10 +374,14 @@ extension DetailContent {
     /// message + the wrapper's preview (when available) if the file
     /// can't be read.
     ///
-    /// `String(contentsOf:encoding:)` is synchronous; that's acceptable
-    /// here because the resolver is invoked on the main actor only when
-    /// the user clicks the link (low frequency, blocking is bounded by
-    /// the file size — typically tens of KB to a few MB).
+    /// **KNOWN LIMITATION (audited 2026-06-07):** `String(contentsOf:encoding:)`
+    /// is synchronous. The corpus contains files up to ~1.2MB which is
+    /// fast on modern hardware (a few ms) but can perceptibly jank the
+    /// UI for very large outputs. Migrating to an async resolver would
+    /// cascade through every `DetailContent.resolve(...)` caller; for
+    /// now the read stays sync. Bounded by the offload size cap CC
+    /// uses and the user's click rate (low frequency). Track in
+    /// `MIGRATION_PLAN.md` §16 for a future async-resolver pass.
     private static func resolveOffloadedOutput(
         _ off: OffloadedOutput,
         tool: ToolEntry,

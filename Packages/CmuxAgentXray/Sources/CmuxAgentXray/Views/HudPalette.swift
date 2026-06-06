@@ -86,6 +86,22 @@ public struct HudPalette: Sendable {
         case .claude:  return claude
         }
     }
+
+    /// Resolve a ``TextStyle`` to its rendering color. Single source of
+    /// truth for both inline-row rendering (`AgentEntryView+CappedBody`,
+    /// `EntryBodyView`) and any future detail-mode renderers; eliminates
+    /// the pre-Phase-D divergence where two view files mapped
+    /// `.thinking` to two different colors.
+    public func color(for style: TextStyle) -> Color {
+        switch style {
+        case .normal:        return primary.opacity(0.85)
+        case .thinking:      return primary.opacity(0.85)
+        case .error:         return red
+        case .diffAdded:     return green
+        case .diffRemoved:   return red
+        case .codeMonospace: return primary.opacity(0.85)
+        }
+    }
 }
 
 /// Glyph vocabulary lifted from claude-hud — single-character

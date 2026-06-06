@@ -77,13 +77,6 @@ struct EntryBodyView: View {
     }
 
     private func textColor(for style: TextStyle) -> Color {
-        switch style {
-        case .normal:        return palette.primary.opacity(0.85)
-        case .thinking:      return palette.dim
-        case .error:         return palette.red
-        case .diffAdded:     return palette.green
-        case .diffRemoved:   return palette.red
-        case .codeMonospace: return palette.primary.opacity(0.85)
-        }
+        palette.color(for: style)
     }
 }

@@ -250,6 +250,15 @@ N. More aggressive split of `AgentXrayWorkspaceHost` (file currently
    SwiftUI Environment injection point) emerges. *(Stays deferred —
    no current forcing function; documented for future reference so we
    don't re-litigate.)*
+O. **Async resolver for `DetailContent.resolveOffloadedOutput`.** The
+   Phase C file-read currently uses synchronous `String(contentsOf:
+   encoding:)` on the `@MainActor`. Corpus has files up to ~1.2MB —
+   bounded but perceptibly janky on slow disks / very large outputs.
+   Migrating requires making `DetailContent.resolve(...)` async and
+   cascading through every caller (`AgentXrayPanel.openDetail`,
+   `TranscriptView.detailView`). *(Stays deferred — needs a wider
+   resolver-pipeline async refactor; tracked here so future drift is
+   visible.)*
 ```
 
 ## §17 Open questions resolved (audit trail)

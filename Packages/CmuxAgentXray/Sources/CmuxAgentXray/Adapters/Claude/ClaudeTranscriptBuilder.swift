@@ -71,7 +71,7 @@ struct ClaudeTranscriptBuilder {
         let queued = ClaudeQueuedPromptResolver.resolve(lines: rawLines)
         let skill = ClaudeSkillCommandResolver.resolve(lines: rawLines)
 
-        var ctx = BuildContext(resolution: branchResolution)
+        var ctx = BuildContext(resolution: branchResolution, logger: logger)
         ctx.turnDurations = turnDurations.stamps
         ctx.queuedSlashCommandUuids = queued.wasQueuedSlashUuids
         ctx.skillCommandUuids = skill.skillCommandUuids
@@ -127,8 +127,11 @@ struct ClaudeTranscriptBuilder {
     }
 
     /// Recursively build entries for an abandoned-branch transcript.
+    /// Forwards `self.logger` so spec-only-not-corpus warnings emitted
+    /// during `buildToolResultSections` aren't silently dropped on the
+    /// nested transcript path.
     private func buildAbandonedBranchEntries(from lines: [ClaudeJSONLLine]) -> [Entry] {
-        var sub = ClaudeTranscriptBuilder()
+        var sub = ClaudeTranscriptBuilder(logger: logger)
         for line in lines { sub.ingest(line) }
         return sub.transcript()
     }
@@ -549,6 +552,11 @@ struct ClaudeTranscriptBuilder {
 
     fileprivate struct BuildContext {
         let resolution: ClaudeBranchResolution
+        /// Forwarded from the parent `ClaudeTranscriptBuilder` so
+        /// recursive sub-builders (sidechain transcripts) carry the
+        /// same logger and don't silently drop the spec-only-not-corpus
+        /// warnings emitted by `buildToolResultSections`.
+        let logger: any AgentXrayLogger
         var entries: [Entry] = []
         var pendingTurn: PendingTurn?
         var turnDurations: [String: TurnDurationStamp] = [:]
@@ -690,7 +698,10 @@ struct ClaudeTranscriptBuilder {
         }
 
         private func buildSidechainEntries(from lines: [ClaudeJSONLLine]) -> [Entry] {
-            var sub = ClaudeTranscriptBuilder()
+            // Forward `logger` so spec-only-not-corpus warnings emitted
+            // during nested `buildToolResultSections` aren't silently
+            // dropped on the sub-agent transcript path.
+            var sub = ClaudeTranscriptBuilder(logger: logger)
             for line in lines { sub.ingest(line) }
             return sub.transcript()
         }
@@ -1018,8 +1029,6 @@ struct ClaudeTranscriptBuilder {
             ctx.pendingTurn!.toolIndexByID[id] = index
         }
     }
-
-    // MARK: - Helpers
 
     // MARK: - Helpers
 
