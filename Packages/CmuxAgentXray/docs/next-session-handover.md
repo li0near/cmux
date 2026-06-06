@@ -50,9 +50,7 @@ once you have context on the surrounding code.
 
 ### Tier 1 — trivial (≤ 5 minutes each)
 
-_(T1.1 was attempted in `572f65513` (questionmark.text.page) but reverted
-by user preference — the original `text.magnifyingglass` glyph stays.
-Don't re-attempt without an explicit user ask.)_
+_(All Tier 1 items have shipped — see `MIGRATION_PLAN.md` §14 for commit refs.)_
 
 ---
 
