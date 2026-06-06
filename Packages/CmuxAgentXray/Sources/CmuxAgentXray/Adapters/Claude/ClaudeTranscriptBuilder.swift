@@ -114,7 +114,13 @@ struct ClaudeTranscriptBuilder {
         // UserEntry and the pending pseudo-entry drops out of the next
         // transcript.
         for pending in queued.pendingPrompts {
-            ctx.entries.append(.user(buildPendingUserEntry(pending)))
+            ctx.entries.append(.user(makeUserEntry(
+                id: pending.id,
+                timestamp: pending.timestamp,
+                promptId: nil,
+                text: pending.text,
+                queuedState: .pending
+            )))
         }
 
         return ctx.entries
@@ -401,16 +407,6 @@ struct ClaudeTranscriptBuilder {
             body: .text([text]),
             promptId: promptId,
             queuedState: queuedState
-        )
-    }
-
-    private func buildPendingUserEntry(_ p: ClaudePendingPrompt) -> UserEntry {
-        makeUserEntry(
-            id: p.id,
-            timestamp: p.timestamp,
-            promptId: nil,
-            text: p.text,
-            queuedState: .pending
         )
     }
 
