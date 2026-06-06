@@ -50,13 +50,7 @@ once you have context on the surrounding code.
 
 ### Tier 1 — trivial (≤ 5 minutes each)
 
-#### T1.1. Grep tool icon swap
-
-Change `EntryIcon.tool(named:)` (`Models/EntryIcon.swift`) for the `Grep` case
-from `text.magnifyingglass` / `text.magnifyingglass.fill` to
-`questionmark.text.page` / `questionmark.text.page.fill`.
-
-User-requested visual polish. One-line diff in the existing switch.
+_(All Tier 1 items have shipped — see `MIGRATION_PLAN.md` §14 for commit refs.)_
 
 ---
 
@@ -64,67 +58,15 @@ User-requested visual polish. One-line diff in the existing switch.
 
 These are independent; pick any order.
 
-#### T2.1. MCP tool single-icon mapping
+#### T2.1. ~~MCP tool single-icon mapping~~ **(landed)**
 
-In `Models/EntryIcon.swift`'s `tool(named:)` switch, add a fallback before
-the generic-wrench `default` arm:
+#### T2.2. ~~MCP tool name parsing~~ **(landed)**
 
-```swift
-default:
-    if name.hasPrefix("mcp__") {
-        return EntryIcon(
-            collapsed: "externaldrive.connected.to.line.below",
-            expanded: "externaldrive.connected.to.line.below.fill"
-        )
-    }
-    return EntryIcon(
-        collapsed: "wrench.adjustable",
-        expanded: "wrench.adjustable.fill"
-    )
-```
+Strip `mcp__<server>__` prefix from `Header.name`; surface `<server>` as a
+cyan chip in the sub-row header (alongside the existing magenta
+`subagentType` chip). `ToolEntry.mcpServer: String?` carries it.
 
-**No per-server differentiation** — user explicitly asked for one MCP icon
-across all servers.
-
-#### T2.2. MCP tool name parsing
-
-In `Adapters/Claude/ClaudeTranscriptBuilder.appendToolUse` (or via a small
-helper applied before `Header(name: …)` is constructed), strip the
-`mcp__<server>__` prefix from the displayed name and surface `<server>`
-as a chip / label:
-
-```
-input  block.name = "mcp__playwright__browser_navigate"
-output Header.name = "browser_navigate"
-       chip / label = "playwright"
-```
-
-Where to render the chip: pass it through to the `subEntryHeader`'s
-existing `extras` view-builder slot (already used by tool's
-`subagentType` magenta chip — same pattern, slightly different color).
-
-Built-in tool names (Read, Edit, Bash, etc.) keep their current rendering.
-
-#### T2.3. `summarizeToolInput` priority-list fallback
-
-`Adapters/Claude/ClaudeTranscriptBuilder.swift:1099` — the `default` arm of
-the tool-name switch falls through to `input.displayString`, which dumps
-every key=value pair (noisy for unhandled tools). Replace with a priority
-list:
-
-```swift
-default:
-    let preferred = ["url", "path", "file_path", "query", "command",
-                     "name", "id", "skill", "key"]
-    for key in preferred {
-        if case .string(let v)? = obj[key] {
-            return truncated(v, max: ClaudeRenderConsts.toolSummaryMaxChars)
-        }
-    }
-    return input.displayString  // last-resort fallback
-```
-
-Affects every unhandled tool — including MCP and any future built-in.
+#### T2.3. ~~`summarizeToolInput` priority-list fallback~~ **(landed)**
 
 #### T2.4. `QueuedState` enum (UserEntry boolean pair → 3-case enum)
 

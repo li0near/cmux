@@ -42,6 +42,12 @@ extension AgentEntryView {
                     title: tool.header.title,
                     timeMarker: timeMarker,
                     extras: {
+                        if let server = tool.mcpServer, !server.isEmpty {
+                            Text(server)
+                                .font(Theme.SubRow.summary)
+                                .foregroundStyle(palette.cyan)
+                                .lineLimit(1)
+                        }
                         if let chip = tool.subagentType, !chip.isEmpty {
                             Text(chip)
                                 .font(Theme.SubRow.summary)

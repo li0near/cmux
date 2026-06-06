@@ -19,6 +19,7 @@ struct AgentToolCall: Equatable {
     let subagentType: String?
     let teamMemberName: String?
     let teamName: String?
+    let mcpServer: String?
     let durationMs: Int?
     let sidechainTranscript: [Entry]?
 
@@ -32,6 +33,7 @@ struct AgentToolCall: Equatable {
         subagentType: String? = nil,
         teamMemberName: String? = nil,
         teamName: String? = nil,
+        mcpServer: String? = nil,
         durationMs: Int? = nil,
         sidechainTranscript: [Entry]? = nil
     ) {
@@ -44,6 +46,7 @@ struct AgentToolCall: Equatable {
         self.subagentType = subagentType
         self.teamMemberName = teamMemberName
         self.teamName = teamName
+        self.mcpServer = mcpServer
         self.durationMs = durationMs
         self.sidechainTranscript = sidechainTranscript
     }
@@ -67,6 +70,7 @@ struct AgentToolCall: Equatable {
             subagentType: subagentType,
             teamMemberName: teamMemberName,
             teamName: teamName,
+            mcpServer: mcpServer,
             durationMs: durationMs,
             sidechainTranscript: sidechainTranscript
         )
@@ -86,6 +90,7 @@ struct AgentToolCall: Equatable {
             subagentType: subagentType,
             teamMemberName: teamMemberName,
             teamName: teamName,
+            mcpServer: mcpServer,
             durationMs: durationMs,
             sidechainTranscript: transcript
         )

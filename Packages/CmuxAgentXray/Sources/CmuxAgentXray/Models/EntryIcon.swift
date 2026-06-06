@@ -133,6 +133,12 @@ extension EntryIcon {
                 expanded: "questionmark.bubble.fill"
             )
         default:
+            if name.hasPrefix("mcp__") {
+                return EntryIcon(
+                    collapsed: "externaldrive.connected.to.line.below",
+                    expanded: "externaldrive.connected.to.line.below.fill"
+                )
+            }
             return EntryIcon(
                 collapsed: "wrench.adjustable",
                 expanded: "wrench.adjustable.fill"

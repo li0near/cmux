@@ -214,6 +214,11 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     public let subagentType: String?
     public let teamMemberName: String?
     public let teamName: String?
+    /// Server name parsed from MCP tool names of the form
+    /// `mcp__<server>__<tool>` (e.g. `"playwright"`). nil for built-in
+    /// tools whose names don't carry the `mcp__` prefix. Drives the
+    /// per-tool server chip in the sub-row header.
+    public let mcpServer: String?
 
     public init(
         id: EntryID,
@@ -224,7 +229,8 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         durationMs: Int? = nil,
         subagentType: String? = nil,
         teamMemberName: String? = nil,
-        teamName: String? = nil
+        teamName: String? = nil,
+        mcpServer: String? = nil
     ) {
         self.id = id
         self.parentEntryID = parentEntryID
@@ -235,6 +241,7 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         self.subagentType = subagentType
         self.teamMemberName = teamMemberName
         self.teamName = teamName
+        self.mcpServer = mcpServer
     }
 
     /// Wall-clock timestamp, projected from `header.timeMarker.clock`.

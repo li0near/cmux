@@ -608,12 +608,13 @@ struct ClaudeTranscriptBuilder {
                     if let sidechain = call.sidechainTranscript, !sidechain.isEmpty {
                         sections.append(.subentries(sidechain))
                     }
+                    let parsed = ClaudeTranscriptBuilder.parseMcpToolName(call.name)
                     subEntries.append(.tool(ToolEntry(
                         id: .fromJSONL(call.id),
                         parentEntryID: parentEntryID,
                         header: Header(
                             icon: .tool(named: call.name),
-                            name: call.name,
+                            name: parsed.display,
                             title: call.summary,
                             timeMarker: call.durationMs.map { .duration($0) }
                         ),
@@ -622,7 +623,8 @@ struct ClaudeTranscriptBuilder {
                         durationMs: call.durationMs,
                         subagentType: call.subagentType,
                         teamMemberName: call.teamMemberName,
-                        teamName: call.teamName
+                        teamName: call.teamName,
+                        mcpServer: call.mcpServer
                     )))
                 }
             }
@@ -939,6 +941,7 @@ struct ClaudeTranscriptBuilder {
         guard let id = block.id, let name = block.name else { return }
         let teamMemberName = Self.extractTeamMemberName(name: name, input: block.input)
         let teamName = Self.extractTeamName(name: name, input: block.input)
+        let mcpServer = Self.parseMcpToolName(name).server
         let call = AgentToolCall(
             id: id,
             name: name,
@@ -949,6 +952,7 @@ struct ClaudeTranscriptBuilder {
             subagentType: Self.extractSubagentType(name: name, input: block.input),
             teamMemberName: teamMemberName,
             teamName: teamName,
+            mcpServer: mcpServer,
             durationMs: nil,
             sidechainTranscript: nil
         )
@@ -1119,6 +1123,16 @@ struct ClaudeTranscriptBuilder {
         default:
             break
         }
+        // Priority-list fallback for unhandled tools (including MCP).
+        // Tries the most-likely-meaningful keys before falling back to
+        // the alphabetic-first key=value dump.
+        let preferred = ["url", "path", "file_path", "query", "command",
+                         "name", "id", "skill", "key"]
+        for key in preferred {
+            if case .string(let v)? = obj[key] {
+                return truncated(v, max: ClaudeRenderConsts.toolSummaryMaxChars)
+            }
+        }
         return obj.map { "\($0.key)=\($0.value.displayString)" }.sorted().first ?? ""
     }
 
@@ -1180,6 +1194,22 @@ struct ClaudeTranscriptBuilder {
         guard case .object(let obj)? = input,
               case .string(let s)? = obj["team_name"] else { return nil }
         return s
+    }
+
+    /// Split an MCP tool name (`mcp__<server>__<tool>`) into its server
+    /// and display components. Returns `(name, nil)` for non-MCP names.
+    /// MCP tools display the `<tool>` suffix in `Header.name` and surface
+    /// `<server>` as a chip; non-MCP tools (Read, Bash, etc.) pass
+    /// through unchanged.
+    static func parseMcpToolName(_ name: String) -> (display: String, server: String?) {
+        let prefix = "mcp__"
+        guard name.hasPrefix(prefix) else { return (name, nil) }
+        let rest = name.dropFirst(prefix.count)
+        let parts = rest.split(separator: "__", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
+            return (name, nil)
+        }
+        return (String(parts[1]), String(parts[0]))
     }
 
     /// Hard length cap with `…` ellipsis. Used for inline tool-input
