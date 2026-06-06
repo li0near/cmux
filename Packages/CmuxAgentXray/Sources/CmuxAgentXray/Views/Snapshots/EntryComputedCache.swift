@@ -59,6 +59,8 @@ public final class EntryComputedCache {
                     return sum + source.data.utf8.count
                 case .toolReference(let toolName):
                     return sum + toolName.utf8.count
+                case .offloadedOutput(let off):
+                    return sum + off.path.utf8.count + off.sizeLabel.utf8.count
                 case .subentries(let children):
                     return sum + children.count
                 }
@@ -122,11 +124,12 @@ public final class EntryComputedCache {
                 let joined = blocks.joined(separator: "\n")
                 let words = joined.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
                 totalWordCount += words
-            case .image, .toolReference:
-                // Image and toolReference sections render as a single
-                // visual unit (thumbnail / chip); they don't participate
-                // in cap-based truncation. Empty content prevents the
-                // walker from emitting an "open detail" link for them.
+            case .image, .toolReference, .offloadedOutput:
+                // Image / toolReference / offloadedOutput sections render
+                // as a single visual unit (thumbnail / chip / link); they
+                // don't participate in cap-based truncation. Empty content
+                // prevents the walker from emitting an "open detail" link
+                // for them.
                 sections.append(.empty)
             case .subentries:
                 sections.append(.empty)

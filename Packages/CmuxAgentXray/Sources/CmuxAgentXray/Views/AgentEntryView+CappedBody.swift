@@ -43,6 +43,10 @@ extension AgentEntryView {
                     ImageThumbnailView(source: source) { onOpenDetail(idx) }
                 case .toolReference(let toolName):
                     ToolReferenceChipView(toolName: toolName, palette: palette)
+                case .offloadedOutput(let off):
+                    OffloadedOutputLinkView(offloaded: off, palette: palette) {
+                        onOpenDetail(idx)
+                    }
                 case .subentries:
                     EmptyView()
                 }

@@ -41,6 +41,8 @@ struct EntryBodyView: View {
             ImageThumbnailView(source: source, action: onOpenDetail)
         case .toolReference(let toolName):
             ToolReferenceChipView(toolName: toolName, palette: palette)
+        case .offloadedOutput(let off):
+            OffloadedOutputLinkView(offloaded: off, palette: palette, action: onOpenDetail)
         case .subentries(let children):
             VStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
                 ForEach(children, id: \.id.stableString) { child in

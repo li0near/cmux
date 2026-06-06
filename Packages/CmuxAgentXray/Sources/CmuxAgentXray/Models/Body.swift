@@ -52,6 +52,11 @@ public enum Section: Equatable, Sendable {
     /// `mcp__sap-jira__get_issue`). Carries just the bare tool name —
     /// the renderer parses any `mcp__<server>__` prefix at display time.
     case toolReference(toolName: String)
+    /// Claude Code's `<persisted-output>` wrapper — a tool result that
+    /// exceeded CC's inline size threshold and was offloaded to a file
+    /// on disk. The renderer surfaces an "↗ Open offloaded result" link;
+    /// the detail-tab resolver reads the file lazily on click.
+    case offloadedOutput(OffloadedOutput)
     /// Nested entries. Rendering policy is decided by the variant
     /// (inline for `AgentEntry`; link-to-detail for tool sidechains and
     /// abandoned-branch synthesizer rows).

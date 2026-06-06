@@ -485,6 +485,17 @@
         }
       }
     },
+    "agentXray.section.offloadedOutput.link" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open offloaded result · %@"
+          }
+        }
+      }
+    },
     "agentXray.title" : {
       "extractionState" : "manual",
       "localizations" : {
