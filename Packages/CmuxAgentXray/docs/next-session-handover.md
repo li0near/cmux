@@ -138,34 +138,36 @@ instead of the cap-overflow link).
 
 ### Tier 4 — heavy (model + view changes, larger PRs)
 
-#### T4.1. `Section` richness — `image`, `toolReference`, optionally `resource`
+#### T4.1. ~~`Section` richness — `image`, `toolReference`~~ **(landed)**
 
-`Section` is currently `.text([String], style: TextStyle) | .subentries([Entry])`.
-`tool_result.content` arrays carry block types beyond text:
-- `tool_reference` (produced by `ToolSearch`) — silently dropped today.
-- `image` (Playwright MCP, image-gen MCPs, computer-use) — silently
-  dropped today.
-- `resource` (MCP spec) — silently dropped today.
+Phase B of the 2026-06-07 refactor. `Section` extended from 2 cases to 4:
+- `.text([String], style: TextStyle)` — unchanged
+- `.image(ImageSource)` — NEW. User-paste **and** tool-returned share
+  one variant. Base64 lazy-decoded off-main at render time
+  (`ImageThumbnailView` with `Task.detached`).
+- `.toolReference(toolName: String)` — NEW. CC's client-side
+  `ToolSearch` deferred-loader emits these in `tool_result.content[]`
+  (158 corpus hits / 67 files). `ToolReferenceChipView` renders as
+  inline pill with cyan MCP-server chip.
+- `.subentries([Entry])` — unchanged.
 
-Extend `Section` with new cases:
-```swift
-case toolReference(toolName: String)
-case image(source: ImageSource)  // base64 + media type
-case resource(uri: String, mimeType: String?)  // MCP resource
-```
+`resource` deferred — 0 corpus, 0 spec hits in CC's local-MCP path
+(MCP→Messages bridge downcasts to text/image at the spec level).
 
-Inline rendering can be minimal (a chip/badge for `tool_reference`, a
-thumbnail for `image`, a link for `resource`); **rich rendering goes to
-the detail tab** (per user preference).
+`flattenToolResult` rewritten as `buildToolResultSections(_:isError:logger:)`
+emitting one Section per `tool_result.content[]` block. Per-block
+mapping covers text, image (base64), tool_reference, plus stub
+fallbacks for spec-only-not-corpus types (`redacted_thinking` /
+`search_result` / `document`) with `AgentXrayLogger.warning`
+emission so future surfacing is detectable in sysdiagnose.
 
-**Files:** `Models/Body.swift` (new `Section` cases + `ImageSource`
-struct), `Adapters/Claude/ClaudeTranscriptBuilder.swift` (replace
-`flattenToolResult`'s text-join with per-block section emission),
-`Views/AgentEntryView+CappedBody.swift` and `EntryBodyView.swift`
-(handle the new cases inline), detail-tab views (handle in detail mode).
+User-paste image path also fixed (`buildUserContentSections(from:)`
+walks `user.message.content[]` blocks, emits per-block Sections).
+Assistant-emitted image blocks (spec-only-not-corpus) drop with a
+warning log instead of the legacy `[image]` placeholder.
 
-`flattenToolResult`'s `.object` and `default` branches are unreachable
-in the corpus today and can be pruned at the same time.
+`buildPendingUserEntry` vestige inlined at its single call site +
+deleted.
 
 ---
 
