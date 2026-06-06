@@ -14,7 +14,12 @@ struct AgentToolCall: Equatable {
     let name: String
     let summary: String
     let inputDetail: String
-    let result: String?
+    /// Pre-built sections for the result body (one per `tool_result.content[]`
+    /// block). nil means the result hasn't arrived yet (call is pending).
+    /// Empty array means the result arrived but contained no
+    /// renderable blocks. The flush-time code appends these directly
+    /// after the input section.
+    let result: [Section]?
     let isError: Bool
     let subagentType: String?
     let teamMemberName: String?
@@ -28,7 +33,7 @@ struct AgentToolCall: Equatable {
         name: String,
         summary: String,
         inputDetail: String,
-        result: String?,
+        result: [Section]?,
         isError: Bool,
         subagentType: String? = nil,
         teamMemberName: String? = nil,
@@ -56,7 +61,7 @@ struct AgentToolCall: Equatable {
     /// `inputDetail`, sub-agent metadata) carry through unchanged.
     /// Used when a `tool_result` JSONL line lands for an in-flight tool.
     func withResult(
-        _ result: String,
+        _ result: [Section],
         isError: Bool,
         durationMs: Int?
     ) -> AgentToolCall {

@@ -553,8 +553,8 @@ struct ClaudeTranscriptBuilder {
                         return .ok
                     }()
                     var sections: [Section] = [.text([call.inputDetail], style: .normal)]
-                    if let result = call.result {
-                        sections.append(.text([result], style: status == .error ? .error : .normal))
+                    if let resultSections = call.result {
+                        sections.append(contentsOf: resultSections)
                     }
                     if let sidechain = call.sidechainTranscript, !sidechain.isEmpty {
                         sections.append(.subentries(sidechain))
@@ -845,7 +845,19 @@ struct ClaudeTranscriptBuilder {
                 case "tool_result":
                     attachToolResult(block, timestamp: line.timestamp, ctx: &ctx)
                 case "image":
-                    appendTextEvent(kind: .assistant, "[image]", timestamp: line.timestamp, ctx: &ctx)
+                    // VERIFY-CORPUS-2026-06-07: 0 hits for assistant-emitted
+                    // image blocks past this date. Spec-allowed (Anthropic
+                    // Messages API) but never emitted by Claude Code in
+                    // practice — real images flow back via tool_result
+                    // (e.g. Playwright `browser_take_screenshot`) or via
+                    // top-level user paste, both handled in their own
+                    // paths. If a corpus hit ever shows here, design a
+                    // proper assistant-image emission (likely an
+                    // `appendImageEvent` helper analogous to
+                    // `appendTextEvent`, plus a Section.image-bearing
+                    // TextSubEntry shape) rather than re-instating the
+                    // legacy "[image]" placeholder text.
+                    break
                 default:
                     break
                 }
@@ -929,8 +941,8 @@ struct ClaudeTranscriptBuilder {
         ctx: inout BuildContext
     ) {
         guard let id = block.toolUseId, ctx.pendingTurn != nil else { return }
-        let body = Self.flattenToolResult(block.toolResultContent)
         let isError = block.isError ?? false
+        let resultSections = Self.buildToolResultSections(block.toolResultContent, isError: isError)
         if let index = ctx.pendingTurn!.toolIndexByID[id],
            case .tool(let existing, let startedAt) = ctx.pendingTurn!.subEntries[index] {
             let durationMs = startedAt.flatMap { started -> Int? in
@@ -938,7 +950,7 @@ struct ClaudeTranscriptBuilder {
                 let delta = timestamp.timeIntervalSince(started)
                 return delta >= 0 ? Int(delta * 1000) : nil
             }
-            let updated = existing.withResult(body, isError: isError, durationMs: durationMs)
+            let updated = existing.withResult(resultSections, isError: isError, durationMs: durationMs)
             ctx.pendingTurn!.subEntries[index] = .tool(call: updated, startedAt: startedAt)
         } else {
             // Synthetic — tool_result arrived without a prior tool_use.
@@ -947,7 +959,7 @@ struct ClaudeTranscriptBuilder {
                 name: "(tool result)",
                 summary: "",
                 inputDetail: "",
-                result: body,
+                result: resultSections,
                 isError: isError,
                 subagentType: nil,
                 teamMemberName: nil,
@@ -1108,19 +1120,112 @@ struct ClaudeTranscriptBuilder {
         return obj.map { "\($0.key)=\($0.value.displayString)" }.sorted().first ?? ""
     }
 
-    static func flattenToolResult(_ value: ClaudeJSONValue?) -> String {
-        guard let value else { return "" }
+    /// Build per-block ``Section`` array from a `tool_result.content`
+    /// JSON value. Replaces the legacy `flattenToolResult(_:)` helper
+    /// which join-flattened every block into one string and silently
+    /// dropped images / `tool_reference` blocks.
+    ///
+    /// `isError` is applied only to `.text` sections (the visual treatment
+    /// the old single-string path applied to error results); images and
+    /// tool-references have no error variant.
+    ///
+    /// Per–`type` mapping (Anthropic Messages API spec ∩ corpus
+    /// 2026-06-07):
+    ///  - `text`              → `.text([s], style: .normal/.error)`
+    ///  - `image`             → `.image(ImageSource(...))` (base64 only)
+    ///  - `tool_reference`    → `.toolReference(toolName:)` (CC's
+    ///                          client-side `ToolSearch` deferred-loader
+    ///                          emits these inside `tool_result.content`)
+    ///  - `redacted_thinking` /
+    ///    `search_result` /
+    ///    `document`          → `.text(["[type]"], .normal)` placeholder.
+    ///                          VERIFY-CORPUS-2026-06-07: 0 hits past
+    ///                          this date for any of these. Spec-allowed
+    ///                          but never emitted by Claude Code in
+    ///                          practice. Re-grep
+    ///                          `~/.claude/projects/*/*.jsonl` modified
+    ///                          after this date if any of these surface
+    ///                          in the UI; if so, design rich rendering
+    ///                          rather than this stub.
+    ///  - unknown             → `.text(["[type]"], .normal)`.
+    ///
+    /// String-shaped legacy `tool_result.content` (single string instead
+    /// of array) is coerced to `[.text([s], textStyle)]`.
+    static func buildToolResultSections(
+        _ value: ClaudeJSONValue?,
+        isError: Bool
+    ) -> [Section] {
+        let textStyle: TextStyle = isError ? .error : .normal
+        guard let value else { return [] }
         switch value {
-        case .string(let s): return s
+        case .string(let s):
+            return [.text([s], style: textStyle)]
         case .array(let arr):
-            return arr.compactMap { item -> String? in
-                if case .object(let obj) = item,
-                   case .string(let s)? = obj["text"] { return s }
-                return nil
-            }.joined(separator: "\n")
+            return arr.compactMap { sectionForBlock($0, textStyle: textStyle) }
         default:
-            return value.displayString
+            // Object / number / bool / null shaped tool_result.content
+            // is unreachable in the corpus; the legacy fallback used
+            // `value.displayString`, which preserves at least a textual
+            // representation rather than dropping the block entirely.
+            return [.text([value.displayString], style: textStyle)]
         }
+    }
+
+    /// Map a single `tool_result.content[]` block (must be a JSON
+    /// object with a `type` field) to a single ``Section``. Returns nil
+    /// if the block isn't an object — the array branch in
+    /// ``buildToolResultSections(_:isError:)`` filters those out so a
+    /// malformed block doesn't produce an empty section.
+    private static func sectionForBlock(
+        _ item: ClaudeJSONValue,
+        textStyle: TextStyle
+    ) -> Section? {
+        guard case .object(let obj) = item,
+              case .string(let type)? = obj["type"] else {
+            return nil
+        }
+        switch type {
+        case "text":
+            if case .string(let s)? = obj["text"] {
+                return .text([s], style: textStyle)
+            }
+            return .text([""], style: textStyle)
+        case "image":
+            return imageSection(from: obj)
+        case "tool_reference":
+            if case .string(let name)? = obj["tool_name"] {
+                return .toolReference(toolName: name)
+            }
+            return nil
+        case "redacted_thinking", "search_result", "document":
+            // VERIFY-CORPUS-2026-06-07: 0 hits in the user's corpus past
+            // this date. Spec-allowed (Anthropic Messages API) but
+            // never emitted by Claude Code in practice. Stub as text
+            // so we don't drop data; revisit when corpus shows hits.
+            return .text(["[\(type)]"], style: textStyle)
+        default:
+            // Unknown block type — preserve the type label visibly in
+            // the UI so future drift is debuggable without re-querying.
+            return .text(["[\(type)]"], style: textStyle)
+        }
+    }
+
+    /// Decode the `image` block shape:
+    ///   `{ "type":"image", "source":{ "type":"base64",
+    ///      "media_type":"image/png", "data":"..." } }`
+    /// URL-mode (`source.type == "url"`) is in the spec but absent from
+    /// the corpus 2026-06-07; treat as unknown for now and fall through
+    /// to nil so the caller drops the block (rather than render an
+    /// empty image).
+    private static func imageSection(from obj: [String: ClaudeJSONValue]) -> Section? {
+        guard case .object(let source)? = obj["source"],
+              case .string(let kindStr)? = source["type"],
+              kindStr == "base64",
+              case .string(let mediaType)? = source["media_type"],
+              case .string(let data)? = source["data"] else {
+            return nil
+        }
+        return .image(ImageSource(kind: .base64, mediaType: mediaType, data: data))
     }
 
     static func formatToolInput(_ input: ClaudeJSONValue?) -> String {
