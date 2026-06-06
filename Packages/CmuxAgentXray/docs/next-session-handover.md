@@ -42,48 +42,93 @@ authoritative external references.
 
 ---
 
-## Pending items
+## Pending items — ordered by difficulty (trivial → heavy)
 
-Numbered for cross-reference. Independent unless noted.
+Numbered for cross-reference. Items are independent unless explicitly noted.
+Pick trivially-small items first to ship visible wins; tackle heavier items
+once you have context on the surrounding code.
 
-### 1. `DetailContent.Kind` → `ContentType` swap (was Phase A of plan stage 7b)
+### Tier 1 — trivial (≤ 5 minutes each)
 
-**Status:** explicitly deferred from commit `eabac5f5e`. The DetailRequest
-collapse landed; the Kind→ContentType half didn't.
+#### T1.1. Grep tool icon swap
 
-**Goal:** drop `DetailContent.Kind` enum (with payloads like
-`.toolInput(toolName:)`, `.toolResult(toolName:isError:)`,
-`.subagentTranscript(toolName:subagentType:)`, etc.) and replace with:
+Change `EntryIcon.tool(named:)` (`Models/EntryIcon.swift`) for the `Grep` case
+from `text.magnifyingglass` / `text.magnifyingglass.fill` to
+`questionmark.text.page` / `questionmark.text.page.fill`.
+
+User-requested visual polish. One-line diff in the existing switch.
+
+---
+
+### Tier 2 — small (≤ 1 hour each, single concept, no architecture)
+
+These are independent; pick any order.
+
+#### T2.1. MCP tool single-icon mapping
+
+In `Models/EntryIcon.swift`'s `tool(named:)` switch, add a fallback before
+the generic-wrench `default` arm:
 
 ```swift
-public enum ContentType: Equatable, Sendable {
-    case plainText
-    case transcript   // .subentries section
-    // Phase B cases land later: .markdown, .code, .json, .diff
-}
+default:
+    if name.hasPrefix("mcp__") {
+        return EntryIcon(
+            collapsed: "externaldrive.connected.to.line.below",
+            expanded: "externaldrive.connected.to.line.below.fill"
+        )
+    }
+    return EntryIcon(
+        collapsed: "wrench.adjustable",
+        expanded: "wrench.adjustable.fill"
+    )
 ```
 
-Move the per-Kind metadata (`toolName`, `isError`, `subagentType`,
-`rewindIndex`, etc.) into **direct fields** on `DetailContent`:
-- `title: String` (existing)
-- `subtitle: String?` (existing)
-- `icon: EntryIcon` (new — was derived from Kind)
-- `accent: PaletteRole` (new — was derived from Kind)
-- `contentType: ContentType` (new)
-- `body: String` / `entries: [Entry]?` (existing)
+**No per-server differentiation** — user explicitly asked for one MCP icon
+across all servers.
 
-`TranscriptView.detailKindIcon(for:)` and `detailKindAccent(for:palette:)`
-(`Views/TranscriptView.swift:478, 499`) are the only Kind readers.
-Migrate them to read the new direct fields. Resolver computes the
-direct fields at resolve time from entry context (already does this for
-title/subtitle).
+#### T2.2. MCP tool name parsing
 
-**Files:** `Panel/DetailContent.swift`, `Views/TranscriptView.swift`,
-plus a new `PaletteRole` enum or use existing `Color`-named keys.
+In `Adapters/Claude/ClaudeTranscriptBuilder.appendToolUse` (or via a small
+helper applied before `Header(name: …)` is constructed), strip the
+`mcp__<server>__` prefix from the displayed name and surface `<server>`
+as a chip / label:
 
-### 2. `QueuedState` enum (UserEntry boolean pair → 3-case enum)
+```
+input  block.name = "mcp__playwright__browser_navigate"
+output Header.name = "browser_navigate"
+       chip / label = "playwright"
+```
 
-**Goal:** replace `UserEntry.wasQueued: Bool` + `UserEntry.isQueuedPending: Bool`
+Where to render the chip: pass it through to the `subEntryHeader`'s
+existing `extras` view-builder slot (already used by tool's
+`subagentType` magenta chip — same pattern, slightly different color).
+
+Built-in tool names (Read, Edit, Bash, etc.) keep their current rendering.
+
+#### T2.3. `summarizeToolInput` priority-list fallback
+
+`Adapters/Claude/ClaudeTranscriptBuilder.swift:1099` — the `default` arm of
+the tool-name switch falls through to `input.displayString`, which dumps
+every key=value pair (noisy for unhandled tools). Replace with a priority
+list:
+
+```swift
+default:
+    let preferred = ["url", "path", "file_path", "query", "command",
+                     "name", "id", "skill", "key"]
+    for key in preferred {
+        if case .string(let v)? = obj[key] {
+            return truncated(v, max: ClaudeRenderConsts.toolSummaryMaxChars)
+        }
+    }
+    return input.displayString  // last-resort fallback
+```
+
+Affects every unhandled tool — including MCP and any future built-in.
+
+#### T2.4. `QueuedState` enum (UserEntry boolean pair → 3-case enum)
+
+Replace `UserEntry.wasQueued: Bool` + `UserEntry.isQueuedPending: Bool`
 with `UserEntry.queuedState: QueuedState`:
 
 ```swift
@@ -104,77 +149,77 @@ state. Both readers map trivially:
 `Behavior/Visibility/EntriesFilter.swift:125, 210` (the only outside-builder
 reader).
 
-### 3. ClaudeTranscriptBuilder remaining audit items (semantic dedup)
+#### T2.5. Builder text-extraction unification
 
-From the second audit pass — these are still on the table:
-
-**3a. Text-extraction unification.** Five near-identical paths walking
-`ClaudeMessageContent` to extract joined text:
+Five near-identical paths walking `ClaudeMessageContent` to extract joined
+text. Consolidate to one helper `extractText(from: ClaudeMessageContent?) -> String`
+and replace each call site:
 - `extractQueuedPromptText` (`ClaudeTranscriptBuilder.swift:365`)
 - `extractMetaText` (`:376`)
 - inline in `buildUserEntry` (`:444`)
 - inline in `buildSystemEntry` (`:475`)
 - `extractTextContent` (`:1090`)
 
-One helper covers all five. Saves ~30 lines, removes a real correctness
-risk (the five impls could drift apart).
+Saves ~30 lines, removes a real correctness risk (the five impls could
+drift apart).
 
-**3b. `buildPendingUserEntry` → wrap `makeUserEntry`.** Currently 17 lines
-re-implementing `makeUserEntry` with `wasQueued: true, isQueuedPending: true,
+#### T2.6. `buildPendingUserEntry` → wrap `makeUserEntry`
+
+`Adapters/Claude/ClaudeTranscriptBuilder.swift:422` re-implements
+`makeUserEntry` in 17 lines with `wasQueued: true, isQueuedPending: true,
 promptId: nil` hardcoded. Should be a 4-line wrapper. Same outcome since
 the icon picker `wasQueued ? .queuedUser : .user` already lives in
-`makeUserEntry`.
+`makeUserEntry`. (After T2.4 lands, `wasQueued: true, isQueuedPending: true`
+becomes `queuedState: .pending`.)
 
-**3c. `buildSystemEntry` two arms converging.** After 3a lands, both
-`if line.type == "system"` and `else` branches build identical SystemEntry
-shape — only differing in how text is extracted. Converge to one return
-statement.
+#### T2.7. `buildSystemEntry` two arms converging
 
-### 4. `summarizeToolInput` MCP fallback (header summary polish)
+After T2.5 lands, both `if line.type == "system"` and `else` branches in
+`buildSystemEntry` (`:475`) build identical `SystemEntry` shape — only
+differing in how text is extracted. Converge to one return statement.
 
-**Problem:** `ClaudeTranscriptBuilder.summarizeToolInput` (`:1099`)
-special-cases Read/Edit/Write/Bash/Grep/Glob/Task/WebFetch/WebSearch.
-Anything else (especially MCP tools like `mcp__playwright__browser_evaluate`)
-falls through to `input.displayString`, which dumps every key=value pair —
-noisy.
+---
 
-**Goal:** add a smarter default fallback that picks the most "title-shaped"
-field from the input dict by priority list:
+### Tier 3 — medium (multi-file, design-level)
+
+#### T3.1. `DetailContent.Kind` → `ContentType` swap
+
+(Was Phase A of plan stage 7b — explicitly deferred from commit `eabac5f5e`.)
+
+Drop `DetailContent.Kind` enum (with payloads like `.toolInput(toolName:)`,
+`.toolResult(toolName:isError:)`, `.subagentTranscript(toolName:subagentType:)`,
+`.abandonedBranch(rewindIndex:totalRewinds:)`, etc.) and replace with:
 
 ```swift
-let preferred = ["url", "path", "file_path", "query", "command", "name",
-                 "id", "skill", "key"]
-for key in preferred {
-    if case .string(let v)? = obj[key] { return truncated(v, max: ...) }
+public enum ContentType: Equatable, Sendable {
+    case plainText
+    case transcript   // .subentries section
+    // T5.x adds .markdown, .code, .json, .diff
 }
-// fallback to input.displayString
 ```
 
-Affects every unhandled tool — including MCP and any future built-in
-Claude Code adds.
+Move per-Kind metadata (toolName, isError, etc.) into **direct fields**
+on `DetailContent`:
+- `title: String` (existing)
+- `subtitle: String?` (existing)
+- `icon: EntryIcon` (new — was derived from Kind)
+- `accent: PaletteRole` (new — was derived from Kind)
+- `contentType: ContentType` (new)
+- `body: String` / `entries: [Entry]?` (existing)
 
-### 5. MCP tool name parsing + icon (header polish)
+`TranscriptView.detailKindIcon(for:)` and `detailKindAccent(for:palette:)`
+(`Views/TranscriptView.swift:478, 499`) are the only Kind readers.
+Migrate them to read the new direct fields. Resolver computes the
+direct fields at resolve time from entry context (already does this for
+title/subtitle).
 
-**Goal:** strip `mcp__<server>__` prefix from displayed names. `mcp__playwright__browser_navigate`
-becomes:
-- `name`: `browser_navigate`
-- new chip / label: `playwright` (small magenta-ish or distinct color).
+#### T3.2. Persisted-output wrapper detection
 
-**Icon** for any tool name starting with `mcp__`:
-- Use `EntryIcon(collapsed: "externaldrive.connected.to.line.below", expanded: "externaldrive.connected.to.line.below.fill")`. **No per-server differentiation** — user explicitly asked for one MCP icon.
+**High-leverage** — affects every tool with large output (Bash, Read,
+Edit, all MCPs).
 
-**Also (related polish):** change the `Grep` tool icon from
-`text.magnifyingglass` to **`questionmark.text.page`** / `questionmark.text.page.fill`.
-User-requested in the same conversation.
-
-**Files:** `Models/EntryIcon.swift` (Grep icon swap + MCP fallback case in
-`tool(named:)`), `Adapters/Claude/ClaudeTranscriptBuilder.swift`
-(`appendToolUse` derives display name + chip from `block.name`).
-
-### 6. Persisted-output wrapper detection (high-leverage)
-
-**Problem:** Claude Code offloads tool outputs above a size threshold to
-disk and inlines a stub like:
+Claude Code offloads tool outputs above a size threshold to disk and
+inlines a stub like:
 
 ```
 <persisted-output>
@@ -182,16 +227,15 @@ Output too large (128.9KB). Full output saved to: <absolute path to .out file>
 </persisted-output>
 ```
 
-The X-ray panel currently renders this stub verbatim. Affects every
-tool with large output (Bash, Read, Edit, all MCPs).
+The X-ray panel currently renders this stub verbatim.
 
-**Verify against corpus first:** the wrapper format may differ across
-Claude Code versions. Sample 5+ recent sessions that hit the cap and
-confirm the exact wrapper tags + path-extraction regex.
+**⚠️ Verify against the live corpus first.** Sample 5+ recent sessions
+that hit the cap and confirm the exact wrapper tags + path-extraction
+regex. The format may differ across Claude Code versions.
 
 **Goal:** detect the wrapper, parse the file path, render an "↗ Open
-offloaded result" link in the body. On click, read the file and open
-in the detail tab.
+offloaded result" link. On click, read the file and open in the detail
+tab.
 
 **Files:** `Adapters/Claude/ClaudeTranscriptBuilder.swift` (detect in
 `flattenToolResult` or in a content-classifier pass), `Panel/DetailContent.swift`
@@ -200,16 +244,20 @@ whose text starts with the wrapper), `Views/AgentEntryView+CappedBody.swift`
 (skip the stub-text render and emit a styled "open offloaded" link
 instead of the cap-overflow link).
 
-### 7. Section richness — `image`, `toolReference`, optionally `resource`
+---
 
-**Problem:** `Section` is currently `.text([String], style: TextStyle) | .subentries([Entry])`.
+### Tier 4 — heavy (model + view changes, larger PRs)
+
+#### T4.1. `Section` richness — `image`, `toolReference`, optionally `resource`
+
+`Section` is currently `.text([String], style: TextStyle) | .subentries([Entry])`.
 `tool_result.content` arrays carry block types beyond text:
 - `tool_reference` (produced by `ToolSearch`) — silently dropped today.
-- `image` (potentially from Playwright MCP, image-gen MCP, computer-use)
-  — silently dropped today.
+- `image` (Playwright MCP, image-gen MCPs, computer-use) — silently
+  dropped today.
 - `resource` (MCP spec) — silently dropped today.
 
-**Goal:** extend `Section` with new cases:
+Extend `Section` with new cases:
 ```swift
 case toolReference(toolName: String)
 case image(source: ImageSource)  // base64 + media type
@@ -227,12 +275,15 @@ struct), `Adapters/Claude/ClaudeTranscriptBuilder.swift` (replace
 (handle the new cases inline), detail-tab views (handle in detail mode).
 
 `flattenToolResult`'s `.object` and `default` branches are unreachable
-in the corpus and can be pruned at the same time.
+in the corpus today and can be pruned at the same time.
 
-### 8. MCP `### Section`-style content split (detail-tab only)
+---
 
-**Problem:** Playwright MCP (and likely other MCPs) returns text blocks
-formatted like:
+### Tier 5 — feature work (multi-PR, depends on T3 / T4)
+
+#### T5.1. MCP `### Section`-style content split (detail-tab only)
+
+Playwright MCP (and likely other MCPs) returns text blocks formatted like:
 
 ```
 ### Result
@@ -244,56 +295,52 @@ formatted like:
 ```
 ```
 
-Today, this is a single capped text block. User wants:
-- **Inline:** keep flat (no rich rendering inline).
-- **Detail tab:** split on `### <Heading>` boundaries; recognize fenced
-  code blocks; render each section per its content type. This is the
-  Phase-B-rich-rendering hook (markdown / code-with-syntax-highlight).
+Today, this is a single capped text block. **Inline rendering stays
+flat** (per user preference); the **detail tab** splits on `### <Heading>`
+boundaries, recognizes fenced code blocks, and renders each section per
+its content type. Hooks into T5.2's rich renderers.
 
-**Verify first:** sample 10+ MCP `tool_result` blocks across 3+ servers
-to confirm the convention is consistent. Some MCPs may use Markdown
-without `###` headings, or use different heading conventions.
+**⚠️ Verify against the live corpus first.** Sample 10+ MCP `tool_result`
+blocks across 3+ servers to confirm the convention is consistent. Some
+MCPs may use Markdown without `###` headings, or different conventions.
 
 **Files:** detail-tab content resolver (`Panel/DetailContent.swift`)
 splits the body string on the heading regex; emits a richer DetailContent
-that can carry multiple typed sections; detail-tab view renders code
-blocks with syntax highlighting (Phase B work — depends on
-`ContentType.code` / `.markdown` cases from item 1).
+that can carry multiple typed sections; detail-tab view renders per
+content type.
 
-### 9. Phase B — rich detail-tab rendering
+#### T5.2. Phase B — rich detail-tab rendering
 
-**Goal:** add `ContentType` cases for `.markdown / .code(language:) / .json
-/ .diff`. Builders annotate each section's content type. Detail tab
-renders per type:
+Add `ContentType` cases for `.markdown / .code(language:) / .json / .diff`.
+Builders annotate each section's content type. Detail tab renders per
+type:
 - `.markdown` → markdown parser
 - `.code(language: "js")` → syntax highlighter
 - `.json` → pretty-printed JSON
 - `.diff` → unified diff view
 
-Each renderer is its own focused PR; the foundation (the ContentType
-enum + Section.text(_, style:, contentType:) third-axis) lands first.
+Each renderer is its own focused PR; the foundation
+(`ContentType` enum extension + `Section.text(_, style:, contentType:)`
+third axis) lands first.
 
 Was the original "Phase B" in the refactor plan, explicitly deferred.
 
 ---
 
-## Suggested commit groupings
+## Suggested execution order
 
-Smallest visible win to land first:
-- **A.** Items 4 + 5 (summary fallback + MCP icon + Grep icon swap).
-  ~1 commit, small, immediate UI improvement.
-- **B.** Item 2 (QueuedState enum). ~1 commit, pure refactor cleanup.
-- **C.** Items 3a + 3b + 3c (remaining ClaudeTranscriptBuilder dedup).
-  ~1 commit, ~80 lines down.
-- **D.** Item 1 (Kind → ContentType). ~1 commit, medium scope.
-- **E.** Item 6 (persisted-output handling). High leverage, own focused PR.
-- **F.** Item 7 (Section richness for image / tool_reference / resource).
-  Larger PR; touches Models + Views.
-- **G.** Items 8 + 9 (rich detail-tab rendering, Phase B). Multi-PR effort.
+1. **Tier 1** (T1.1 — Grep icon) — single commit, ship as warmup.
+2. **Tier 2** in any order. Natural bundling:
+   - **Bundle A:** T2.1 + T2.2 + T2.3 (MCP polish — single commit; small UI improvement visible immediately).
+   - **Bundle B:** T2.4 (QueuedState — pure model refactor, isolated).
+   - **Bundle C:** T2.5 + T2.6 + T2.7 (ClaudeTranscriptBuilder dedup train; T2.5 enables T2.7).
+3. **Tier 3** — T3.1 next (cleans up the type model before adding more cases via Tier 4); then T3.2 (persisted-output, high-leverage).
+4. **Tier 4** — T4.1 (Section richness — unblocks visible rendering for tool_reference + images).
+5. **Tier 5** — T5.1 + T5.2 (multi-PR effort; takes the rest of the runway).
 
-A → B → C → D forms a tight refactor train. E and F are independent
-features; F unblocks visible improvements (image / tool_reference now
-render). G is the longest-tail.
+This sequencing keeps PRs reviewable (each Tier 1/2/3 item is one
+focused change) while building toward the bigger Tier 4/5 features
+without a giant flag-day refactor.
 
 ---
 
