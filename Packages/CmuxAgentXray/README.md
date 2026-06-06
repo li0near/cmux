@@ -126,7 +126,7 @@ commits. Highlights of the refactor:
 - DetailRequest collapses to single `.bodySection(targetID:sectionIndex:)`.
 - Body rendering unified through one `cappedBody` walker.
 
-See `MIGRATION_PLAN.md` §14 rows 19a–19h for commits.
+See `MIGRATION_PLAN.md` §14 rows 19a–19i for commits.
 
 **Pending work** is tracked in
 [`docs/next-session-handover.md`](docs/next-session-handover.md). Open

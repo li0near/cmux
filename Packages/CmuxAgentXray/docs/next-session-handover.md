@@ -4,7 +4,7 @@ This doc lists the open items discussed during the 2026-06-05 / 2026-06-06
 refactor session that **have not yet landed**. Each entry has a clear
 acceptance criterion and a pointer to the relevant file:line.
 
-The session itself landed:
+The 2026-06-05/06 sessions landed:
 - Sub-entry interleave (`.text` + `.tool` in JSONL arrival order).
 - `TimeMarker` + entry-level `timestamp` projection.
 - `TextSubEntry` merge.
@@ -13,8 +13,22 @@ The session itself landed:
 - Body unification (per-section `TextStyle` + `cappedBody` walker).
 - DetailRequest collapse to single `.bodySection`.
 - ClaudeTranscriptBuilder dedup (loc helper, makeSystemEntry, makeTextSubEntry, planModeMetadata, appendTextEvent, withResult/withSidechain mutators, single subEntries array).
+- **Tier 1 + Tier 2** of this doc (T1.1, T2.1–T2.7).
+- **Visual-polish pass:** Theme `summary` → `title` rename, sub-row title
+  font regression fix + 11.5pt re-sizing, opacity removed from sub-row
+  title, sub-row meta bumped to 10.5pt, eight tool-icon picks (Edit,
+  Grep, Bash, WebSearch, Todo*/Task*, plan-mode glyphs), MCP server
+  surfaced in the primary name slot with the bare tool name in a new
+  `label` slot.
 
-See `MIGRATION_PLAN.md §14` rows 19a–19h for landed commits.
+See `MIGRATION_PLAN.md §14` rows 19a–19i for landed commits.
+
+**Latest tip (2026-06-06):** `56ad077ba`. Baseline check before
+resuming:
+```bash
+git log -1 --oneline                             # → 56ad077ba
+swift test --package-path Packages/CmuxAgentXray # → 73 tests / 13 suites green
+```
 
 ## ⚠️ Cross-verification reminder for the next agent
 
@@ -267,7 +281,7 @@ CMUX_ZIG=/opt/homebrew/opt/zig@0.15/bin/zig \
 | Doc | What it covers |
 |-----|----------------|
 | `README.md` | Package overview, vocabulary, layer map, host integration. Updated this session for `TextSubEntry` + `TimeMarker` vocab. |
-| `MIGRATION_PLAN.md` | Phase log + bug-fix ledger + deferred-task ledger. §14 rows 19a–19h log this session's work. |
+| `MIGRATION_PLAN.md` | Phase log + bug-fix ledger + deferred-task ledger. §14 rows 19a–19i log this session's work. |
 | `docs/claude-jsonl-mapping.md` | How Claude JSONL maps to entries (parser tree + table + maintenance guide). |
 | `docs/session-attach.md` | Session-attach resolver flow (paths 1/2/3, SSH attach, RemoteSessionStore). |
 | `docs/next-session-handover.md` | **(this doc)** Pending work + verification reminders. |
