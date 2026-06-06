@@ -382,13 +382,25 @@ struct ClaudeTranscriptBuilder {
         return Self.loc("agentXray.entry.user.label", "User")
     }
 
+    /// Construct a `UserEntry` from a per-block ``Section`` array.
+    /// Used directly by ``buildUserEntry(from:ctx:)`` so user-pasted
+    /// `image` blocks survive into the body (the legacy text-only
+    /// shorthand silently dropped them at the `joinText` filter).
+    ///
+    /// `header.title` (preview) and the trailing word-count pill are
+    /// derived from the **text-only** projection of the sections —
+    /// images don't contribute to either.
     private func makeUserEntry(
         id: String,
         timestamp: Date?,
         promptId: String?,
-        text: String,
+        sections: [Section],
         queuedState: UserEntry.QueuedState
     ) -> UserEntry {
+        let text = sections.compactMap { section -> String? in
+            if case .text(let blocks, _) = section { return blocks.joined(separator: "\n") }
+            return nil
+        }.joined(separator: "\n")
         let icon: EntryIcon = (queuedState == .none) ? .user : .queuedUser
         let preview = singleLinePromptPreview(text)
         let wordCount = wordCount(text)
@@ -404,30 +416,60 @@ struct ClaudeTranscriptBuilder {
                 trailing: trailing,
                 timeMarker: timestamp.map { .clock($0) }
             ),
-            body: .text([text]),
+            body: Body(sections: sections),
             promptId: promptId,
+            queuedState: queuedState
+        )
+    }
+
+    /// Text-shorthand convenience for the four call sites that only
+    /// have a single string (queued prompts, slash-command consumed,
+    /// system-side transformations). Wraps the text in a single
+    /// `.text([s], .normal)` section before calling the canonical
+    /// section-bearing form.
+    private func makeUserEntry(
+        id: String,
+        timestamp: Date?,
+        promptId: String?,
+        text: String,
+        queuedState: UserEntry.QueuedState
+    ) -> UserEntry {
+        makeUserEntry(
+            id: id,
+            timestamp: timestamp,
+            promptId: promptId,
+            sections: [.text([text], style: .normal)],
             queuedState: queuedState
         )
     }
 
     private func buildUserEntry(from line: ClaudeJSONLLine, ctx: BuildContext) -> UserEntry? {
         guard line.message?.content != nil else { return nil }
+        let sections = Self.buildUserContentSections(from: line.message?.content)
+        // Slash-command detection runs against the **text** projection of
+        // the sections — a slash-command line never carries images, so
+        // checking the text-only joined string is correct.
         let rawText = Self.joinText(from: line.message?.content)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let isSlash = rawText.hasPrefix("<command-message>")
             || rawText.hasPrefix("<command-name>")
-        let displayText: String
-        if isSlash, let slash = ClaudeQueuedPromptResolver.consumedSlashCommandText(line) {
-            displayText = slash
-        } else {
-            displayText = rawText
-        }
         let wasQueued = ctx.queuedSlashCommandUuids.contains(line.stableId)
+        if isSlash, let slash = ClaudeQueuedPromptResolver.consumedSlashCommandText(line) {
+            // Slash-command consumed: discard any non-text blocks (none
+            // expected) and rebuild as a single text section.
+            return makeUserEntry(
+                id: line.stableId,
+                timestamp: line.timestamp,
+                promptId: line.promptId,
+                text: slash,
+                queuedState: wasQueued ? .consumed : .none
+            )
+        }
         return makeUserEntry(
             id: line.stableId,
             timestamp: line.timestamp,
             promptId: line.promptId,
-            text: displayText,
+            sections: sections,
             queuedState: wasQueued ? .consumed : .none
         )
     }
@@ -851,13 +893,13 @@ struct ClaudeTranscriptBuilder {
                     // practice — real images flow back via tool_result
                     // (e.g. Playwright `browser_take_screenshot`) or via
                     // top-level user paste, both handled in their own
-                    // paths. If a corpus hit ever shows here, design a
-                    // proper assistant-image emission (likely an
-                    // `appendImageEvent` helper analogous to
-                    // `appendTextEvent`, plus a Section.image-bearing
-                    // TextSubEntry shape) rather than re-instating the
-                    // legacy "[image]" placeholder text.
-                    break
+                    // paths. If this warning surfaces, design a proper
+                    // assistant-image emission rather than re-instating
+                    // the legacy "[image]" placeholder text.
+                    logger.warning(
+                        "ClaudeTranscriptBuilder: assistant-emitted image block surfaced "
+                        + "(spec-only-not-corpus). Skipping; design appendImageEvent if this becomes common."
+                    )
                 default:
                     break
                 }
@@ -942,7 +984,11 @@ struct ClaudeTranscriptBuilder {
     ) {
         guard let id = block.toolUseId, ctx.pendingTurn != nil else { return }
         let isError = block.isError ?? false
-        let resultSections = Self.buildToolResultSections(block.toolResultContent, isError: isError)
+        let resultSections = Self.buildToolResultSections(
+            block.toolResultContent,
+            isError: isError,
+            logger: logger
+        )
         if let index = ctx.pendingTurn!.toolIndexByID[id],
            case .tool(let existing, let startedAt) = ctx.pendingTurn!.subEntries[index] {
             let durationMs = startedAt.flatMap { started -> Int? in
@@ -1084,6 +1130,63 @@ struct ClaudeTranscriptBuilder {
         }
     }
 
+    /// Walk a user message's `content[]` and emit one ``Section`` per
+    /// block, in arrival order. Replaces the silent text-only
+    /// `joinText` filter for the user-paste path so user-pasted images
+    /// (`type:"image"`, base64 source — confirmed in 15 corpus files
+    /// 2026-06-07) survive into the body.
+    ///
+    /// Per–`type` mapping mirrors ``buildToolResultSections(_:isError:logger:)``
+    /// for consistency:
+    ///  - `text`           → `.text([s], style: .normal)`
+    ///  - `image` (base64) → `.image(ImageSource(...))`
+    ///  - other            → silently dropped (user messages only carry
+    ///                       text + image in the corpus; ToolSearch's
+    ///                       `tool_reference` only appears in
+    ///                       `tool_result.content`, never user content)
+    ///
+    /// String-shaped content (legacy single-string user message) →
+    /// single `.text` section.
+    private static func buildUserContentSections(
+        from content: ClaudeMessageContent?
+    ) -> [Section] {
+        guard let content else { return [] }
+        switch content {
+        case .text(let s):
+            return [.text([s], style: .normal)]
+        case .blocks(let blocks):
+            return blocks.compactMap { block -> Section? in
+                switch block.type {
+                case "text":
+                    if let t = block.text { return .text([t], style: .normal) }
+                    return nil
+                case "image":
+                    return userImageSection(from: block)
+                default:
+                    // Other block types in user content are not in the
+                    // corpus today; drop silently. If a future corpus
+                    // shows them, lift this into the same warning-log
+                    // path used by `buildToolResultSections`.
+                    return nil
+                }
+            }
+        }
+    }
+
+    /// Decode the `image` block on a user message via the
+    /// ``ClaudeContentBlock`` shape. The block's `source` is decoded
+    /// into the same `(media_type, data)` pair used by
+    /// ``buildToolResultSections``'s image handler.
+    private static func userImageSection(from block: ClaudeContentBlock) -> Section? {
+        guard let source = block.source,
+              source.type == "base64",
+              let mediaType = source.mediaType,
+              let data = source.data else {
+            return nil
+        }
+        return .image(ImageSource(kind: .base64, mediaType: mediaType, data: data))
+    }
+
     static func summarizeToolInput(name: String, input: ClaudeJSONValue?) -> String {
         guard let input else { return "" }
         guard case .object(let obj) = input else { return input.displayString }
@@ -1153,7 +1256,8 @@ struct ClaudeTranscriptBuilder {
     /// of array) is coerced to `[.text([s], textStyle)]`.
     static func buildToolResultSections(
         _ value: ClaudeJSONValue?,
-        isError: Bool
+        isError: Bool,
+        logger: any AgentXrayLogger = NoOpAgentXrayLogger()
     ) -> [Section] {
         let textStyle: TextStyle = isError ? .error : .normal
         guard let value else { return [] }
@@ -1161,7 +1265,7 @@ struct ClaudeTranscriptBuilder {
         case .string(let s):
             return [.text([s], style: textStyle)]
         case .array(let arr):
-            return arr.compactMap { sectionForBlock($0, textStyle: textStyle) }
+            return arr.compactMap { sectionForBlock($0, textStyle: textStyle, logger: logger) }
         default:
             // Object / number / bool / null shaped tool_result.content
             // is unreachable in the corpus; the legacy fallback used
@@ -1174,11 +1278,17 @@ struct ClaudeTranscriptBuilder {
     /// Map a single `tool_result.content[]` block (must be a JSON
     /// object with a `type` field) to a single ``Section``. Returns nil
     /// if the block isn't an object — the array branch in
-    /// ``buildToolResultSections(_:isError:)`` filters those out so a
-    /// malformed block doesn't produce an empty section.
+    /// ``buildToolResultSections(_:isError:logger:)`` filters those out
+    /// so a malformed block doesn't produce an empty section.
+    ///
+    /// `logger` receives a `.warning` whenever a spec-allowed but
+    /// corpus-empty block type (or an unknown type) is encountered, so
+    /// future drift is detectable in sysdiagnose without re-grepping
+    /// the corpus.
     private static func sectionForBlock(
         _ item: ClaudeJSONValue,
-        textStyle: TextStyle
+        textStyle: TextStyle,
+        logger: any AgentXrayLogger
     ) -> Section? {
         guard case .object(let obj) = item,
               case .string(let type)? = obj["type"] else {
@@ -1202,10 +1312,20 @@ struct ClaudeTranscriptBuilder {
             // this date. Spec-allowed (Anthropic Messages API) but
             // never emitted by Claude Code in practice. Stub as text
             // so we don't drop data; revisit when corpus shows hits.
+            // Warning logged so future surfacing is visible without
+            // re-grepping the corpus.
+            logger.warning(
+                "buildToolResultSections: spec-only-not-corpus block type \"\(type)\" surfaced; "
+                + "rendering as text stub. Re-design rich rendering if this becomes common."
+            )
             return .text(["[\(type)]"], style: textStyle)
         default:
             // Unknown block type — preserve the type label visibly in
-            // the UI so future drift is debuggable without re-querying.
+            // the UI so future drift is debuggable. Logged at warning
+            // level for the same reason.
+            logger.warning(
+                "buildToolResultSections: unknown block type \"\(type)\"; rendering as text stub."
+            )
             return .text(["[\(type)]"], style: textStyle)
         }
     }
