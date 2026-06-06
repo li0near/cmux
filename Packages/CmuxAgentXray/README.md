@@ -45,11 +45,14 @@ new branches — lives in
   `user`, `agent`, `system`, `compact`, `synthesized`.
 - **Transcript** — a `[Entry]` document.
 - **AgentEntry** — the only container Entry; carries `subEntries: [SubEntry]`
-  where `SubEntry` is one of `thinking`, `tool`, `assistantText`. These three
-  types only ever appear inside an AgentEntry.
-- **Header** — every Entry's display contract: `name + label + title +
-  trailing + timestamp + icon`. Replaces the older `name`/`summary`/per-row
-  `icon` scatter.
+  where `SubEntry` is one of `text(TextSubEntry)` or `tool(ToolEntry)`.
+  `TextSubEntry` covers both thinking and final assistant text via its
+  `kind: .thinking | .assistant` discriminator. These two cases only ever
+  appear inside an AgentEntry.
+- **Header** — every Entry's display contract: `icon + name + label + title
+  + trailing + timeMarker`. Replaces the older `name`/`summary`/per-row
+  `icon` scatter. `timeMarker` is a `.clock(Date)` (top-level rows) or
+  `.duration(Int)` (tool sub-rows).
 - **Body** — every Entry's content: `sections: [Section]` where
   `Section = .text([String], style: TextStyle) | .subentries([Entry])`. An
   empty `sections` array means "header-only" (Variant A).
@@ -112,10 +115,25 @@ Group 2 visual parity, Group 3 per-row layout, Group 4 detail-mode
 chrome, Group 5 polish) shipped ✅; Phase 12 (AsyncStream focus
 pipeline) closed via 17d.
 
-**Current state:** dogfood iterations against the spike-parity bar
-landed on top of the migration commits — see `git log` on the
-`agentxray` branch for `Dogfood pass` commits and the audit-pass
-fixes that followed.
+**Current state:** dogfood iterations + a structural refactor pass
+(2026-06-05 → 2026-06-06, phases 19a–19f) landed on top of the migration
+commits. Highlights of the refactor:
+- Sub-entries now interleave (`.text` + `.tool` in JSONL arrival
+  order — preserves the "narrate → tool → narrate → tool" flow).
+- `TimeMarker` collapses `Header.timestamp` + `TrailingItem.duration`.
+- `TextSubEntry { kind: .thinking | .assistant }` replaces
+  `ThinkingEntry` + `AssistantTextEntry`.
+- DetailRequest collapses to single `.bodySection(targetID:sectionIndex:)`.
+- Body rendering unified through one `cappedBody` walker.
+
+See `MIGRATION_PLAN.md` §14 rows 19a–19f for commits.
+
+**Pending work** is tracked in
+[`docs/next-session-handover.md`](docs/next-session-handover.md). Open
+items include: `DetailContent.Kind` → `ContentType` swap, `QueuedState`
+enum, `summarizeToolInput` MCP fallback, persisted-output wrapper
+detection, `Section` richness for image / tool_reference / resource
+blocks, and Phase B rich detail-tab rendering.
 
 **Deferred-by-policy items** still tracked in `MIGRATION_PLAN.md` §16:
 - A. TextStyle diff cases (speculative future feature)

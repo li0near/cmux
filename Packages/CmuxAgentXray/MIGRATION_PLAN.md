@@ -36,10 +36,13 @@ host-adapter overhaul, 9 commits ending at `b0624eab8` on branch
 ## Continuity (resuming work in a new session)
 
 1. Read this doc's intro + skim §14 / §16.
-2. Verify branch tip matches §14's latest row (`git log -1 --oneline`).
-3. `swift build` + `swift test` from `Packages/CmuxAgentXray` should be green.
-4. For UI-touching changes, `./scripts/reload.sh --tag agentxray --launch`.
-5. Anything ambiguous → trust the code over the doc. If a doc claim is wrong,
+2. **Read [`docs/next-session-handover.md`](docs/next-session-handover.md)** — pending tasks
+   from the 2026-06-05/06 refactor session, with cross-verification reminders for items
+   that depend on JSONL corpus shapes.
+3. Verify branch tip matches §14's latest row (`git log -1 --oneline`).
+4. `swift build` + `swift test` from `Packages/CmuxAgentXray` should be green.
+5. For UI-touching changes, `./scripts/reload.sh --tag agentxray --launch`.
+6. Anything ambiguous → trust the code over the doc. If a doc claim is wrong,
    fix the doc in the same change.
 
 ---
@@ -74,6 +77,12 @@ source-of-truth for what changed; this table is the index by topic / phase.
 | 2026-06-04 | 17c | (17c commit) | Group 1 behavioural correctness: `EntryAnchorsKey`, `currentTopVisibleID`, `ScrollViewReader`, scroll-routing `.onChange` arms, boundary-id markers, detail-mode rendering, `triggerFlash` flash gate. |
 | 2026-06-04 | 17d | (17d commit) | Forward-looking deferrals + parity audit: Group 3 / 4 / 5 swept ✅; F + H closed; A / B / C / G stay deferred. |
 | 2026-06-05 | 18 | `1c49bdf29` … `b0624eab8` (9 commits) | Dogfood pass: session-attach + host-adapter overhaul. Host folded 6 files → 3 (PanelHost → PanelAdapter rename; FocusObserver + ScrollbarBridge + DebugMenu placeholder removed); `AgentXrayLogger` seam (os.Logger / cmuxDebugLog routing); resolver rewritten with two paths (restored-snapshot synthesis + scanner-based PID + hook-record-by-PID join); SSH transport infrastructure (`RemoteJSONLStream`, `JSONLLineFramer` with UTF-8 byte-carry); README documentation with flow + timeline diagrams. Tests 20 → 46. Five new §16 deferrals (J–N). |
+| 2026-06-05 | 19a | `b6ce2bbe9` … `1662ceb0e` (4 commits) | Test-layout refactor (mirrored source tree under `Tests/CmuxAgentXrayTests/`); regression test for `attachment.queued_command` with `commandMode: "task-notification"` skip; `commandMode` field added to `ClaudeAttachment`; parser reference doc at `docs/claude-jsonl-mapping.md`. Tests 67 → 70. |
+| 2026-06-05 | 19b | `d23b49954` | Sub-row icon column alignment: `.frame(width: Theme.Metric.subRowIconWidth)` pin on Tool / Thinking / AssistantText sub-rows so glyph + name columns align across kinds. |
+| 2026-06-05 | 19c | `75c9951cd` | Interleaved thinking + assistantText sub-entries with tools — preserves JSONL arrival order ("narrate → tool → narrate → tool"). `subEntryEvents` log on `PendingTurn`; per-block stable ids; 3 new builder tests. Tests 70 → 73. |
+| 2026-06-06 | 19d | `a68e60021` | TimeMarker + TextSubEntry + body unification: `TimeMarker.{clock, duration}` collapses `Header.timestamp` + `TrailingItem.duration`; entry-level `timestamp` becomes a computed projection of `header.timeMarker.clockDate`; `ThinkingEntry` + `AssistantTextEntry` merged into `TextSubEntry { kind: .thinking | .assistant }` with `AgentEntry.SubEntry` collapsed from 3 cases to 2 (`.text`, `.tool`); `AgentSubEntry` protocol dropped; `ToolEntry.toolName` now computed from `header.name`; body rendering unified through `cappedBody(_:onOpenDetail:)` walking `body.sections` and applying per-section `TextStyle` automatically. |
+| 2026-06-06 | 19e | `eabac5f5e` | DetailRequest collapse: 12 case-shapes → single `.bodySection(targetID: String, sectionIndex: Int)`. Resolver becomes one arm with `resolveTopLevel` + `resolveSubEntry` helpers; `AgentXrayPanel.openDetail` walks both top-level entries and agent sub-entries to find a `targetID` match. `DetailContent.Kind` retained for now (used by `TranscriptView` icon/accent dispatchers). |
+| 2026-06-06 | 19f | `3fc2108d2` … `7ad2c1527` (3 commits) | Builder cleanup: `ClaudeTranscriptBuilder` 1294 → 1192 lines via factored helpers (`loc(_:_:)` localization, `makeSystemEntry`, `makeTextSubEntry`, `planModeMetadata`, `AgentToolCall.withResult`/`withSidechain`); `appendAssistantText` + `appendThinkingText` collapsed to one `appendTextEvent(kind:_:)`; `PendingTurn`'s parallel `subEntryEvents`/`toolCalls`/`toolCallOrder`/`toolStartedAt` collapsed into one `subEntries: [PendingSubEntry]` + `toolIndexByID: [String: Int]` lookup. |
 
 ## §15 Bug-fix ledger (autonomous fixes during port)
 
