@@ -100,8 +100,8 @@ extension EntryIcon {
             return EntryIcon(collapsed: "apple.terminal", expanded: "apple.terminal.fill")
         case "Grep":
             return EntryIcon(
-                collapsed: "questionmark.text.page",
-                expanded: "questionmark.text.page.fill"
+                collapsed: "text.magnifyingglass",
+                expanded: "text.magnifyingglass.fill"
             )
         case "ToolSearch":
             return EntryIcon(
