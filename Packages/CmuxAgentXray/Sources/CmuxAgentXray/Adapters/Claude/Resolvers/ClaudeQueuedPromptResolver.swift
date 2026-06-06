@@ -8,14 +8,14 @@ import Foundation
 /// 1. **`wasQueuedSlashUuids`** — UUIDs of `<command-message>` user
 ///    lines whose reconstructed `/<cmd> [args]` text matched a prior
 ///    `queue-operation enqueue`. The dispatcher flags these so the
-///    resulting `UserEntry` carries `wasQueued: true`.
+///    resulting `UserEntry` carries `queuedState: .consumed`.
 ///
 /// 2. **`pendingPrompts`** — descriptors for `enqueue` lines whose
 ///    content has not been consumed by either an
 ///    `attachment.queued_command` line or a slash-command user line.
 ///    The transcript builder turns each into a synthetic
-///    `UserEntry(wasQueued: true, isQueuedPending: true)` pinned to
-///    the tail of the entry list.
+///    `UserEntry(queuedState: .pending)` pinned to the tail of the
+///    entry list.
 struct ClaudeQueuedPromptResolution: Equatable {
     let wasQueuedSlashUuids: Set<String>
     let pendingPrompts: [ClaudePendingPrompt]

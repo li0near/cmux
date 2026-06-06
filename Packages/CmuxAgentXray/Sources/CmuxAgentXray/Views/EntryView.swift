@@ -135,7 +135,7 @@ public struct EntryView: View {
     private var shouldPulseIcon: Bool {
         switch entry {
         case .user(let user):
-            return user.isQueuedPending
+            return user.queuedState == .pending
         case .agent:
             return isStreaming
         default:

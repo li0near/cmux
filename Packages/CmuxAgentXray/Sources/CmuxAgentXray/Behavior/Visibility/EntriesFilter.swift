@@ -119,10 +119,12 @@ private func scaledRow(_ anchor: TurnAnchor, currentTotal: UInt64) -> UInt64 {
 extension Array where Element == Entry {
     /// Id of the most recent **authentic** `UserEntry` in insertion
     /// order, or nil if the list contains no authentic user entries.
-    /// "Authentic" excludes `wasQueued` entries.
+    /// "Authentic" excludes queued entries (both consumed and pending).
     public var lastUserEntryID: String? {
         for entry in reversed() {
-            if case .user(let u) = entry, !u.wasQueued { return u.id.stableString }
+            if case .user(let u) = entry, u.queuedState == .none {
+                return u.id.stableString
+            }
         }
         return nil
     }
@@ -194,8 +196,8 @@ public func scrollTarget(
 /// on the most recent preceding user-entry-id (or nil if none yet).
 /// `orphanInclude` decides entries that come before any user prompt.
 ///
-/// **Queued-prompt continuity**: a `UserEntry` with `wasQueued ==
-/// true` represents a prompt the user typed mid-turn. It is *not*
+/// **Queued-prompt continuity**: a `UserEntry` whose `queuedState` is
+/// not `.none` represents a prompt the user typed mid-turn. It is *not*
 /// a fresh turn boundary, so `currentUserID` does not advance past
 /// queued users — the queued prompt + the resulting agent response
 /// continue to bucket under the *original* prompt's turn id.
@@ -207,7 +209,7 @@ private func entriesMatchingTurnPredicate(
     var result: [Entry] = []
     var currentUserID: String?
     for entry in entries {
-        if case .user(let u) = entry, !u.wasQueued {
+        if case .user(let u) = entry, u.queuedState == .none {
             currentUserID = u.id.stableString
         }
         if currentUserID == nil {

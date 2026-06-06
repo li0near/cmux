@@ -239,8 +239,7 @@ struct ClaudeTranscriptBuilder {
                     timestamp: ts,
                     promptId: line.promptId,
                     text: text,
-                    wasQueued: true,
-                    isQueuedPending: false
+                    queuedState: .consumed
                 )))
             } else if case let .slashCommandInput(name, args)
                         = ClaudeContentDetector.classify(body) {
@@ -312,8 +311,7 @@ struct ClaudeTranscriptBuilder {
                 timestamp: ts,
                 promptId: line.promptId,
                 text: text,
-                wasQueued: true,
-                isQueuedPending: false
+                queuedState: .consumed
             )))
         case .planModeEntered, .planModeExited, .planModeReentered:
             let (phase, phaseName) = Self.planModeMetadata(kind)
@@ -382,8 +380,8 @@ struct ClaudeTranscriptBuilder {
 
     // MARK: - User / System / Compact / pending-prompt builders
 
-    private func userRoleLabel(isQueued: Bool, isQueuedPending: Bool) -> String {
-        if isQueuedPending {
+    private func userRoleLabel(_ state: UserEntry.QueuedState) -> String {
+        if state == .pending {
             return Self.loc("agentXray.entry.user.queuedLabel", "Queued")
         }
         return Self.loc("agentXray.entry.user.label", "User")
@@ -394,10 +392,9 @@ struct ClaudeTranscriptBuilder {
         timestamp: Date?,
         promptId: String?,
         text: String,
-        wasQueued: Bool,
-        isQueuedPending: Bool
+        queuedState: UserEntry.QueuedState
     ) -> UserEntry {
-        let icon: EntryIcon = wasQueued ? .queuedUser : .user
+        let icon: EntryIcon = (queuedState == .none) ? .user : .queuedUser
         let preview = singleLinePromptPreview(text)
         let wordCount = wordCount(text)
         let trailing: [TrailingItem] = wordCount > 0
@@ -407,15 +404,14 @@ struct ClaudeTranscriptBuilder {
             id: .fromJSONL(id),
             header: Header(
                 icon: icon,
-                name: userRoleLabel(isQueued: wasQueued, isQueuedPending: isQueuedPending),
+                name: userRoleLabel(queuedState),
                 title: preview.isEmpty ? nil : preview,
                 trailing: trailing,
                 timeMarker: timestamp.map { .clock($0) }
             ),
             body: .text([text]),
             promptId: promptId,
-            wasQueued: wasQueued,
-            isQueuedPending: isQueuedPending
+            queuedState: queuedState
         )
     }
 
@@ -429,15 +425,14 @@ struct ClaudeTranscriptBuilder {
             id: .fromJSONL(p.id),
             header: Header(
                 icon: .queuedUser,
-                name: userRoleLabel(isQueued: true, isQueuedPending: true),
+                name: userRoleLabel(.pending),
                 title: preview.isEmpty ? nil : preview,
                 trailing: trailing,
                 timeMarker: p.timestamp.map { .clock($0) }
             ),
             body: .text([p.text]),
             promptId: nil,
-            wasQueued: true,
-            isQueuedPending: true
+            queuedState: .pending
         )
     }
 
@@ -467,8 +462,7 @@ struct ClaudeTranscriptBuilder {
             timestamp: line.timestamp,
             promptId: line.promptId,
             text: displayText,
-            wasQueued: wasQueued,
-            isQueuedPending: false
+            queuedState: wasQueued ? .consumed : .none
         )
     }
 

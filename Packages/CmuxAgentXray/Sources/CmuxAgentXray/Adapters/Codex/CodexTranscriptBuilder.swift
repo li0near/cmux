@@ -134,8 +134,7 @@ struct CodexTranscriptBuilder {
             ),
             body: .text([text]),
             promptId: nil,
-            wasQueued: false,
-            isQueuedPending: false
+            queuedState: .none
         )
     }
 

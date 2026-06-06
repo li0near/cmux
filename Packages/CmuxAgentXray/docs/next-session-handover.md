@@ -68,28 +68,7 @@ cyan chip in the sub-row header (alongside the existing magenta
 
 #### T2.3. ~~`summarizeToolInput` priority-list fallback~~ **(landed)**
 
-#### T2.4. `QueuedState` enum (UserEntry boolean pair → 3-case enum)
-
-Replace `UserEntry.wasQueued: Bool` + `UserEntry.isQueuedPending: Bool`
-with `UserEntry.queuedState: QueuedState`:
-
-```swift
-public enum QueuedState: Equatable, Sendable {
-    case none      // typed-inline regular prompt
-    case consumed  // was queued mid-turn, now settled (queued icon, no pulse)
-    case pending   // tail-pinned synthetic, awaiting consumer (queued icon + pulse)
-}
-```
-
-Eliminates the impossible fourth `(wasQueued: false, isQueuedPending: true)`
-state. Both readers map trivially:
-- `wasQueued` → `state != .none`
-- `isQueuedPending` → `state == .pending`
-
-**Files:** `Models/Entries/UserEntry.swift`, `Adapters/Claude/ClaudeTranscriptBuilder.swift`
-(3 caller sites: queued slash, queued attachment, pending synthetic),
-`Behavior/Visibility/EntriesFilter.swift:125, 210` (the only outside-builder
-reader).
+#### T2.4. ~~`QueuedState` enum (UserEntry boolean pair → 3-case enum)~~ **(landed)**
 
 #### T2.5. Builder text-extraction unification
 
