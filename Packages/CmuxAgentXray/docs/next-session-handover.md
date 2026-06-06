@@ -103,36 +103,17 @@ populated by each resolver arm. New types: `Models/PaletteRole.swift`,
 `TranscriptView.detailKindIcon(for:)` + `detailKindAccent(for:palette:)`
 deleted; the detail-mode header reads direct fields.
 
-#### T3.2. Persisted-output wrapper detection
+#### T3.2. ~~Persisted-output wrapper detection~~ **(landed)**
 
-**High-leverage** — affects every tool with large output (Bash, Read,
-Edit, all MCPs).
-
-Claude Code offloads tool outputs above a size threshold to disk and
-inlines a stub like:
-
-```
-<persisted-output>
-Output too large (128.9KB). Full output saved to: <absolute path to .out file>
-</persisted-output>
-```
-
-The X-ray panel currently renders this stub verbatim.
-
-**⚠️ Verify against the live corpus first.** Sample 5+ recent sessions
-that hit the cap and confirm the exact wrapper tags + path-extraction
-regex. The format may differ across Claude Code versions.
-
-**Goal:** detect the wrapper, parse the file path, render an "↗ Open
-offloaded result" link. On click, read the file and open in the detail
-tab.
-
-**Files:** `Adapters/Claude/ClaudeTranscriptBuilder.swift` (detect in
-`flattenToolResult` or in a content-classifier pass), `Panel/DetailContent.swift`
-(resolver reads the file when a `.bodySection` request targets a section
-whose text starts with the wrapper), `Views/AgentEntryView+CappedBody.swift`
-(skip the stub-text render and emit a styled "open offloaded" link
-instead of the cap-overflow link).
+Phase C of the 2026-06-07 refactor. Two-commit regression pattern (C.1
+RED → C.2 GREEN). New `Section.offloadedOutput(OffloadedOutput)` variant
++ `Models/OffloadedOutput.swift` value type carrying (path, sizeLabel,
+preview). `ClaudeTranscriptBuilder` walks every `.text` section in
+`buildToolResultSections` and replaces any matching the canonical
+`<persisted-output>` wrapper with `.offloadedOutput`. Robust to truncated
+tails (~21 of 252 corpus occurrences omit the close tag). Detail-tab
+resolver reads the offloaded file at click time; fallback to a localized
+error + the inline preview when the file is unreachable.
 
 ---
 
