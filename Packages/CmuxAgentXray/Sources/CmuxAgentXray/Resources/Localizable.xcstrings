@@ -12,6 +12,28 @@
         }
       }
     },
+    "agentXray.detail.offloadedOutput.readError" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed to read offloaded result at %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "agentXray.detail.subtitle.offloadedOutput" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "from %1$@ · offloaded %2$@"
+          }
+        }
+      }
+    },
     "agentXray.detail.subtitle.abandonedBranch" : {
       "extractionState" : "manual",
       "localizations" : {

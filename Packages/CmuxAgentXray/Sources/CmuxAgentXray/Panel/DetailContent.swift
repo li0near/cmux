@@ -321,6 +321,13 @@ extension DetailContent {
                     entries: transcript
                 )
             }
+            // `.offloadedOutput` section — read the file lazily and
+            // surface its full bytes in the detail tab. Phase C feature.
+            if sectionIndex >= 0,
+               sectionIndex < tool.body.sections.count,
+               case .offloadedOutput(let off) = tool.body.sections[sectionIndex] {
+                return resolveOffloadedOutput(off, tool: tool, timestamp: timestamp)
+            }
             guard let text = sectionText(tool.body, index: sectionIndex) else { return nil }
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             if sectionIndex == 0 {
@@ -348,6 +355,48 @@ extension DetailContent {
                 accent: tool.status == .error ? .red : .primary
             )
         }
+    }
+
+    /// Read the offloaded file at `off.path` lazily and surface its
+    /// full bytes in the detail tab. Falls back to a localized error
+    /// message + the wrapper's preview (when available) if the file
+    /// can't be read.
+    ///
+    /// `String(contentsOf:encoding:)` is synchronous; that's acceptable
+    /// here because the resolver is invoked on the main actor only when
+    /// the user clicks the link (low frequency, blocking is bounded by
+    /// the file size — typically tens of KB to a few MB).
+    private static func resolveOffloadedOutput(
+        _ off: OffloadedOutput,
+        tool: ToolEntry,
+        timestamp: String
+    ) -> DetailContent {
+        let url = URL(fileURLWithPath: off.path)
+        let body: String
+        do {
+            body = try String(contentsOf: url, encoding: .utf8)
+        } catch {
+            let template = localized(
+                "agentXray.detail.offloadedOutput.readError",
+                defaultValue: "Failed to read offloaded result at %1$@: %2$@"
+            )
+            let summary = String(format: template, off.path, "\(error.localizedDescription)")
+            body = off.preview.map { "\(summary)\n\nPreview from transcript:\n\($0)" } ?? summary
+        }
+        return DetailContent(
+            title: localized(
+                "agentXray.detail.title.toolResult",
+                defaultValue: "Tool result · \(tool.toolName)"
+            ),
+            subtitle: localized(
+                "agentXray.detail.subtitle.offloadedOutput",
+                defaultValue: "from \(timestamp) · offloaded \(off.sizeLabel)"
+            ),
+            body: body,
+            sourceEntryID: tool.id.stableString,
+            icon: EntryIcon.tool(named: tool.toolName),
+            accent: tool.status == .error ? .red : .primary
+        )
     }
 
     // MARK: - Resolver helpers
