@@ -14,7 +14,7 @@ The session itself landed:
 - DetailRequest collapse to single `.bodySection`.
 - ClaudeTranscriptBuilder dedup (loc helper, makeSystemEntry, makeTextSubEntry, planModeMetadata, appendTextEvent, withResult/withSidechain mutators, single subEntries array).
 
-See `MIGRATION_PLAN.md §14` rows 19a–19f for landed commits.
+See `MIGRATION_PLAN.md §14` rows 19a–19h for landed commits.
 
 ## ⚠️ Cross-verification reminder for the next agent
 
@@ -227,18 +227,16 @@ Was the original "Phase B" in the refactor plan, explicitly deferred.
 
 ## Suggested execution order
 
-1. **Tier 1** (T1.1 — Grep icon) — single commit, ship as warmup.
-2. **Tier 2** in any order. Natural bundling:
-   - **Bundle A:** T2.1 + T2.2 + T2.3 (MCP polish — single commit; small UI improvement visible immediately).
-   - **Bundle B:** T2.4 (QueuedState — pure model refactor, isolated).
-   - **Bundle C:** T2.5 + T2.6 + T2.7 (ClaudeTranscriptBuilder dedup train; T2.5 enables T2.7).
-3. **Tier 3** — T3.1 next (cleans up the type model before adding more cases via Tier 4); then T3.2 (persisted-output, high-leverage).
-4. **Tier 4** — T4.1 (Section richness — unblocks visible rendering for tool_reference + images).
-5. **Tier 5** — T5.1 + T5.2 (multi-PR effort; takes the rest of the runway).
+Tiers 1 and 2 are landed (commits `572f65513`, `175cd6a80`, `476db75da`,
+`63a787196`). Resume at:
 
-This sequencing keeps PRs reviewable (each Tier 1/2/3 item is one
-focused change) while building toward the bigger Tier 4/5 features
-without a giant flag-day refactor.
+1. **Tier 3** — T3.1 next (cleans up the type model before adding more cases via Tier 4); then T3.2 (persisted-output, high-leverage).
+2. **Tier 4** — T4.1 (Section richness — unblocks visible rendering for tool_reference + images).
+3. **Tier 5** — T5.1 + T5.2 (multi-PR effort; takes the rest of the runway).
+
+This sequencing keeps PRs reviewable (each Tier 3 item is one focused
+change) while building toward the bigger Tier 4/5 features without a
+giant flag-day refactor.
 
 ---
 
@@ -269,7 +267,7 @@ CMUX_ZIG=/opt/homebrew/opt/zig@0.15/bin/zig \
 | Doc | What it covers |
 |-----|----------------|
 | `README.md` | Package overview, vocabulary, layer map, host integration. Updated this session for `TextSubEntry` + `TimeMarker` vocab. |
-| `MIGRATION_PLAN.md` | Phase log + bug-fix ledger + deferred-task ledger. §14 rows 19a–19f log this session's work. |
+| `MIGRATION_PLAN.md` | Phase log + bug-fix ledger + deferred-task ledger. §14 rows 19a–19h log this session's work. |
 | `docs/claude-jsonl-mapping.md` | How Claude JSONL maps to entries (parser tree + table + maintenance guide). |
 | `docs/session-attach.md` | Session-attach resolver flow (paths 1/2/3, SSH attach, RemoteSessionStore). |
 | `docs/next-session-handover.md` | **(this doc)** Pending work + verification reminders. |

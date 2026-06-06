@@ -126,14 +126,14 @@ commits. Highlights of the refactor:
 - DetailRequest collapses to single `.bodySection(targetID:sectionIndex:)`.
 - Body rendering unified through one `cappedBody` walker.
 
-See `MIGRATION_PLAN.md` §14 rows 19a–19f for commits.
+See `MIGRATION_PLAN.md` §14 rows 19a–19h for commits.
 
 **Pending work** is tracked in
 [`docs/next-session-handover.md`](docs/next-session-handover.md). Open
-items include: `DetailContent.Kind` → `ContentType` swap, `QueuedState`
-enum, `summarizeToolInput` MCP fallback, persisted-output wrapper
-detection, `Section` richness for image / tool_reference / resource
-blocks, and Phase B rich detail-tab rendering.
+items include: `DetailContent.Kind` → `ContentType` swap,
+persisted-output wrapper detection, `Section` richness for image /
+tool_reference / resource blocks, and Phase B rich detail-tab
+rendering.
 
 **Deferred-by-policy items** still tracked in `MIGRATION_PLAN.md` §16:
 - A. TextStyle diff cases (speculative future feature)
