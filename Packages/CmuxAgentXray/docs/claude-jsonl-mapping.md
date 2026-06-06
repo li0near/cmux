@@ -372,3 +372,105 @@ shipping code does.
   feeds session-attach resolution
   (`Streaming/AgentSessionResolver.swift`), not transcript parsing.
   See `docs/session-attach.md` for that flow.
+
+## 11. Content-block type reference (Phase B/C/E, 2026-06-07)
+
+Canonical mapping of Claude Messages-API content blocks to ``Section``
+variants. Compiled from the Anthropic Messages API spec
+(`docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview` +
+`docs.anthropic.com/en/api/messages`) and verified against the user's
+`~/.claude/projects/*/*.jsonl` corpus 2026-06-07 (~700 files).
+
+### `tool_result.content[]` block types
+
+Realistic block types in a Claude Code JSONL transcript (CC uses the
+plain Messages API + local-MCP path; managed-tool / connector-beta
+blocks never appear here):
+
+| `type`              | Section variant                    | Corpus 2026-06-07          | Producer                           |
+|---------------------|------------------------------------|----------------------------|------------------------------------|
+| `text`              | `.text([s], style: .normal/.error)` | very common               | every tool                         |
+| `image`             | `.image(ImageSource)` (base64)     | 24 blocks / 16 files       | Playwright `browser_take_screenshot` |
+| `tool_reference`    | `.toolReference(toolName:)`        | 158 blocks / 67 files      | CC's client-side `ToolSearch`      |
+| `redacted_thinking` | `.text(["[type]"], .normal)` stub  | 0 hits past 2026-06-07     | spec-only-not-corpus               |
+| `search_result`     | `.text(["[type]"], .normal)` stub  | 0 hits past 2026-06-07     | spec-only-not-corpus               |
+| `document`          | `.text(["[type]"], .normal)` stub  | 0 hits past 2026-06-07     | spec-only-not-corpus               |
+
+Stub-rendered types emit `AgentXrayLogger.warning` so future surfacing
+is visible in sysdiagnose without re-grepping. The inline comment in
+`buildToolResultSections` carries a `VERIFY-CORPUS-2026-06-07` date-cut
+reminder; re-grep `~/.claude/projects/*/*.jsonl` modified after that
+date if any of these surface in the UI.
+
+Block types in the spec but **not reachable** from CC JSONL (don't
+design rich rendering for these unless the path opens up):
+
+- Managed-tool family — `server_tool_use`, `web_search_tool_result`,
+  `web_fetch_tool_result`, `code_execution_tool_result`,
+  `bash_code_execution_tool_result`,
+  `text_editor_code_execution_tool_result`,
+  `tool_search_tool_result` (distinct from CC's client `ToolSearch`
+  even though both produce `tool_reference` payloads in different
+  parents), `container_upload`. Anthropic-platform-emitted for
+  Anthropic-hosted tools; CC consumes the Messages API directly and
+  never enables them.
+- Connector beta — `mcp_tool_use`, `mcp_tool_result`. Only arrive
+  when the `anthropic-beta: mcp-client-2025-04-04` header is set on
+  `/v1/messages`. CC uses the **local** MCP path; MCP tool calls
+  flow through plain `tool_use` / `tool_result` shapes with the
+  synthesized `mcp__<server>__<tool>` name as the only discriminator.
+
+### `user.message.content[]` block types
+
+| `type`  | Section variant                 | Corpus 2026-06-07 |
+|---------|---------------------------------|-------------------|
+| `text`  | `.text([s], style: .normal)`    | the default      |
+| `image` | `.image(ImageSource)` (base64)  | 15 files (user-pasted screenshots) |
+
+**Both image parents matter**: `image` blocks appear directly in
+top-level `user.message.content[]` (user-pasted) AND inside
+`tool_result.content[]` (Playwright screenshots). The same
+`Section.image` variant carries both — the builder's
+`buildUserContentSections(from:)` and
+`buildToolResultSections(_:isError:logger:)` emit it from each parent.
+
+### MCP server identification
+
+JSONL carries **only** the synthesized `mcp__<configured-name>__<tool>`
+string. There is no transport, scope, or canonical id on the wire.
+Each registered name is treated as a distinct logical server — name
+normalization is **not safe** (the same binary can be registered
+under multiple names; conversely, two different names can hide
+behind the same code path via env vars).
+
+`ClaudeTranscriptBuilder.parseMcpToolName(_:)` strips the prefix and
+extracts the bare server + tool. The Phase E shape-sniffer carries
+`mcpServer: String?` as a reserved future-hint parameter; no
+allow-list today.
+
+### `<persisted-output>` wrapper
+
+CC offloads tool outputs above its inline-size threshold to
+`/tmp/.../<id>.txt` or `.json` and inlines a single-text wrapper
+referencing the path. Phase C's
+`ClaudeTranscriptBuilder.parsePersistedOutput(_:)` detects this and
+emits `Section.offloadedOutput(OffloadedOutput)`. Canonical shape:
+
+```
+<persisted-output>
+Output too large (29.3KB). Full output saved to: /tmp/<dir>/<id>.txt
+
+Preview (first 2KB):
+<inline preview>
+</persisted-output>
+```
+
+Path-extraction regex (validated against 252 corpus occurrences):
+
+```
+^Output too large \(([0-9]+(?:\.[0-9]+)?(?:KB|MB))\)\. Full output saved to: (\S+?\.(?:txt|json))$
+```
+
+**Robust to truncated tails.** ~21 of 252 corpus occurrences omit the
+`</persisted-output>` close tag; detection only requires the open
+tag + the canonical "Output too large" line.

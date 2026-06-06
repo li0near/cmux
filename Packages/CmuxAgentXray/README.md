@@ -128,22 +128,44 @@ commits. Highlights of the refactor:
 
 See `MIGRATION_PLAN.md` §14 rows 19a–19i for commits.
 
-**Pending work** is tracked in
-[`docs/next-session-handover.md`](docs/next-session-handover.md). Open
-items include: `DetailContent.Kind` → `ContentType` swap,
-persisted-output wrapper detection, `Section` richness for image /
-tool_reference / resource blocks, and Phase B rich detail-tab
-rendering.
+**Pending work** is tracked in `MIGRATION_PLAN.md` §16 (deferred-by-policy
+items gated on upstream cmux work or pending forcing functions). The
+2026-06-07 Phase A–E refactor pass landed every Tier 3/4/5 item
+that was previously in `docs/next-session-handover.md` (now retired):
+- T3.1 — `DetailContent.Kind` → flat `icon`/`accent`/`contentType`
+  fields (Phase A).
+- T4.1 — `Section` richness for image / tool_reference + per-block
+  rewrite of the tool_result builder (Phase B).
+- T3.2 — `<persisted-output>` wrapper detection with detail-tab
+  file read (Phase C).
+- T5.2 — `ContentType` foundation for rich detail-tab rendering
+  (markdown / code / json / diff stubs; Phase D).
+- T5.1 — Source-aware shape-sniff content split with generic
+  detection ladder (Phase E).
+
+See `MIGRATION_PLAN.md` §14 rows 19j–19n for the per-phase commits and
+`docs/claude-jsonl-mapping.md` §11 for the canonical content-block
+type reference compiled from the spec audit + corpus verification.
 
 **Deferred-by-policy items** still tracked in `MIGRATION_PLAN.md` §16:
-- A. TextStyle diff cases (speculative future feature)
 - B. Inline sub-agent transcript rendering (future UX evolution)
 - C. ToolEntry shape evolution (speculative)
-- G. xcstrings → .strings SPM build-time pre-compile (no current
-     test consumer needs the localized lookup output)
+- E. ObservableObject migration in cmux-app-side adapter (gated on
+     cmux-wide architectural changes)
+- G. xcstrings → .strings SPM build-time precompile
+- K. Daemon-side process enumeration RPC (gated on cmux daemon team)
+- L. Codex consolidated deferred work
+- N. AgentXrayWorkspaceHost split (no forcing function yet)
 
 These stay deferred per CLAUDE.md "don't pre-solve hypothetical
 future requirements" — none block current functionality.
+
+**Follow-up rich renderer PRs** (Phase D foundation; each ships
+independently):
+- Markdown renderer — full headings/bullets/links/fenced-code parsing.
+- Code renderer — per-language syntax highlighting.
+- JSON renderer — collapsible nodes, key/value coloring.
+- Diff renderer — patch-aware hunk grouping, in-line highlights.
 
 **For the next session resuming this work, read in this order:**
 
@@ -152,7 +174,9 @@ future requirements" — none block current functionality.
    ledger (§16), origin cross-reference (§18).
 2. `FORK_NOTES.md` (sibling file) — upstream-touch surface ledger;
    update on any fork-side edit outside the package.
-3. `Sources/Panels/AgentXray/README.md` — cmux-app-target adapter
+3. `docs/claude-jsonl-mapping.md` §11 — canonical content-block type
+   reference (Phase B/C/E findings).
+4. `Sources/Panels/AgentXray/README.md` — cmux-app-target adapter
    seam; how the package mounts into the host app.
 
 The `AttachStage` feature (status-bar attach-progress labels) and the
