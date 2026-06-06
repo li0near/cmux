@@ -14,18 +14,37 @@ extension AgentEntryView {
     /// transcripts) are skipped by this helper — those surface via
     /// other paths today and don't participate in the cap-then-overflow
     /// inline rendering.
+    /// Render every section of a sub-entry's `Body`. `.text` sections
+    /// cap at `.standard` (30 lines / 3 KiB) with per-section `TextStyle`;
+    /// `.image` sections render an inline thumbnail (Phase B); `.toolReference`
+    /// renders a chip (Phase B). Each text section emits its own
+    /// `↗ Open detail` link on overflow with the section's index passed
+    /// back to `onOpenDetail`.
+    ///
+    /// Shared by every sub-entry view (`toolSection`, `textSection`).
+    /// `.subentries` sections inside a body (e.g. tool sub-agent
+    /// transcripts) are skipped by this helper — those surface via
+    /// other paths today and don't participate in the cap-then-overflow
+    /// inline rendering.
     func cappedBody(
         _ body: Body,
         onOpenDetail: @escaping (_ sectionIndex: Int) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(body.sections.enumerated()), id: \.offset) { idx, section in
-                if case .text(let blocks, let style) = section {
+                switch section {
+                case .text(let blocks, let style):
                     cappedTextSection(
                         text: blocks.joined(separator: "\n"),
                         style: style,
                         onOpenDetail: { onOpenDetail(idx) }
                     )
+                case .image(let source):
+                    ImageThumbnailView(source: source) { onOpenDetail(idx) }
+                case .toolReference(let toolName):
+                    ToolReferenceChipView(toolName: toolName, palette: palette)
+                case .subentries:
+                    EmptyView()
                 }
             }
         }

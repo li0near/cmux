@@ -52,6 +52,13 @@ public final class EntryComputedCache {
                 switch section {
                 case .text(let blocks, _):
                     return sum + blocks.reduce(0) { $0 + $1.utf8.count }
+                case .image(let source):
+                    // Approximate the visual footprint by base64 length;
+                    // the actual decoded size is ~3/4 but we only need
+                    // a fingerprint for cache invalidation.
+                    return sum + source.data.utf8.count
+                case .toolReference(let toolName):
+                    return sum + toolName.utf8.count
                 case .subentries(let children):
                     return sum + children.count
                 }
@@ -115,6 +122,12 @@ public final class EntryComputedCache {
                 let joined = blocks.joined(separator: "\n")
                 let words = joined.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
                 totalWordCount += words
+            case .image, .toolReference:
+                // Image and toolReference sections render as a single
+                // visual unit (thumbnail / chip); they don't participate
+                // in cap-based truncation. Empty content prevents the
+                // walker from emitting an "open detail" link for them.
+                sections.append(.empty)
             case .subentries:
                 sections.append(.empty)
             }

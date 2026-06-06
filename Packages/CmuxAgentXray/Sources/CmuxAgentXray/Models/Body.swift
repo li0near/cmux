@@ -33,10 +33,25 @@ public struct Body: Equatable, Sendable {
 }
 
 /// One section within an entry's body.
+///
+/// Variants are intentionally a flat enum (5 cases by end of Phase C —
+/// `.text`, `.image`, `.toolReference`, `.subentries`, `.offloadedOutput`)
+/// rather than an indirected typed-payload struct. Every consumer is
+/// already a switch; lifting to a struct would force a rewrite of each
+/// site without buying back type safety. Re-evaluate if a 6th case
+/// becomes necessary.
 public enum Section: Equatable, Sendable {
     /// Inline text block(s) rendered in a gray background. The `style`
     /// drives per-section visual treatment (italic, error red, etc.).
     case text([String], style: TextStyle)
+    /// Inline image (user-pasted or tool-returned). Base64 lazy-decoded
+    /// at render time. See ``ImageSource``.
+    case image(ImageSource)
+    /// A `tool_reference` block from CC's client-side `ToolSearch` deferred
+    /// loader, naming a tool the model is being made aware of (e.g.
+    /// `mcp__sap-jira__get_issue`). Carries just the bare tool name —
+    /// the renderer parses any `mcp__<server>__` prefix at display time.
+    case toolReference(toolName: String)
     /// Nested entries. Rendering policy is decided by the variant
     /// (inline for `AgentEntry`; link-to-detail for tool sidechains and
     /// abandoned-branch synthesizer rows).

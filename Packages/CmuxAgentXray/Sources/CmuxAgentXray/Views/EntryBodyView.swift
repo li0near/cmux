@@ -37,6 +37,10 @@ struct EntryBodyView: View {
         case .text(_, let style):
             let content = computedIndex < computed.count ? computed[computedIndex] : .empty
             textSection(content: content, style: style)
+        case .image(let source):
+            ImageThumbnailView(source: source, action: onOpenDetail)
+        case .toolReference(let toolName):
+            ToolReferenceChipView(toolName: toolName, palette: palette)
         case .subentries(let children):
             VStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
                 ForEach(children, id: \.id.stableString) { child in
