@@ -41,14 +41,14 @@ public struct RemoteAttachPromptView: View {
                 .font(Theme.Row.name)
                 .foregroundStyle(palette.primary)
             Text(detailText)
-                .font(Theme.Row.summary)
+                .font(Theme.Row.title)
                 .foregroundStyle(palette.dim)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
                 TextField(placeholderText, text: $draftSessionID)
                     .textFieldStyle(.roundedBorder)
-                    .font(Theme.Row.summary)
+                    .font(Theme.Row.title)
                     .focused($inputFocused)
                     .disabled(panel.remoteAttachInFlight)
                     .onSubmit { submit() }

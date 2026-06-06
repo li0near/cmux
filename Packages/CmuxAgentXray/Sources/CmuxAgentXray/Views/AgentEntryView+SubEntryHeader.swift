@@ -7,9 +7,10 @@ extension AgentEntryView {
     /// tool, assistant text). One row of:
     ///
     ///     [icon (subRowIconWidth, iconColor)]
-    ///     [name (Theme.Row.name, nameAccent)]
+    ///     [name (Theme.SubRow.name, nameAccent)]
+    ///     [label? (Theme.SubRow.meta, dim)] -- secondary text (e.g. MCP tool name when name is the server)
     ///     [extras] -- caller-supplied (e.g. tool's magenta chip)
-    ///     [title? (Theme.Row.summary, dim, middle-truncated)]
+    ///     [title? (Theme.SubRow.title, dim, middle-truncated)]
     ///     [Spacer]
     ///     [trailing pills (Theme.SubRow.meta, dim)]
     ///     [timeMarker (e.g. "X ms" for tools)]
@@ -25,6 +26,7 @@ extension AgentEntryView {
         iconColor: Color,
         nameAccent: Color,
         name: String,
+        label: String? = nil,
         title: String? = nil,
         trailing: [TrailingItem] = [],
         timeMarker: TimeMarker? = nil,
@@ -41,10 +43,16 @@ extension AgentEntryView {
                 .font(Theme.SubRow.name)
                 .foregroundStyle(nameAccent)
                 .lineLimit(1)
+            if let label, !label.isEmpty {
+                Text(label)
+                    .font(Theme.SubRow.meta)
+                    .foregroundStyle(palette.dim)
+                    .lineLimit(1)
+            }
             extras()
             if let title, !title.isEmpty {
                 Text(title)
-                    .font(Theme.Row.summary)
+                    .font(Theme.SubRow.title)
                     .foregroundStyle(palette.primary.opacity(Theme.Opacity.detail))
                     .lineLimit(1)
                     .truncationMode(.middle)

@@ -59,7 +59,7 @@ struct EntryHeaderView: View {
             }
             if let title = header.title {
                 Text(title)
-                    .font(Theme.Row.summary)
+                    .font(Theme.Row.title)
                     .foregroundStyle(palette.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)

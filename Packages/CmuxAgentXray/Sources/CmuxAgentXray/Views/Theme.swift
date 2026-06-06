@@ -150,7 +150,10 @@ public enum Theme {
     /// Fonts for top-level entries (one entry per agent turn / user prompt).
     public enum Row {
         public static let name = Font.system(size: 12, weight: .semibold, design: .monospaced)
-        public static let summary = Font.system(size: 12, design: .monospaced)
+        /// Title slot — dynamic content text rendered after the name
+        /// (`Header.title`: file path, command name, recap title,
+        /// preview text). 12pt mono, no weight.
+        public static let title = Font.system(size: 12, design: .monospaced)
         /// Trailing items: label / pill / timestamp (11pt).
         public static let meta = Font.system(size: 11, design: .monospaced)
         /// Header icon — matches ``name`` size; no weight, so SF Symbols
@@ -167,7 +170,10 @@ public enum Theme {
     /// row, not a sibling header.
     public enum SubRow {
         public static let name = Font.system(size: 11, design: .monospaced)
-        public static let summary = Font.system(size: 11, design: .monospaced)
+        /// Title slot — same role as ``Row/title`` for sub-rows. 11pt
+        /// mono, no weight (matches sub-row name size; dim color
+        /// distinguishes it visually).
+        public static let title = Font.system(size: 11, design: .monospaced)
         /// Line counts, tool durations (10pt).
         public static let meta = Font.system(size: 10, design: .monospaced)
         public static let icon = Font.system(size: 11)

@@ -73,7 +73,7 @@ extension AgentEntryView {
 
     private func font(for style: TextStyle) -> Font {
         style == .thinking
-            ? Theme.SubRow.summary.italic()
-            : Theme.SubRow.summary
+            ? Theme.SubRow.title.italic()
+            : Theme.SubRow.title
     }
 }

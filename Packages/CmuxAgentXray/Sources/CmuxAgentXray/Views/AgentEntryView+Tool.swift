@@ -38,19 +38,14 @@ extension AgentEntryView {
                     isExpanded: isExpanded,
                     iconColor: statusAccent,
                     nameAccent: statusAccent,
-                    name: tool.toolName,
+                    name: tool.mcpServer ?? tool.toolName,
+                    label: tool.mcpServer != nil ? tool.toolName : nil,
                     title: tool.header.title,
                     timeMarker: timeMarker,
                     extras: {
-                        if let server = tool.mcpServer, !server.isEmpty {
-                            Text(server)
-                                .font(Theme.SubRow.summary)
-                                .foregroundStyle(palette.cyan)
-                                .lineLimit(1)
-                        }
                         if let chip = tool.subagentType, !chip.isEmpty {
                             Text(chip)
-                                .font(Theme.SubRow.summary)
+                                .font(Theme.SubRow.title)
                                 .foregroundStyle(palette.magenta)
                                 .lineLimit(1)
                         }
