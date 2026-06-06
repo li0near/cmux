@@ -53,7 +53,7 @@ extension AgentEntryView {
             if let title, !title.isEmpty {
                 Text(title)
                     .font(Theme.SubRow.title)
-                    .foregroundStyle(palette.primary.opacity(Theme.Opacity.detail))
+                    .foregroundStyle(palette.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }

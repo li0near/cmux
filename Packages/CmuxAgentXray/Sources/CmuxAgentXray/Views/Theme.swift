@@ -164,18 +164,20 @@ public enum Theme {
     // MARK: - Typography — Sub-entry row
 
     /// Fonts for sub-entries (thinking / tool / assistantText). Header
-    /// text slots (`name`, `title`) match ``Row`` at 12pt for visual
-    /// consistency with the parent row; the smaller ``meta`` (10pt
-    /// trailing pills / durations) and ``icon`` (11pt glyph) preserve
-    /// the proportions distinguishing sub-rows from top-level rows.
+    /// text slots (`name`, `title`) sit at 11.5pt — a half-point under
+    /// ``Row``'s 12pt to read as a quieter continuation of the parent
+    /// row while still maintaining visual weight; the smaller ``meta``
+    /// (10pt trailing pills / durations) and ``icon`` (11pt glyph)
+    /// preserve the proportions distinguishing sub-rows from top-level
+    /// rows.
     public enum SubRow {
-        public static let name = Font.system(size: 12, design: .monospaced)
-        /// Title slot — same role as ``Row/title`` for sub-rows. 12pt
+        public static let name = Font.system(size: 11.5, design: .monospaced)
+        /// Title slot — same role as ``Row/title`` for sub-rows. 11.5pt
         /// mono no weight; dim color distinguishes it from the
         /// accent-colored name.
-        public static let title = Font.system(size: 12, design: .monospaced)
-        /// Line counts, tool durations (10pt).
-        public static let meta = Font.system(size: 10, design: .monospaced)
+        public static let title = Font.system(size: 11.5, design: .monospaced)
+        /// Line counts, tool durations (10.5pt).
+        public static let meta = Font.system(size: 10.5, design: .monospaced)
         public static let icon = Font.system(size: 11)
     }
 

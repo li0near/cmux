@@ -67,8 +67,8 @@ extension EntryIcon {
     public static let recap = EntryIcon(collapsed: "clock", expanded: "clock.fill")
     /// Plan-mode marker.
     public static let planMode = EntryIcon(
-        collapsed: "list.bullet.rectangle",
-        expanded: "list.bullet.rectangle.fill"
+        collapsed: "checkmark.seal.text.page",
+        expanded: "checkmark.seal.text.page.fill"
     )
     /// External text-file edit. Same glyph collapsed/expanded.
     public static let editedTextFile = EntryIcon(collapsed: "pencil.line")
@@ -93,15 +93,15 @@ extension EntryIcon {
             return EntryIcon(collapsed: "doc.text", expanded: "doc.text.fill")
         case "Write", "Edit", "MultiEdit":
             return EntryIcon(
-                collapsed: "pencil.tip.crop.circle",
-                expanded: "pencil.tip.crop.circle.fill"
+                collapsed: "long.text.page.and.pencil",
+                expanded: "long.text.page.and.pencil.fill"
             )
         case "Bash":
-            return EntryIcon(collapsed: "apple.terminal", expanded: "apple.terminal.fill")
+            return EntryIcon(collapsed: "command.square", expanded: "command.square.fill")
         case "Grep":
             return EntryIcon(
-                collapsed: "questionmark.text.page",
-                expanded: "questionmark.text.page.fill"
+                collapsed: "rectangle.and.text.magnifyingglass",
+                expanded: "mail.and.text.magnifyingglass"
             )
         case "ToolSearch":
             return EntryIcon(
@@ -113,20 +113,23 @@ extension EntryIcon {
         case "WebFetch":
             return EntryIcon(collapsed: "arrow.down.doc", expanded: "arrow.down.doc.fill")
         case "WebSearch":
-            return EntryIcon(collapsed: "globe.americas", expanded: "globe.americas.fill")
+            return EntryIcon(collapsed: "globe", expanded: "globe.fill")
         case "Task", "Agent":
             return EntryIcon(collapsed: "person.2", expanded: "person.2.fill")
         case "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList":
             return EntryIcon(
-                collapsed: "list.bullet.clipboard",
-                expanded: "list.bullet.clipboard.fill"
+                collapsed: "list.bullet.rectangle",
+                expanded: "list.bullet.rectangle.fill"
             )
         case "NotebookEdit":
             return EntryIcon(collapsed: "note.text")
         case "LS":
             return EntryIcon(collapsed: "folder", expanded: "folder.fill")
         case "ExitPlanMode":
-            return EntryIcon(collapsed: "checkmark.seal", expanded: "checkmark.seal.fill")
+            return EntryIcon(
+                collapsed: "checkmark.seal.text.page",
+                expanded: "checkmark.seal.text.page.fill"
+            )
         case "AskUserQuestion":
             return EntryIcon(
                 collapsed: "questionmark.bubble",
