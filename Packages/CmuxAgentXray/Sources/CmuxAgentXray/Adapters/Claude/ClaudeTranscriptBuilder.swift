@@ -303,7 +303,7 @@ struct ClaudeTranscriptBuilder {
                 subType: .systemReminder
             ))
         case .queuedPrompt:
-            let text = extractQueuedPromptText(line.attachment?.prompt)
+            let text = Self.joinText(from: line.attachment?.prompt)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if text.isEmpty { return }
             ctx.entries.append(.user(makeUserEntry(
@@ -360,17 +360,6 @@ struct ClaudeTranscriptBuilder {
         }
     }
 
-    private func extractQueuedPromptText(_ content: ClaudeMessageContent?) -> String {
-        guard let content else { return "" }
-        switch content {
-        case .text(let s): return s
-        case .blocks(let blocks):
-            return blocks
-                .compactMap { $0.type == "text" ? $0.text : nil }
-                .joined(separator: "\n")
-        }
-    }
-
     private func extractMetaText(_ line: ClaudeJSONLLine) -> String {
         if let body = line.content, !body.isEmpty {
             return body
@@ -416,38 +405,19 @@ struct ClaudeTranscriptBuilder {
     }
 
     private func buildPendingUserEntry(_ p: ClaudePendingPrompt) -> UserEntry {
-        let preview = singleLinePromptPreview(p.text)
-        let wordCount = wordCount(p.text)
-        let trailing: [TrailingItem] = wordCount > 0
-            ? [.wordCount("\(wordCount) words")]
-            : []
-        return UserEntry(
-            id: .fromJSONL(p.id),
-            header: Header(
-                icon: .queuedUser,
-                name: userRoleLabel(.pending),
-                title: preview.isEmpty ? nil : preview,
-                trailing: trailing,
-                timeMarker: p.timestamp.map { .clock($0) }
-            ),
-            body: .text([p.text]),
+        makeUserEntry(
+            id: p.id,
+            timestamp: p.timestamp,
             promptId: nil,
+            text: p.text,
             queuedState: .pending
         )
     }
 
     private func buildUserEntry(from line: ClaudeJSONLLine, ctx: BuildContext) -> UserEntry? {
-        guard let content = line.message?.content else { return nil }
-        let rawText: String
-        switch content {
-        case .text(let str):
-            rawText = str.trimmingCharacters(in: .whitespacesAndNewlines)
-        case .blocks(let blocks):
-            rawText = blocks
-                .compactMap { $0.type == "text" ? $0.text : nil }
-                .joined(separator: "\n")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        guard line.message?.content != nil else { return nil }
+        let rawText = Self.joinText(from: line.message?.content)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let isSlash = rawText.hasPrefix("<command-message>")
             || rawText.hasPrefix("<command-name>")
         let displayText: String
@@ -468,21 +438,13 @@ struct ClaudeTranscriptBuilder {
 
     private func buildSystemEntry(from line: ClaudeJSONLLine) -> SystemEntry? {
         let label = Self.loc("agentXray.entry.system.localCommand", "System")
-        if line.type == "system", let body = line.content, !body.isEmpty {
-            let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-            return SystemEntry(
-                id: .fromJSONL(line.stableId),
-                header: Header(icon: .system, name: label, timeMarker: line.timestamp.map { .clock($0) }),
-                body: .text([trimmed]),
-                subType: .localCommand(input: trimmed)
-            )
-        }
-        guard let content = line.message?.content else { return nil }
         let raw: String
-        switch content {
-        case .text(let str): raw = str
-        case .blocks(let blocks):
-            raw = blocks.compactMap { $0.text }.joined(separator: "\n")
+        if line.type == "system", let body = line.content, !body.isEmpty {
+            raw = body
+        } else if line.message?.content != nil {
+            raw = Self.joinText(from: line.message?.content, filterTextBlocksOnly: false)
+        } else {
+            return nil
         }
         let stripped = stripCommandOutputTags(raw)
         return SystemEntry(
@@ -500,8 +462,7 @@ struct ClaudeTranscriptBuilder {
             summary = body.trimmingCharacters(in: .whitespacesAndNewlines)
         } else {
             summary = line.summary
-                ?? extractTextContent(from: line.message?.content)
-                ?? ""
+                ?? Self.joinText(from: line.message?.content, filterTextBlocksOnly: false)
         }
         return CompactEntry(
             id: .fromJSONL(line.stableId),
@@ -1085,12 +1046,33 @@ struct ClaudeTranscriptBuilder {
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func extractTextContent(from content: ClaudeMessageContent?) -> String? {
-        guard let content else { return nil }
+    /// Walk a `ClaudeMessageContent` and join its text payload into one
+    /// string. The shape varies across call sites:
+    ///
+    /// - `filterTextBlocksOnly: true` (default) drops every block whose
+    ///   `type` isn't `"text"` — used when blocks may contain `image` or
+    ///   `tool_result` payloads that shouldn't contribute to the joined
+    ///   string (user messages, queued prompt attachments).
+    /// - `filterTextBlocksOnly: false` keeps any block exposing a `text`
+    ///   field — used for compact summaries and system content where
+    ///   non-text blocks aren't expected.
+    ///
+    /// Returns "" when content is nil. The five legacy in-builder
+    /// extractors collapsed onto this one helper.
+    private static func joinText(
+        from content: ClaudeMessageContent?,
+        filterTextBlocksOnly: Bool = true
+    ) -> String {
+        guard let content else { return "" }
         switch content {
         case .text(let s): return s
-        case .blocks(let arr):
-            return arr.compactMap { $0.text }.joined(separator: "\n")
+        case .blocks(let blocks):
+            if filterTextBlocksOnly {
+                return blocks
+                    .compactMap { $0.type == "text" ? $0.text : nil }
+                    .joined(separator: "\n")
+            }
+            return blocks.compactMap(\.text).joined(separator: "\n")
         }
     }
 

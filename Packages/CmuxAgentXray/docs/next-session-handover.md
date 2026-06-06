@@ -70,34 +70,11 @@ cyan chip in the sub-row header (alongside the existing magenta
 
 #### T2.4. ~~`QueuedState` enum (UserEntry boolean pair → 3-case enum)~~ **(landed)**
 
-#### T2.5. Builder text-extraction unification
+#### T2.5. ~~Builder text-extraction unification~~ **(landed)**
 
-Five near-identical paths walking `ClaudeMessageContent` to extract joined
-text. Consolidate to one helper `extractText(from: ClaudeMessageContent?) -> String`
-and replace each call site:
-- `extractQueuedPromptText` (`ClaudeTranscriptBuilder.swift:365`)
-- `extractMetaText` (`:376`)
-- inline in `buildUserEntry` (`:444`)
-- inline in `buildSystemEntry` (`:475`)
-- `extractTextContent` (`:1090`)
+#### T2.6. ~~`buildPendingUserEntry` → wrap `makeUserEntry`~~ **(landed)**
 
-Saves ~30 lines, removes a real correctness risk (the five impls could
-drift apart).
-
-#### T2.6. `buildPendingUserEntry` → wrap `makeUserEntry`
-
-`Adapters/Claude/ClaudeTranscriptBuilder.swift:422` re-implements
-`makeUserEntry` in 17 lines with `wasQueued: true, isQueuedPending: true,
-promptId: nil` hardcoded. Should be a 4-line wrapper. Same outcome since
-the icon picker `wasQueued ? .queuedUser : .user` already lives in
-`makeUserEntry`. (After T2.4 lands, `wasQueued: true, isQueuedPending: true`
-becomes `queuedState: .pending`.)
-
-#### T2.7. `buildSystemEntry` two arms converging
-
-After T2.5 lands, both `if line.type == "system"` and `else` branches in
-`buildSystemEntry` (`:475`) build identical `SystemEntry` shape — only
-differing in how text is extracted. Converge to one return statement.
+#### T2.7. ~~`buildSystemEntry` two arms converging~~ **(landed)**
 
 ---
 
