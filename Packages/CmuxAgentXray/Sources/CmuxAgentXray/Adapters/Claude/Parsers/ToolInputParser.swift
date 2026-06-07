@@ -68,34 +68,6 @@ enum ToolInputParser {
         return path
     }
 
-    /// Extract `(old_string, new_string)` from the tool input for
-    /// `Edit` and the first edit in `MultiEdit.edits[]`. Returns nil
-    /// for tools that don't carry edit shape. The resolver synthesizes
-    /// a unified-diff body from these so the detail tab opens with
-    /// `.diff` content (cmux's `FilePreviewPanel` + highlight.js diff
-    /// mode color the +/- lines).
-    static func editStrings(
-        name: String,
-        input: ClaudeJSONValue?
-    ) -> (old: String, new: String)? {
-        guard let input, case .object(let obj) = input else { return nil }
-        switch name {
-        case "Edit":
-            guard case .string(let oldStr)? = obj["old_string"],
-                  case .string(let newStr)? = obj["new_string"] else { return nil }
-            return (oldStr, newStr)
-        case "MultiEdit":
-            guard case .array(let edits)? = obj["edits"],
-                  let first = edits.first,
-                  case .object(let e) = first,
-                  case .string(let oldStr)? = e["old_string"],
-                  case .string(let newStr)? = e["new_string"] else { return nil }
-            return (oldStr, newStr)
-        default:
-            return nil
-        }
-    }
-
     /// Convert an `Edit` / `MultiEdit` tool input into a list of
     /// diff-styled body sections — one `.diffRemoved` + `.diffAdded`
     /// pair per edit, in arrival order — so inline rendering shows

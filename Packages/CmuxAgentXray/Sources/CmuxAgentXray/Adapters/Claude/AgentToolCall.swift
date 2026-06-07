@@ -33,12 +33,13 @@ struct AgentToolCall: Equatable {
     /// from the extension (cmux's `FilePreviewPanel` then materializes
     /// the temp file with the right ext + highlight.js coloring).
     let inputFilePath: String?
-    /// `old_string` from `Edit.input` (or first `MultiEdit.input.edits[].old_string`).
-    /// Used by the resolver to synthesize a unified-diff body for
-    /// the detail tab so users see what changed.
-    let editOldString: String?
-    /// `new_string` from `Edit.input` (or first `MultiEdit.input.edits[].new_string`).
-    let editNewString: String?
+    /// Precomputed diff-styled body sections for `Edit` / `MultiEdit`
+    /// tools — one `.diffRemoved` + `.diffAdded` pair per edit, in
+    /// arrival order. Populated by `ToolInputParser.diffSections(...)`
+    /// at parse time so flush can emit colored old/new blocks instead
+    /// of the default single `.text([inputDetail], .normal)` section.
+    /// Nil for any non-edit tool.
+    let diffSections: [Section]?
 
     init(
         id: String,
@@ -54,8 +55,7 @@ struct AgentToolCall: Equatable {
         durationMs: Int? = nil,
         sidechainTranscript: [Entry]? = nil,
         inputFilePath: String? = nil,
-        editOldString: String? = nil,
-        editNewString: String? = nil
+        diffSections: [Section]? = nil
     ) {
         self.id = id
         self.name = name
@@ -70,8 +70,7 @@ struct AgentToolCall: Equatable {
         self.durationMs = durationMs
         self.sidechainTranscript = sidechainTranscript
         self.inputFilePath = inputFilePath
-        self.editOldString = editOldString
-        self.editNewString = editNewString
+        self.diffSections = diffSections
     }
 
     /// Return a copy of this call with the result-side fields filled in
@@ -97,8 +96,7 @@ struct AgentToolCall: Equatable {
             durationMs: durationMs,
             sidechainTranscript: sidechainTranscript,
             inputFilePath: inputFilePath,
-            editOldString: editOldString,
-            editNewString: editNewString
+            diffSections: diffSections
         )
     }
 
@@ -120,8 +118,7 @@ struct AgentToolCall: Equatable {
             durationMs: durationMs,
             sidechainTranscript: transcript,
             inputFilePath: inputFilePath,
-            editOldString: editOldString,
-            editNewString: editNewString
+            diffSections: diffSections
         )
     }
 }

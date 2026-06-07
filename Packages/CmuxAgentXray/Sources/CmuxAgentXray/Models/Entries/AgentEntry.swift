@@ -226,12 +226,6 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     /// with the matching extension and cmux's `FilePreviewPanel` +
     /// highlight.js color the body.
     public let inputFilePath: String?
-    /// `old_string` from `Edit.input` (or first edit of `MultiEdit.input.edits[]`).
-    /// Used by the resolver to synthesize a unified-diff body for
-    /// the detail tab so users see what changed.
-    public let editOldString: String?
-    /// `new_string` from `Edit.input` (or first edit of `MultiEdit.input.edits[]`).
-    public let editNewString: String?
 
     public init(
         id: EntryID,
@@ -244,9 +238,7 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         teamMemberName: String? = nil,
         teamName: String? = nil,
         mcpServer: String? = nil,
-        inputFilePath: String? = nil,
-        editOldString: String? = nil,
-        editNewString: String? = nil
+        inputFilePath: String? = nil
     ) {
         self.id = id
         self.parentEntryID = parentEntryID
@@ -259,8 +251,6 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         self.teamName = teamName
         self.mcpServer = mcpServer
         self.inputFilePath = inputFilePath
-        self.editOldString = editOldString
-        self.editNewString = editNewString
     }
 
     /// Wall-clock timestamp, projected from `header.timeMarker.clock`.

@@ -587,7 +587,12 @@ struct ClaudeTranscriptBuilder {
                         if call.result == nil { return .pending }
                         return .ok
                     }()
-                    var sections: [Section] = [.text([call.inputDetail], style: .normal)]
+                    var sections: [Section]
+                    if let diffSections = call.diffSections {
+                        sections = diffSections
+                    } else {
+                        sections = [.text([call.inputDetail], style: .normal)]
+                    }
                     if let resultSections = call.result {
                         sections.append(contentsOf: resultSections)
                     }
@@ -611,9 +616,7 @@ struct ClaudeTranscriptBuilder {
                         teamMemberName: call.teamMemberName,
                         teamName: call.teamName,
                         mcpServer: call.mcpServer,
-                        inputFilePath: call.inputFilePath,
-                        editOldString: call.editOldString,
-                        editNewString: call.editNewString
+                        inputFilePath: call.inputFilePath
                     )))
                 }
             }
@@ -900,7 +903,7 @@ struct ClaudeTranscriptBuilder {
         let teamMemberName = ToolInputParser.teamMemberName(name: name, input: block.input)
         let teamName = ToolInputParser.teamName(name: name, input: block.input)
         let mcpServer = MCPToolNameParser.parse(name).server
-        let editStrings = ToolInputParser.editStrings(name: name, input: block.input)
+        let diffSections = ToolInputParser.diffSections(name: name, input: block.input)
         let call = AgentToolCall(
             id: id,
             name: name,
@@ -915,8 +918,7 @@ struct ClaudeTranscriptBuilder {
             durationMs: nil,
             sidechainTranscript: nil,
             inputFilePath: ToolInputParser.filePath(name: name, input: block.input),
-            editOldString: editStrings?.old,
-            editNewString: editStrings?.new
+            diffSections: diffSections
         )
         guard ctx.pendingTurn != nil else { return }
         // Only register a fresh tool slot if this id hasn't been seen

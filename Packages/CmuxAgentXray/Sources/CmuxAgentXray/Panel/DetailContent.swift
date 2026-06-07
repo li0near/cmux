@@ -359,32 +359,6 @@ extension DetailContent {
                     contentType: .json
                 )
             }
-            // Edit / MultiEdit tool result — synthesize a unified
-            // diff from the input's old_string / new_string so the
-            // detail tab renders +/- coloring via cmux's
-            // FilePreviewPanel + highlight.js diff mode.
-            if (tool.toolName == "Edit" || tool.toolName == "MultiEdit"),
-               let oldStr = tool.editOldString,
-               let newStr = tool.editNewString {
-                let path = tool.inputFilePath ?? tool.toolName
-                let diffBody = synthesizeUnifiedDiff(
-                    path: path,
-                    oldString: oldStr,
-                    newString: newStr
-                )
-                return DetailContent(
-                    title: localized(
-                        "agentXray.detail.title.toolResult",
-                        defaultValue: "Tool result · \(tool.toolName)"
-                    ),
-                    subtitle: subtitleFromTimestamp(timestamp),
-                    body: diffBody,
-                    sourceEntryID: tool.id.stableString,
-                    icon: EntryIcon.tool(named: tool.toolName),
-                    accent: tool.status == .error ? .red : .primary,
-                    contentType: .diff
-                )
-            }
             // Read / Write — file_path is known; classify result as
             // `.code(language:)` from the extension so the host
             // materializes a `.swift` / `.py` / `.ts` / etc. temp
@@ -466,29 +440,6 @@ extension DetailContent {
     private static func formatTimestamp(_ date: Date?) -> String {
         guard let date else { return "—" }
         return timestampFormatter.string(from: date)
-    }
-
-    /// Synthesize a unified-diff-shaped body from an Edit's input
-    /// `old_string` / `new_string`. Not a real unified diff — just a
-    /// `--- a/path` / `+++ b/path` header followed by the old lines
-    /// prefixed `-` and the new lines prefixed `+`. cmux's
-    /// `FilePreviewPanel` + highlight.js diff mode color the +/-
-    /// prefixes regardless of the surrounding hunk-header shape.
-    static func synthesizeUnifiedDiff(
-        path: String,
-        oldString: String,
-        newString: String
-    ) -> String {
-        var lines: [String] = []
-        lines.append("--- a/\(path)")
-        lines.append("+++ b/\(path)")
-        for line in oldString.split(separator: "\n", omittingEmptySubsequences: false) {
-            lines.append("-\(line)")
-        }
-        for line in newString.split(separator: "\n", omittingEmptySubsequences: false) {
-            lines.append("+\(line)")
-        }
-        return lines.joined(separator: "\n")
     }
 
     private static func lineCount(_ s: String) -> Int {
