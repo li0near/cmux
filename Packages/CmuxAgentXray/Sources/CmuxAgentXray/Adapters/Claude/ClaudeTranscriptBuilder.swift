@@ -169,9 +169,6 @@ struct ClaudeTranscriptBuilder {
             case .user:
                 let cat = classify(line)
                 switch cat {
-                case .compact:
-                    ctx.flushPendingTurn()
-                    ctx.entries.append(.compact(buildCompactEntry(from: line)))
                 case .user:
                     ctx.flushPendingTurn()
                     if let entry = buildUserEntry(from: line, ctx: ctx) {
@@ -792,19 +789,21 @@ struct ClaudeTranscriptBuilder {
         case user
         case system
         case agent
-        case compact
         case hardNoise
     }
 
+    /// Per-content refinement of a `.render(.user)` routing decision.
+    /// `UserLineDispatcher` already filtered out `isCompactSummary` and
+    /// `isMeta==true` lines by the time this function runs (those route
+    /// to `.render(.compact)` and `.renderSpecial(...)` respectively),
+    /// so this only handles the residual content-shape sniffs.
     func classify(_ line: ClaudeJSONLLine) -> Category {
-        if line.isCompactSummary == true { return .compact }
         if line.type == "user" { return classifyUserLine(line) }
         if line.type == "assistant" { return .agent }
         return .hardNoise
     }
 
     private func classifyUserLine(_ line: ClaudeJSONLLine) -> Category {
-        if line.isMeta == true { return .agent }
         guard let content = line.message?.content else { return .hardNoise }
 
         switch content {
