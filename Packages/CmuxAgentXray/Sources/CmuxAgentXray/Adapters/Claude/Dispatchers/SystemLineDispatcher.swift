@@ -38,29 +38,30 @@ enum SystemLineDispatcher {
             // top-level `.content`; output line carries
             // `<local-command-stdout>` (or stderr) and points at the
             // input via `parentUuid`. Pair them as slashCmdInput +
-            // slashCmdOutput meta.
+            // slashCmdOutput meta — payload pre-extracted via
+            // `ClaudeContentDetector` so the builder doesn't re-classify.
             let body = (line.content ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if body.hasPrefix("<command-name>") || body.hasPrefix("<command-message>") {
+            switch ClaudeContentDetector.classify(body) {
+            case .slashCommandInput(let name, let args):
                 return ClaudeLineDispatcher.branchGated(
-                    line, kind: .renderSpecial(.slashCmdInput),
+                    line, kind: .renderSpecial(.slashCmdInput(name: name, args: args)),
+                    activeBranch: activeBranch,
+                    activeBranchAvailable: activeBranchAvailable
+                )
+            case .slashCommandOutput(let body, let isStderr):
+                return ClaudeLineDispatcher.branchGated(
+                    line, kind: .renderSpecial(.slashCmdOutput(body: body, isStderr: isStderr)),
+                    activeBranch: activeBranch,
+                    activeBranchAvailable: activeBranchAvailable
+                )
+            default:
+                return ClaudeLineDispatcher.branchGated(
+                    line, kind: .render(.system),
                     activeBranch: activeBranch,
                     activeBranchAvailable: activeBranchAvailable
                 )
             }
-            if body.hasPrefix("<local-command-stdout>")
-                || body.hasPrefix("<local-command-stderr>") {
-                return ClaudeLineDispatcher.branchGated(
-                    line, kind: .renderSpecial(.slashCmdOutput),
-                    activeBranch: activeBranch,
-                    activeBranchAvailable: activeBranchAvailable
-                )
-            }
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .render(.system),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
         case "api_error", "stop_hook_summary", "informational":
             return ClaudeLineDispatcher.branchGated(
                 line, kind: .render(.system),

@@ -237,7 +237,7 @@ struct ClaudeTranscriptBuilder {
             )))
         case .continueResume:
             return
-        case .slashCmdInput:
+        case .slashCmdInput(let name, let args):
             if ctx.queuedSlashCommandUuids.contains(line.stableId) {
                 let text = ClaudeQueuedPromptResolver.consumedSlashCommandText(line) ?? body
                 ctx.entries.append(.user(makeUserEntry(
@@ -247,8 +247,7 @@ struct ClaudeTranscriptBuilder {
                     text: text,
                     queuedState: .consumed
                 )))
-            } else if case let .slashCommandInput(name, args)
-                        = ClaudeContentDetector.classify(body) {
+            } else {
                 let title = args.map { "/\(name) \($0)" } ?? "/\(name)"
                 ctx.entries.append(Self.makeSystemEntry(
                     id: id, ts: ts, icon: .slashCommand,
@@ -257,48 +256,40 @@ struct ClaudeTranscriptBuilder {
                     subType: .slashCmdInput(name: name, args: args)
                 ))
             }
-        case .slashCmdOutput:
-            if case let .slashCommandOutput(b, isStderr) = ClaudeContentDetector.classify(body) {
-                if b.isEmpty { return }
-                let label = isStderr
-                    ? Self.loc("agentXray.entry.slashCmd.stderr", "Slash command stderr")
-                    : Self.loc("agentXray.entry.slashCmd.output", "Slash command output")
-                ctx.entries.append(Self.makeSystemEntry(
-                    id: id, ts: ts, icon: .system, name: label,
-                    body: Body(sections: [.text([b], style: isStderr ? .error : .normal)]),
-                    subType: .slashCmdOutput(isStderr: isStderr)
-                ))
-            }
+        case .slashCmdOutput(let b, let isStderr):
+            if b.isEmpty { return }
+            let label = isStderr
+                ? Self.loc("agentXray.entry.slashCmd.stderr", "Slash command stderr")
+                : Self.loc("agentXray.entry.slashCmd.output", "Slash command output")
+            ctx.entries.append(Self.makeSystemEntry(
+                id: id, ts: ts, icon: .system, name: label,
+                body: Body(sections: [.text([b], style: isStderr ? .error : .normal)]),
+                subType: .slashCmdOutput(isStderr: isStderr)
+            ))
         case .localCommandCaveat:
             return
-        case .systemReminder:
-            if case let .systemReminder(b) = ClaudeContentDetector.classify(body) {
-                ctx.entries.append(Self.makeSystemEntry(
-                    id: id, ts: ts, icon: .systemReminder,
-                    name: Self.loc("agentXray.entry.systemReminder.title", "System reminder"),
-                    body: .text([b]),
-                    subType: .systemReminder
-                ))
-            }
-        case .skill:
-            if case let .skillInvocation(name, basePath, b) = ClaudeContentDetector.classify(body) {
-                ctx.entries.append(Self.makeSystemEntry(
-                    id: id, ts: ts, icon: .skill,
-                    name: Self.loc("agentXray.entry.skill.title", "Skill: \(name)"),
-                    title: basePath,
-                    body: .text([b]),
-                    subType: .skill(name: name, basePath: basePath)
-                ))
-            }
-        case .contextUsage:
-            if case let .contextUsage(b) = ClaudeContentDetector.classify(body) {
-                ctx.entries.append(Self.makeSystemEntry(
-                    id: id, ts: ts, icon: .contextInfo,
-                    name: Self.loc("agentXray.entry.contextUsage.title", "Context usage"),
-                    body: .text([b]),
-                    subType: .contextUsage
-                ))
-            }
+        case .systemReminder(let b):
+            ctx.entries.append(Self.makeSystemEntry(
+                id: id, ts: ts, icon: .systemReminder,
+                name: Self.loc("agentXray.entry.systemReminder.title", "System reminder"),
+                body: .text([b]),
+                subType: .systemReminder
+            ))
+        case .skill(let name, let basePath, let b):
+            ctx.entries.append(Self.makeSystemEntry(
+                id: id, ts: ts, icon: .skill,
+                name: Self.loc("agentXray.entry.skill.title", "Skill: \(name)"),
+                title: basePath,
+                body: .text([b]),
+                subType: .skill(name: name, basePath: basePath)
+            ))
+        case .contextUsage(let b):
+            ctx.entries.append(Self.makeSystemEntry(
+                id: id, ts: ts, icon: .contextInfo,
+                name: Self.loc("agentXray.entry.contextUsage.title", "Context usage"),
+                body: .text([b]),
+                subType: .contextUsage
+            ))
         case .unknownMeta:
             let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { return }

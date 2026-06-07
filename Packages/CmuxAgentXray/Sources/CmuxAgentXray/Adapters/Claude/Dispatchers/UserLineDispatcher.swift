@@ -66,11 +66,16 @@ enum UserLineDispatcher {
         }
         let raw = line.message?.content?.firstText() ?? ""
         switch ClaudeContentDetector.classify(raw) {
-        case .slashCommandInput:    return .renderSpecial(.slashCmdInput)
-        case .slashCommandOutput:   return .renderSpecial(.slashCmdOutput)
-        case .systemReminder:       return .renderSpecial(.systemReminder)
-        case .skillInvocation:      return .renderSpecial(.skill)
-        case .contextUsage:         return .renderSpecial(.contextUsage)
+        case .slashCommandInput(let name, let args):
+            return .renderSpecial(.slashCmdInput(name: name, args: args))
+        case .slashCommandOutput(let body, let isStderr):
+            return .renderSpecial(.slashCmdOutput(body: body, isStderr: isStderr))
+        case .systemReminder(let body):
+            return .renderSpecial(.systemReminder(body: body))
+        case .skillInvocation(let name, let basePath, let body):
+            return .renderSpecial(.skill(name: name, basePath: basePath, body: body))
+        case .contextUsage(let body):
+            return .renderSpecial(.contextUsage(body: body))
         // Resume markers and command-caveat wrappers carry no
         // user-actionable content; drop both.
         case .continueResume:       return .skip

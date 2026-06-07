@@ -43,12 +43,21 @@ enum ClaudeSpecialKind: Equatable {
     case recap                // system.subtype: away_summary
     case prLink               // pr-link line
     case continueResume       // isMeta=true user line, "Continue from where you left off."
-    case slashCmdInput        // <command-name> / <command-message> wrapper
-    case slashCmdOutput       // <local-command-stdout> / <local-command-stderr>
+    /// `<command-name>` / `<command-message>` wrapper. Payload is the
+    /// parsed (name, args) pre-extracted by the dispatcher so the
+    /// builder doesn't re-classify the same body.
+    case slashCmdInput(name: String, args: String?)
+    /// `<local-command-stdout>` / `<local-command-stderr>` wrapper.
+    /// Payload is the inner body + the stream discriminator.
+    case slashCmdOutput(body: String, isStderr: Bool)
     case localCommandCaveat   // <local-command-caveat>
-    case systemReminder       // <system-reminder>
-    case skill                // "Base directory for this skill: …"
-    case contextUsage         // "## Context Usage"
+    /// `<system-reminder>` wrapper. Payload is the inner body.
+    case systemReminder(body: String)
+    /// `"Base directory for this skill: …"` wrapper. Payload is the
+    /// skill name + (optional) base path + body.
+    case skill(name: String, basePath: String?, body: String)
+    /// `"## Context Usage"` wrapper. Payload is the inner body.
+    case contextUsage(body: String)
     case unknownMeta          // isMeta=true user line that doesn't match any tag
     case queuedPrompt         // attachment.type=queued_command
     case planModeEntered      // attachment.type=plan_mode
