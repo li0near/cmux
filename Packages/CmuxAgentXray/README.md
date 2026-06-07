@@ -133,16 +133,17 @@ queue) and `MIGRATION_PLAN.md` §16 (deferred-by-policy items). The
 2026-06-07 Phase A–E refactor + audit-cleanup pass landed every Tier
 3/4/5 item from the previous handover, plus a structural folder
 cleanup and a 6-commit audit trim that shrank `ClaudeTranscriptBuilder.swift`
-from 1441 → 1050 LOC. See `MIGRATION_PLAN.md` §14 rows 19j–19r.
+from 1441 → 1050 LOC. See `MIGRATION_PLAN.md` §14 rows 19j–19r. The
+2026-06-08 Phase D-rev pass migrated detail-tab rich rendering from
+in-package stubs to cmux-native surfaces (cmux's `MarkdownWebRenderer`
++ Apple's `QLPreviewView`, zero new dependencies). See §14 row 19s.
 
 **Active queue** (`docs/next-session-handover.md`):
-1. **Phase D follow-up rich renderers** — JSON / Diff / Markdown /
-   Code, each independently reviewable. Phase D landed the foundation
-   (`ContentType` enum extended, four stub renderer views in
-   `Views/Sections/`); each renderer ships as its own PR.
-2. **Audit deferrals** — HI #2 (async `resolveOffloadedOutput`), S3
-   (system/compact image drop), S4 (`.codeMonospace` font), M2
-   (offloaded-output resolver test).
+1. **Audit deferrals** — HI #2 (async `resolveOffloadedOutput`), S3
+   (system/compact image drop), M2 (offloaded-output resolver test).
+2. **Phase D-rev follow-ups** — language-detection-from-`file_path`
+   wiring, `FileExternalOpenMenu` accessory, future transcript
+   renderer.
 
 **Deferred-by-policy items** still tracked in `MIGRATION_PLAN.md` §16:
 - B. Inline sub-agent transcript rendering (future UX evolution)
