@@ -610,7 +610,10 @@ struct ClaudeTranscriptBuilder {
                         subagentType: call.subagentType,
                         teamMemberName: call.teamMemberName,
                         teamName: call.teamName,
-                        mcpServer: call.mcpServer
+                        mcpServer: call.mcpServer,
+                        inputFilePath: call.inputFilePath,
+                        editOldString: call.editOldString,
+                        editNewString: call.editNewString
                     )))
                 }
             }
@@ -897,6 +900,7 @@ struct ClaudeTranscriptBuilder {
         let teamMemberName = ToolInputParser.teamMemberName(name: name, input: block.input)
         let teamName = ToolInputParser.teamName(name: name, input: block.input)
         let mcpServer = MCPToolNameParser.parse(name).server
+        let editStrings = ToolInputParser.editStrings(name: name, input: block.input)
         let call = AgentToolCall(
             id: id,
             name: name,
@@ -909,7 +913,10 @@ struct ClaudeTranscriptBuilder {
             teamName: teamName,
             mcpServer: mcpServer,
             durationMs: nil,
-            sidechainTranscript: nil
+            sidechainTranscript: nil,
+            inputFilePath: ToolInputParser.filePath(name: name, input: block.input),
+            editOldString: editStrings?.old,
+            editNewString: editStrings?.new
         )
         guard ctx.pendingTurn != nil else { return }
         // Only register a fresh tool slot if this id hasn't been seen

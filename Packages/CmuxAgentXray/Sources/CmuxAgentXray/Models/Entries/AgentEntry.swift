@@ -219,6 +219,19 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     /// tools whose names don't carry the `mcp__` prefix. Drives the
     /// per-tool server chip in the sub-row header.
     public let mcpServer: String?
+    /// `file_path` from the tool's input for tools that carry it
+    /// (Read / Edit / Write / MultiEdit). Used by the detail-tab
+    /// resolver to set `ContentType` to `.code(language:)` based on
+    /// the extension; the host materializer then writes a temp file
+    /// with the matching extension and cmux's `FilePreviewPanel` +
+    /// highlight.js color the body.
+    public let inputFilePath: String?
+    /// `old_string` from `Edit.input` (or first edit of `MultiEdit.input.edits[]`).
+    /// Used by the resolver to synthesize a unified-diff body for
+    /// the detail tab so users see what changed.
+    public let editOldString: String?
+    /// `new_string` from `Edit.input` (or first edit of `MultiEdit.input.edits[]`).
+    public let editNewString: String?
 
     public init(
         id: EntryID,
@@ -230,7 +243,10 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         subagentType: String? = nil,
         teamMemberName: String? = nil,
         teamName: String? = nil,
-        mcpServer: String? = nil
+        mcpServer: String? = nil,
+        inputFilePath: String? = nil,
+        editOldString: String? = nil,
+        editNewString: String? = nil
     ) {
         self.id = id
         self.parentEntryID = parentEntryID
@@ -242,6 +258,9 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         self.teamMemberName = teamMemberName
         self.teamName = teamName
         self.mcpServer = mcpServer
+        self.inputFilePath = inputFilePath
+        self.editOldString = editOldString
+        self.editNewString = editNewString
     }
 
     /// Wall-clock timestamp, projected from `header.timeMarker.clock`.

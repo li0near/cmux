@@ -27,6 +27,18 @@ struct AgentToolCall: Equatable {
     let mcpServer: String?
     let durationMs: Int?
     let sidechainTranscript: [Entry]?
+    /// `file_path` from the tool's input JSON (Read / Edit / Write /
+    /// MultiEdit). Forwarded to `ToolEntry.inputFilePath` so the
+    /// detail-tab resolver can pick a `.code(language:)` ContentType
+    /// from the extension (cmux's `FilePreviewPanel` then materializes
+    /// the temp file with the right ext + highlight.js coloring).
+    let inputFilePath: String?
+    /// `old_string` from `Edit.input` (or first `MultiEdit.input.edits[].old_string`).
+    /// Used by the resolver to synthesize a unified-diff body for
+    /// the detail tab so users see what changed.
+    let editOldString: String?
+    /// `new_string` from `Edit.input` (or first `MultiEdit.input.edits[].new_string`).
+    let editNewString: String?
 
     init(
         id: String,
@@ -40,7 +52,10 @@ struct AgentToolCall: Equatable {
         teamName: String? = nil,
         mcpServer: String? = nil,
         durationMs: Int? = nil,
-        sidechainTranscript: [Entry]? = nil
+        sidechainTranscript: [Entry]? = nil,
+        inputFilePath: String? = nil,
+        editOldString: String? = nil,
+        editNewString: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -54,6 +69,9 @@ struct AgentToolCall: Equatable {
         self.mcpServer = mcpServer
         self.durationMs = durationMs
         self.sidechainTranscript = sidechainTranscript
+        self.inputFilePath = inputFilePath
+        self.editOldString = editOldString
+        self.editNewString = editNewString
     }
 
     /// Return a copy of this call with the result-side fields filled in
@@ -77,7 +95,10 @@ struct AgentToolCall: Equatable {
             teamName: teamName,
             mcpServer: mcpServer,
             durationMs: durationMs,
-            sidechainTranscript: sidechainTranscript
+            sidechainTranscript: sidechainTranscript,
+            inputFilePath: inputFilePath,
+            editOldString: editOldString,
+            editNewString: editNewString
         )
     }
 
@@ -97,7 +118,10 @@ struct AgentToolCall: Equatable {
             teamName: teamName,
             mcpServer: mcpServer,
             durationMs: durationMs,
-            sidechainTranscript: transcript
+            sidechainTranscript: transcript,
+            inputFilePath: inputFilePath,
+            editOldString: editOldString,
+            editNewString: editNewString
         )
     }
 }

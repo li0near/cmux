@@ -36,6 +36,39 @@ enum DetailContentShapeSniffer {
         return .plainText
     }
 
+    /// Map a file-path extension to a highlight.js-compatible
+    /// language identifier. Used by the detail-tab resolver for
+    /// Read / Write tool results — the file_path is known, so we
+    /// classify the result text as `.code(language:)` directly
+    /// instead of running the text-shape ladder. Unmapped extensions
+    /// return nil so callers fall through to the existing ladder.
+    static func languageHint(forFilePath path: String?) -> String? {
+        guard let path else { return nil }
+        let ext = (path as NSString).pathExtension.lowercased()
+        guard !ext.isEmpty else { return nil }
+        switch ext {
+        case "swift":         return "swift"
+        case "py":            return "python"
+        case "ts":            return "typescript"
+        case "tsx":           return "tsx"
+        case "js":            return "javascript"
+        case "jsx":           return "jsx"
+        case "json":          return "json"
+        case "md", "markdown": return "markdown"
+        case "diff", "patch": return "diff"
+        case "sh", "bash":    return "bash"
+        case "html", "htm":   return "html"
+        case "css":           return "css"
+        case "yaml", "yml":   return "yaml"
+        case "rs":            return "rust"
+        case "go":            return "go"
+        case "c", "h":        return "c"
+        case "cpp", "cc", "cxx", "hpp": return "cpp"
+        case "m", "mm":       return "objectivec"
+        default:              return nil
+        }
+    }
+
     /// True when the trimmed text starts with `{` or `[` AND parses
     /// as valid JSON via `JSONSerialization`. The validity check
     /// guards against false positives from Bash output / log lines

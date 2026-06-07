@@ -54,6 +54,48 @@ enum ToolInputParser {
         return obj.map { "\($0.key)=\($0.value.displayString)" }.sorted().first ?? ""
     }
 
+    /// Extract `file_path` from the tool's input JSON for tools that
+    /// carry it (Read / Edit / Write / MultiEdit). Returns nil for
+    /// any other tool name or if the input doesn't have a string
+    /// `file_path`. Used by the detail-tab resolver to pick a
+    /// `.code(language:)` ContentType from the file's extension.
+    static func filePath(name: String, input: ClaudeJSONValue?) -> String? {
+        guard ["Read", "Edit", "Write", "MultiEdit"].contains(name) else {
+            return nil
+        }
+        guard let input, case .object(let obj) = input else { return nil }
+        guard case .string(let path)? = obj["file_path"] else { return nil }
+        return path
+    }
+
+    /// Extract `(old_string, new_string)` from the tool input for
+    /// `Edit` and the first edit in `MultiEdit.edits[]`. Returns nil
+    /// for tools that don't carry edit shape. The resolver synthesizes
+    /// a unified-diff body from these so the detail tab opens with
+    /// `.diff` content (cmux's `FilePreviewPanel` + highlight.js diff
+    /// mode color the +/- lines).
+    static func editStrings(
+        name: String,
+        input: ClaudeJSONValue?
+    ) -> (old: String, new: String)? {
+        guard let input, case .object(let obj) = input else { return nil }
+        switch name {
+        case "Edit":
+            guard case .string(let oldStr)? = obj["old_string"],
+                  case .string(let newStr)? = obj["new_string"] else { return nil }
+            return (oldStr, newStr)
+        case "MultiEdit":
+            guard case .array(let edits)? = obj["edits"],
+                  let first = edits.first,
+                  case .object(let e) = first,
+                  case .string(let oldStr)? = e["old_string"],
+                  case .string(let newStr)? = e["new_string"] else { return nil }
+            return (oldStr, newStr)
+        default:
+            return nil
+        }
+    }
+
     static func format(_ input: ClaudeJSONValue?) -> String {
         guard let input else { return "" }
         guard case .object(let obj) = input else { return input.displayString }
