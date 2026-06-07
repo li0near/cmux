@@ -39,8 +39,8 @@ extension AgentEntryView {
                         style: style,
                         onOpenDetail: { onOpenDetail(idx) }
                     )
-                case .image(let source):
-                    ImageThumbnailView(source: source) { onOpenDetail(idx) }
+                case .image:
+                    ImageEntryLinkView(palette: palette) { onOpenDetail(idx) }
                 case .toolReference(let toolName):
                     ToolReferenceChipView(toolName: toolName, palette: palette)
                 case .offloadedOutput(let off):

@@ -37,8 +37,8 @@ struct EntryBodyView: View {
         case .text(_, let style):
             let content = computedIndex < computed.count ? computed[computedIndex] : .empty
             textSection(content: content, style: style)
-        case .image(let source):
-            ImageThumbnailView(source: source, action: onOpenDetail)
+        case .image:
+            ImageEntryLinkView(palette: palette, action: onOpenDetail)
         case .toolReference(let toolName):
             ToolReferenceChipView(toolName: toolName, palette: palette)
         case .offloadedOutput(let off):

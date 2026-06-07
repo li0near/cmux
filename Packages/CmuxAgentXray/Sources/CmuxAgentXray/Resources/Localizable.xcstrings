@@ -485,35 +485,13 @@
         }
       }
     },
-    "agentXray.section.image.a11yLabel" : {
+    "agentXray.section.image.label" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Image"
-          }
-        }
-      }
-    },
-    "agentXray.section.image.failed" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Image (failed to decode)"
-          }
-        }
-      }
-    },
-    "agentXray.section.image.loading" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loading image…"
           }
         }
       }
