@@ -128,24 +128,21 @@ commits. Highlights of the refactor:
 
 See `MIGRATION_PLAN.md` §14 rows 19a–19i for commits.
 
-**Pending work** is tracked in `MIGRATION_PLAN.md` §16 (deferred-by-policy
-items gated on upstream cmux work or pending forcing functions). The
-2026-06-07 Phase A–E refactor pass landed every Tier 3/4/5 item
-that was previously in `docs/next-session-handover.md` (now retired):
-- T3.1 — `DetailContent.Kind` → flat `icon`/`accent`/`contentType`
-  fields (Phase A).
-- T4.1 — `Section` richness for image / tool_reference + per-block
-  rewrite of the tool_result builder (Phase B).
-- T3.2 — `<persisted-output>` wrapper detection with detail-tab
-  file read (Phase C).
-- T5.2 — `ContentType` foundation for rich detail-tab rendering
-  (markdown / code / json / diff stubs; Phase D).
-- T5.1 — Source-aware shape-sniff content split with generic
-  detection ladder (Phase E).
+**Pending work** is tracked in `docs/next-session-handover.md` (active
+queue) and `MIGRATION_PLAN.md` §16 (deferred-by-policy items). The
+2026-06-07 Phase A–E refactor + audit-cleanup pass landed every Tier
+3/4/5 item from the previous handover, plus a structural folder
+cleanup and a 6-commit audit trim that shrank `ClaudeTranscriptBuilder.swift`
+from 1441 → 1050 LOC. See `MIGRATION_PLAN.md` §14 rows 19j–19r.
 
-See `MIGRATION_PLAN.md` §14 rows 19j–19n for the per-phase commits and
-`docs/claude-jsonl-mapping.md` §11 for the canonical content-block
-type reference compiled from the spec audit + corpus verification.
+**Active queue** (`docs/next-session-handover.md`):
+1. **Phase D follow-up rich renderers** — JSON / Diff / Markdown /
+   Code, each independently reviewable. Phase D landed the foundation
+   (`ContentType` enum extended, four stub renderer views in
+   `Views/Sections/`); each renderer ships as its own PR.
+2. **Audit deferrals** — HI #2 (async `resolveOffloadedOutput`), S3
+   (system/compact image drop), S4 (`.codeMonospace` font), M2
+   (offloaded-output resolver test).
 
 **Deferred-by-policy items** still tracked in `MIGRATION_PLAN.md` §16:
 - B. Inline sub-agent transcript rendering (future UX evolution)
@@ -156,27 +153,24 @@ type reference compiled from the spec audit + corpus verification.
 - K. Daemon-side process enumeration RPC (gated on cmux daemon team)
 - L. Codex consolidated deferred work
 - N. AgentXrayWorkspaceHost split (no forcing function yet)
+- O. Async `DetailContent.resolve(...)` pipeline (gated on broader
+     resolver-pipeline async refactor)
 
 These stay deferred per CLAUDE.md "don't pre-solve hypothetical
 future requirements" — none block current functionality.
 
-**Follow-up rich renderer PRs** (Phase D foundation; each ships
-independently):
-- Markdown renderer — full headings/bullets/links/fenced-code parsing.
-- Code renderer — per-language syntax highlighting.
-- JSON renderer — collapsible nodes, key/value coloring.
-- Diff renderer — patch-aware hunk grouping, in-line highlights.
-
 **For the next session resuming this work, read in this order:**
 
-1. `MIGRATION_PLAN.md` (sibling file) — full phase plan, status table
+1. `docs/next-session-handover.md` (sibling file) — active queue:
+   rich renderers + audit deferrals.
+2. `MIGRATION_PLAN.md` (sibling file) — full phase plan, status table
    (§1), progress log (§14), bug-fix ledger (§15), deferred-task
    ledger (§16), origin cross-reference (§18).
-2. `FORK_NOTES.md` (sibling file) — upstream-touch surface ledger;
+3. `FORK_NOTES.md` (sibling file) — upstream-touch surface ledger;
    update on any fork-side edit outside the package.
-3. `docs/claude-jsonl-mapping.md` §11 — canonical content-block type
+4. `docs/claude-jsonl-mapping.md` §11 — canonical content-block type
    reference (Phase B/C/E findings).
-4. `Sources/Panels/AgentXray/README.md` — cmux-app-target adapter
+5. `Sources/Panels/AgentXray/README.md` — cmux-app-target adapter
    seam; how the package mounts into the host app.
 
 The `AttachStage` feature (status-bar attach-progress labels) and the
