@@ -141,6 +141,55 @@ public protocol AgentXrayHost: AnyObject {
     /// Default: `nil`.
     func detailExternalOpenAccessory(for content: DetailContent) -> AnyView?
 
+    // MARK: Open file in cmux panel (URL-click flow reuse)
+
+    /// Open a file URL as a real cmux panel — `MarkdownPanel` for
+    /// markdown-shaped paths, `FilePreviewPanel` for everything else.
+    /// Mirrors the flow that fires when a user clicks an inline file
+    /// path in the terminal. The host opens the file via cmux's
+    /// existing extension-dispatch pipeline; AgentX-ray uses this
+    /// instead of embedding renderers in-package so users get cmux's
+    /// full panel chrome (font controls, copy as markdown / HTML,
+    /// edit toggle, "Open in…", image zoom, find-in-content) for free.
+    ///
+    /// - Parameters:
+    ///   - fileURL: Absolute file URL. The file should exist on disk
+    ///     by the time this is called (caller materializes inline
+    ///     content first; offloaded outputs already live on disk).
+    ///   - activate: Whether to steal window focus. Default false —
+    ///     AgentX-ray panels often run in background workspaces.
+    ///   - reuseExisting: When true, refocus an existing panel that
+    ///     already points at the same canonical path instead of
+    ///     duplicating. Combined with stable per-`(sourceEntryID,
+    ///     sectionIndex)` filenames, re-clicks of the same row
+    ///     dedupe.
+    /// - Returns: UUID of the opened (or refocused) panel, nil on
+    ///   failure (no workspace, no available pane, etc.).
+    ///
+    /// Default: returns nil so test stubs and out-of-tree hosts
+    /// compile unchanged.
+    @discardableResult
+    func openFileInPanel(
+        _ fileURL: URL,
+        activate: Bool,
+        reuseExisting: Bool
+    ) -> UUID?
+
+    /// Convenience for image-shaped Section content. Decodes the
+    /// base64 bytes off-main, writes them to a stable temp path keyed
+    /// by `(sourceEntryID, sectionIndex)`, then opens the resulting
+    /// file via ``openFileInPanel(_:activate:reuseExisting:)``. Means
+    /// the package never has to thread `ImageSource` through
+    /// `DetailContent` — image clicks short-circuit at the
+    /// click-handler level and call this directly.
+    ///
+    /// Default: no-op.
+    func openImageInPanel(
+        source: ImageSource,
+        sourceEntryID: String,
+        sectionIndex: Int
+    )
+
     // MARK: Remote attach (path 3)
 
     /// Snapshot of "what would AgentX-ray need to attach the focused
@@ -190,5 +239,21 @@ extension AgentXrayHost {
 
     public func detailExternalOpenAccessory(for content: DetailContent) -> AnyView? {
         nil
+    }
+
+    public func openFileInPanel(
+        _ fileURL: URL,
+        activate: Bool,
+        reuseExisting: Bool
+    ) -> UUID? {
+        nil
+    }
+
+    public func openImageInPanel(
+        source: ImageSource,
+        sourceEntryID: String,
+        sectionIndex: Int
+    ) {
+        // No-op default. cmux's host conformance overrides.
     }
 }
