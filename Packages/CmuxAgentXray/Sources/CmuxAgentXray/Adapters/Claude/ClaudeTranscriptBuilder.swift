@@ -95,7 +95,7 @@ struct ClaudeTranscriptBuilder {
             && !ctx.emittedDivergencePoints.contains(branch.branchRootUuid) {
             ctx.emittedDivergencePoints.insert(branch.branchRootUuid)
             let entries = branchEntriesByRoot[branch.branchRootUuid] ?? []
-            ctx.entries.append(.synthesized(buildBranchLinkEntry(
+            ctx.entries.append(.synthesized(Self.makeBranchLinkEntry(
                 branch: branch,
                 totalRewinds: ctx.resolution.totalRewinds,
                 branchEntries: entries,
@@ -493,20 +493,24 @@ struct ClaudeTranscriptBuilder {
         )
     }
 
-    private func buildBranchLinkEntry(
+    /// Build a `SynthesizedEntry.branchLink` for one abandoned branch.
+    /// Used by both the pre-pass orphan-branch emit (in `transcript()`)
+    /// and per-line per-divergence emit (in
+    /// `BuildContext.maybeEmitBranchLinks`).
+    static func makeBranchLinkEntry(
         branch: ClaudeAbandonedBranch,
         totalRewinds: Int,
         branchEntries: [Entry],
         timestamp: Date
     ) -> SynthesizedEntry {
-        let preview = branch.firstPromptPreview ?? Self.loc(
+        let preview = branch.firstPromptPreview ?? loc(
             "agentXray.entry.branchLink.noPrompt", "(no prompt)"
         )
-        let title = Self.loc(
+        let title = loc(
             "agentXray.entry.branchLink.title",
             "Rewind \(branch.rewindIndex) of \(totalRewinds)"
         )
-        let subtitle = Self.loc(
+        let subtitle = loc(
             "agentXray.entry.branchLink.subtitle",
             "\(branch.entryCount) entries · \(preview)"
         )
@@ -694,35 +698,12 @@ struct ClaudeTranscriptBuilder {
                 && !emittedDivergencePoints.contains(branch.branchRootUuid) {
                 emittedDivergencePoints.insert(branch.branchRootUuid)
                 let branchEntries = abandonedBranchEntriesByRoot[branch.branchRootUuid] ?? []
-                let totalRewinds = resolution.totalRewinds
-                let preview = branch.firstPromptPreview ?? ClaudeTranscriptBuilder.loc(
-                    "agentXray.entry.branchLink.noPrompt", "(no prompt)"
-                )
-                let title = ClaudeTranscriptBuilder.loc(
-                    "agentXray.entry.branchLink.title",
-                    "Rewind \(branch.rewindIndex) of \(totalRewinds)"
-                )
-                let subtitle = ClaudeTranscriptBuilder.loc(
-                    "agentXray.entry.branchLink.subtitle",
-                    "\(branch.entryCount) entries · \(preview)"
-                )
                 let ts = line.timestamp ?? .distantPast
-                entries.append(.synthesized(SynthesizedEntry(
-                    id: .derived(parent: branch.branchRootUuid, kind: "branchLink"),
-                    header: Header(
-                        icon: .branchLink,
-                        name: title,
-                        title: subtitle,
-                        timeMarker: .clock(ts)
-                    ),
-                    body: Body(sections: [.subentries(branchEntries)]),
-                    kind: .branchLink(
-                        branchRootUuid: branch.branchRootUuid,
-                        rewindIndex: branch.rewindIndex,
-                        totalRewinds: resolution.totalRewinds,
-                        entryCount: branch.entryCount,
-                        firstPromptPreview: branch.firstPromptPreview
-                    )
+                entries.append(.synthesized(ClaudeTranscriptBuilder.makeBranchLinkEntry(
+                    branch: branch,
+                    totalRewinds: resolution.totalRewinds,
+                    branchEntries: branchEntries,
+                    timestamp: ts
                 )))
             }
         }
