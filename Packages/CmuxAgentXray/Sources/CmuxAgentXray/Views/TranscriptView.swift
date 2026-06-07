@@ -424,14 +424,22 @@ public struct TranscriptView: View {
 
     // MARK: - Detail view (frozen)
 
-    /// Detail-mode rendering. When `content.entries` is non-nil
-    /// (abandoned-branch or sub-agent transcript), render an entries
-    /// list using the same EntryView dispatcher used for live
-    /// transcripts (in `.fullDetail` mode). Otherwise render the
-    /// plain-text body.
+    /// Detail-mode rendering. Three branches by content shape:
+    /// - ``DetailContent/entries`` non-nil (abandoned-branch or
+    ///   sub-agent transcript) — render an entries list using the
+    ///   same `EntryView` dispatcher used for live transcripts (in
+    ///   `.fullDetail` mode). Stays in-package; the next-phase
+    ///   transcript renderer will iterate here.
+    /// - ``DetailContent/imageSource`` non-nil — defer to the
+    ///   host's image preview (typically `QLPreviewView` from
+    ///   `QuickLookUI`).
+    /// - Otherwise — defer to the host's text content view
+    ///   (typically the cmux markdown WebView with fenced-block
+    ///   coercion driving highlight.js for code/diff/json).
     private func detailView(content: DetailContent) -> some View {
         let palette = HudPalette(foreground: appearance.foregroundColor)
         let accent = palette.color(for: content.accent)
+        let host = panel.host
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: Theme.Spacing.rowIconText) {
                 Image(systemName: content.icon.collapsed)
@@ -451,50 +459,23 @@ public struct TranscriptView: View {
             }
             if let entries = content.entries, !entries.isEmpty {
                 detailEntriesList(entries: entries, palette: palette)
+            } else if let img = content.imageSource,
+                      let idx = content.imageSectionIndex {
+                host.detailImageView(
+                    source: img,
+                    sourceEntryID: content.sourceEntryID,
+                    sectionIndex: idx
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                detailBodyText(content.body, contentType: content.contentType, palette: palette)
+                host.detailBodyView(content: content)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: appearance.contentBackgroundColor))
-    }
-
-    /// Detail-mode body renderer. Dispatches on `contentType` to pick
-    /// the matching foundation stub view (Phase D scaffolding):
-    ///  - `.plainText` / `.transcript` (transcript handled separately) →
-    ///    plain `Text(...)`.
-    ///  - `.markdown` → ``MarkdownSectionView`` (stub).
-    ///  - `.code(language:)` → ``CodeSectionView`` (stub).
-    ///  - `.json` → ``JsonSectionView`` (stub; pretty-prints).
-    ///  - `.diff` → ``DiffSectionView`` (stub; per-line +/- coloring).
-    /// Rich rendering ships in follow-up PRs per renderer.
-    @ViewBuilder
-    private func detailBodyText(_ body: String, contentType: ContentType, palette: HudPalette) -> some View {
-        ScrollView {
-            switch contentType {
-            case .plainText, .transcript:
-                Text(body)
-                    .font(Theme.DetailPanel.body)
-                    .foregroundStyle(palette.primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(Theme.Padding.expandedBodyBlock)
-            case .markdown:
-                MarkdownSectionView(text: body, palette: palette)
-                    .padding(Theme.Padding.expandedBodyBlock)
-            case .code(let language):
-                CodeSectionView(text: body, language: language, palette: palette)
-                    .padding(Theme.Padding.expandedBodyBlock)
-            case .json:
-                JsonSectionView(text: body, palette: palette)
-                    .padding(Theme.Padding.expandedBodyBlock)
-            case .diff:
-                DiffSectionView(text: body, palette: palette)
-                    .padding(Theme.Padding.expandedBodyBlock)
-            }
-        }
     }
 
     /// Render an entries array (abandoned-branch / sub-agent
