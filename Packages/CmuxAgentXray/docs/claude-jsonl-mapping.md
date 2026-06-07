@@ -29,7 +29,7 @@ not write to them.
 
 ## 2. Line type universe
 
-Every JSONL line decodes to `ClaudeJSONLLine` (`Adapters/Claude/ClaudeJSONLLine.swift:20`).
+Every JSONL line decodes to `ClaudeJSONLLine` (`Adapters/Claude/Wire/ClaudeJSONLLine.swift:20`).
 Two groups by tree affiliation:
 
 **Tree-affiliated** (carry `parentUuid`; participate in the rewind tree):
@@ -97,8 +97,8 @@ plus the matching emitter in `ClaudeTranscriptBuilder.emitSpecial`.
 ClaudeLineDispatcher.route(line)                                            ClaudeLineDispatcher.swift:69
 │
 ├── CommonLineDispatcher.parse(line)                                            Dispatchers/CommonLineDispatcher.swift:32
-│   ├── isSessionOrphanMetadata == true                       → .skip       ClaudeJSONLLine.swift:170
-│   ├── isLastPromptMarker (type == "last-prompt")            → .skip       ClaudeJSONLLine.swift:166
+│   ├── isSessionOrphanMetadata == true                       → .skip       Wire/ClaudeJSONLLine.swift
+│   ├── isLastPromptMarker (type == "last-prompt")            → .skip       Wire/ClaudeJSONLLine.swift
 │   ├── type ∈ {permission-mode, agent-name, custom-title,
 │   │           queue-operation, file-history-snapshot,
 │   │           last-prompt, progress}                        → .skip
@@ -303,7 +303,7 @@ shipping code does.
 
 **Adding a new `line.type`:**
 1. Add the field(s) needed to decode it to `ClaudeJSONLLine`
-   (`Adapters/Claude/ClaudeJSONLLine.swift`). Decodable synthesis
+   (`Adapters/Claude/Wire/ClaudeJSONLLine.swift`). Decodable synthesis
    handles the JSON; only add `CodingKeys` entries when the JSON name
    differs from the Swift property name.
 2. Decide whether the type is metadata-only (extend
