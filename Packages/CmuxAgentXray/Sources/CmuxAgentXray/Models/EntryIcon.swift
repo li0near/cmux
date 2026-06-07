@@ -97,7 +97,7 @@ extension EntryIcon {
                 expanded: "long.text.page.and.pencil.fill"
             )
         case "Bash":
-            return EntryIcon(collapsed: "command.square", expanded: "command.square.fill")
+            return EntryIcon(collapsed: "greaterthan.square", expanded: "greaterthan.square.fill")
         case "Grep":
             return EntryIcon(
                 collapsed: "rectangle.and.text.magnifyingglass",

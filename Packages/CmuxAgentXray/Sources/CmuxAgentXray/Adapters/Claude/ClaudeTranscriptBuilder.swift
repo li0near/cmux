@@ -448,7 +448,7 @@ struct ClaudeTranscriptBuilder {
 
     private func buildUserEntry(from line: ClaudeJSONLLine, ctx: BuildContext) -> UserEntry? {
         guard line.message?.content != nil else { return nil }
-        let sections = Self.buildUserContentSections(from: line.message?.content)
+        let sections = UserContentParser.parse(from: line.message?.content)
         // Slash-command detection runs against the **text** projection of
         // the sections — a slash-command line never carries images, so
         // checking the text-only joined string is correct.
@@ -609,7 +609,7 @@ struct ClaudeTranscriptBuilder {
                     if let sidechain = call.sidechainTranscript, !sidechain.isEmpty {
                         sections.append(.subentries(sidechain))
                     }
-                    let parsed = ClaudeTranscriptBuilder.parseMcpToolName(call.name)
+                    let parsed = MCPToolNameParser.parse(call.name)
                     subEntries.append(.tool(ToolEntry(
                         id: .fromJSONL(call.id),
                         parentEntryID: parentEntryID,
@@ -955,17 +955,17 @@ struct ClaudeTranscriptBuilder {
         ctx: inout BuildContext
     ) {
         guard let id = block.id, let name = block.name else { return }
-        let teamMemberName = Self.extractTeamMemberName(name: name, input: block.input)
-        let teamName = Self.extractTeamName(name: name, input: block.input)
-        let mcpServer = Self.parseMcpToolName(name).server
+        let teamMemberName = ToolInputParser.teamMemberName(name: name, input: block.input)
+        let teamName = ToolInputParser.teamName(name: name, input: block.input)
+        let mcpServer = MCPToolNameParser.parse(name).server
         let call = AgentToolCall(
             id: id,
             name: name,
-            summary: Self.summarizeToolInput(name: name, input: block.input),
-            inputDetail: Self.formatToolInput(block.input),
+            summary: ToolInputParser.summarize(name: name, input: block.input),
+            inputDetail: ToolInputParser.format(block.input),
             result: nil,
             isError: false,
-            subagentType: Self.extractSubagentType(name: name, input: block.input),
+            subagentType: ToolInputParser.subagentType(name: name, input: block.input),
             teamMemberName: teamMemberName,
             teamName: teamName,
             mcpServer: mcpServer,
@@ -995,7 +995,7 @@ struct ClaudeTranscriptBuilder {
     ) {
         guard let id = block.toolUseId, ctx.pendingTurn != nil else { return }
         let isError = block.isError ?? false
-        let resultSections = Self.buildToolResultSections(
+        let resultSections = ToolResultParser.parse(
             block.toolResultContent,
             isError: isError,
             logger: logger
@@ -1139,302 +1139,9 @@ struct ClaudeTranscriptBuilder {
         }
     }
 
-    /// Walk a user message's `content[]` and emit one ``Section`` per
-    /// block, in arrival order. Replaces the silent text-only
-    /// `joinText` filter for the user-paste path so user-pasted images
-    /// (`type:"image"`, base64 source — confirmed in 15 corpus files
-    /// 2026-06-07) survive into the body.
-    ///
-    /// Per–`type` mapping mirrors ``buildToolResultSections(_:isError:logger:)``
-    /// for consistency:
-    ///  - `text`           → `.text([s], style: .normal)`
-    ///  - `image` (base64) → `.image(ImageSource(...))`
-    ///  - other            → silently dropped (user messages only carry
-    ///                       text + image in the corpus; ToolSearch's
-    ///                       `tool_reference` only appears in
-    ///                       `tool_result.content`, never user content)
-    ///
-    /// String-shaped content (legacy single-string user message) →
-    /// single `.text` section.
-    private static func buildUserContentSections(
-        from content: ClaudeMessageContent?
-    ) -> [Section] {
-        guard let content else { return [] }
-        switch content {
-        case .text(let s):
-            return [.text([s], style: .normal)]
-        case .blocks(let blocks):
-            return blocks.compactMap { block -> Section? in
-                switch block.type {
-                case "text":
-                    if let t = block.text { return .text([t], style: .normal) }
-                    return nil
-                case "image":
-                    return userImageSection(from: block)
-                default:
-                    // Other block types in user content are not in the
-                    // corpus today; drop silently. If a future corpus
-                    // shows them, lift this into the same warning-log
-                    // path used by `buildToolResultSections`.
-                    return nil
-                }
-            }
-        }
-    }
-
-    /// Decode the `image` block on a user message via the
-    /// ``ClaudeContentBlock`` shape. The block's `source` is decoded
-    /// into the same `(media_type, data)` pair used by
-    /// ``buildToolResultSections``'s image handler.
-    private static func userImageSection(from block: ClaudeContentBlock) -> Section? {
-        guard let source = block.source,
-              source.type == "base64",
-              let mediaType = source.mediaType,
-              let data = source.data else {
-            return nil
-        }
-        return .image(ImageSource(kind: .base64, mediaType: mediaType, data: data))
-    }
-
-    static func summarizeToolInput(name: String, input: ClaudeJSONValue?) -> String {
-        guard let input else { return "" }
-        guard case .object(let obj) = input else { return input.displayString }
-
-        switch name {
-        case "Read", "Edit", "Write", "MultiEdit":
-            if case .string(let path)? = obj["file_path"] { return path }
-        case "Bash":
-            if case .string(let cmd)? = obj["command"] {
-                return truncated(cmd, max: ClaudeRenderConsts.toolSummaryMaxChars)
-            }
-        case "Grep", "Glob":
-            if case .string(let pat)? = obj["pattern"] { return pat }
-        case "Task":
-            if case .string(let desc)? = obj["description"] { return desc }
-            if case .string(let prompt)? = obj["prompt"] {
-                return truncated(prompt, max: ClaudeRenderConsts.toolSummaryMaxChars)
-            }
-        case "WebFetch", "WebSearch":
-            if case .string(let url)? = obj["url"] ?? obj["query"] { return url }
-        default:
-            break
-        }
-        // Priority-list fallback for unhandled tools (including MCP).
-        // Tries the most-likely-meaningful keys before falling back to
-        // the alphabetic-first key=value dump.
-        let preferred = ["url", "path", "file_path", "query", "command",
-                         "name", "id", "skill", "key"]
-        for key in preferred {
-            if case .string(let v)? = obj[key] {
-                return truncated(v, max: ClaudeRenderConsts.toolSummaryMaxChars)
-            }
-        }
-        return obj.map { "\($0.key)=\($0.value.displayString)" }.sorted().first ?? ""
-    }
-
-    /// Build per-block ``Section`` array from a `tool_result.content`
-    /// JSON value. Replaces the legacy `flattenToolResult(_:)` helper
-    /// which join-flattened every block into one string and silently
-    /// dropped images / `tool_reference` blocks.
-    ///
-    /// `isError` is applied only to `.text` sections (the visual treatment
-    /// the old single-string path applied to error results); images and
-    /// tool-references have no error variant.
-    ///
-    /// Per–`type` mapping (Anthropic Messages API spec ∩ corpus
-    /// 2026-06-07):
-    ///  - `text`              → `.text([s], style: .normal/.error)`
-    ///  - `image`             → `.image(ImageSource(...))` (base64 only)
-    ///  - `tool_reference`    → `.toolReference(toolName:)` (CC's
-    ///                          client-side `ToolSearch` deferred-loader
-    ///                          emits these inside `tool_result.content`)
-    ///  - `redacted_thinking` /
-    ///    `search_result` /
-    ///    `document`          → `.text(["[type]"], .normal)` placeholder.
-    ///                          VERIFY-CORPUS-2026-06-07: 0 hits past
-    ///                          this date for any of these. Spec-allowed
-    ///                          but never emitted by Claude Code in
-    ///                          practice. Re-grep
-    ///                          `~/.claude/projects/*/*.jsonl` modified
-    ///                          after this date if any of these surface
-    ///                          in the UI; if so, design rich rendering
-    ///                          rather than this stub.
-    ///  - unknown             → `.text(["[type]"], .normal)`.
-    ///
-    /// String-shaped legacy `tool_result.content` (single string instead
-    /// of array) is coerced to `[.text([s], textStyle)]`.
-    static func buildToolResultSections(
-        _ value: ClaudeJSONValue?,
-        isError: Bool,
-        logger: any AgentXrayLogger = NoOpAgentXrayLogger()
-    ) -> [Section] {
-        let raw = rawSections(value, isError: isError, logger: logger)
-        return OffloadedOutputParser.promote(raw)
-    }
-
-    /// Per-block emission without the `<persisted-output>` post-pass.
-    /// Phase B's original `buildToolResultSections` body, kept intact
-    /// here so the wrapper-detection pass can run on every text section
-    /// without leaking parsing concerns into the per-block dispatch.
-    private static func rawSections(
-        _ value: ClaudeJSONValue?,
-        isError: Bool,
-        logger: any AgentXrayLogger
-    ) -> [Section] {
-        let textStyle: TextStyle = isError ? .error : .normal
-        guard let value else { return [] }
-        switch value {
-        case .string(let s):
-            return [.text([s], style: textStyle)]
-        case .array(let arr):
-            return arr.compactMap { sectionForBlock($0, textStyle: textStyle, logger: logger) }
-        default:
-            // Object / number / bool / null shaped tool_result.content
-            // is unreachable in the corpus; the legacy fallback used
-            // `value.displayString`, which preserves at least a textual
-            // representation rather than dropping the block entirely.
-            return [.text([value.displayString], style: textStyle)]
-        }
-    }
-
-    /// Map a single `tool_result.content[]` block (must be a JSON
-    /// object with a `type` field) to a single ``Section``. Returns nil
-    /// if the block isn't an object — the array branch in
-    /// ``buildToolResultSections(_:isError:logger:)`` filters those out
-    /// so a malformed block doesn't produce an empty section.
-    ///
-    /// `logger` receives a `.warning` whenever a spec-allowed but
-    /// corpus-empty block type (or an unknown type) is encountered, so
-    /// future drift is detectable in sysdiagnose without re-grepping
-    /// the corpus.
-    private static func sectionForBlock(
-        _ item: ClaudeJSONValue,
-        textStyle: TextStyle,
-        logger: any AgentXrayLogger
-    ) -> Section? {
-        guard case .object(let obj) = item,
-              case .string(let type)? = obj["type"] else {
-            return nil
-        }
-        switch type {
-        case "text":
-            if case .string(let s)? = obj["text"] {
-                return .text([s], style: textStyle)
-            }
-            return .text([""], style: textStyle)
-        case "image":
-            return imageSection(from: obj)
-        case "tool_reference":
-            if case .string(let name)? = obj["tool_name"] {
-                return .toolReference(toolName: name)
-            }
-            return nil
-        case "redacted_thinking", "search_result", "document":
-            // VERIFY-CORPUS-2026-06-07: 0 hits in the user's corpus past
-            // this date. Spec-allowed (Anthropic Messages API) but
-            // never emitted by Claude Code in practice. Stub as text
-            // so we don't drop data; revisit when corpus shows hits.
-            // Warning logged so future surfacing is visible without
-            // re-grepping the corpus.
-            logger.warning(
-                "buildToolResultSections: spec-only-not-corpus block type \"\(type)\" surfaced; "
-                + "rendering as text stub. Re-design rich rendering if this becomes common."
-            )
-            return .text(["[\(type)]"], style: textStyle)
-        default:
-            // Unknown block type — preserve the type label visibly in
-            // the UI so future drift is debuggable. Logged at warning
-            // level for the same reason.
-            logger.warning(
-                "buildToolResultSections: unknown block type \"\(type)\"; rendering as text stub."
-            )
-            return .text(["[\(type)]"], style: textStyle)
-        }
-    }
-
-    /// Decode the `image` block shape:
-    ///   `{ "type":"image", "source":{ "type":"base64",
-    ///      "media_type":"image/png", "data":"..." } }`
-    /// URL-mode (`source.type == "url"`) is in the spec but absent from
-    /// the corpus 2026-06-07; treat as unknown for now and fall through
-    /// to nil so the caller drops the block (rather than render an
-    /// empty image).
-    private static func imageSection(from obj: [String: ClaudeJSONValue]) -> Section? {
-        guard case .object(let source)? = obj["source"],
-              case .string(let kindStr)? = source["type"],
-              kindStr == "base64",
-              case .string(let mediaType)? = source["media_type"],
-              case .string(let data)? = source["data"] else {
-            return nil
-        }
-        return .image(ImageSource(kind: .base64, mediaType: mediaType, data: data))
-    }
-
-    static func formatToolInput(_ input: ClaudeJSONValue?) -> String {
-        guard let input else { return "" }
-        guard case .object(let obj) = input else { return input.displayString }
-        let keys = obj.keys.sorted()
-        var lines: [String] = []
-        for key in keys {
-            guard let value = obj[key] else { continue }
-            let rendered: String
-            switch value {
-            case .string(let s):
-                rendered = truncated(s, max: ClaudeRenderConsts.flattenedResultMaxChars)
-            case .null, .bool, .int, .double:
-                rendered = value.displayString
-            case .array, .object:
-                rendered = truncated(
-                    value.displayString,
-                    max: ClaudeRenderConsts.toolInputValueMaxChars
-                )
-            }
-            lines.append("\(key): \(rendered)")
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    static func extractSubagentType(name: String, input: ClaudeJSONValue?) -> String? {
-        guard name == "Task" else { return nil }
-        guard case .object(let obj)? = input,
-              case .string(let s)? = obj["subagent_type"] else { return nil }
-        return s
-    }
-
-    static func extractTeamMemberName(name: String, input: ClaudeJSONValue?) -> String? {
-        guard name == "Task" else { return nil }
-        guard case .object(let obj)? = input,
-              case .string(let s)? = obj["name"] else { return nil }
-        return s
-    }
-
-    static func extractTeamName(name: String, input: ClaudeJSONValue?) -> String? {
-        guard name == "Task" else { return nil }
-        guard case .object(let obj)? = input,
-              case .string(let s)? = obj["team_name"] else { return nil }
-        return s
-    }
-
-    /// Split an MCP tool name (`mcp__<server>__<tool>`) into its server
-    /// and display components. Returns `(name, nil)` for non-MCP names.
-    /// MCP tools display the `<tool>` suffix in `Header.name` and surface
-    /// `<server>` as a chip; non-MCP tools (Read, Bash, etc.) pass
-    /// through unchanged.
-    static func parseMcpToolName(_ name: String) -> (display: String, server: String?) {
-        let prefix = "mcp__"
-        guard name.hasPrefix(prefix) else { return (name, nil) }
-        let rest = name.dropFirst(prefix.count)
-        let parts = rest.split(separator: "__", maxSplits: 1, omittingEmptySubsequences: false)
-        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
-            return (name, nil)
-        }
-        return (String(parts[1]), String(parts[0]))
-    }
-
-    /// Hard length cap with `…` ellipsis. Used for inline tool-input
-    /// JSON rendering where unbounded object/array dumps would blow up
-    /// row height. Distinct concern from user-prompt preview, which
-    /// dynamically truncates at the view layer via `.truncationMode(.tail)`.
+    /// Hard length cap with `…` ellipsis. Used by ``buildSystemEntry``
+    /// on the legacy `joinText` flatten path. Tool-input formatting now
+    /// lives in ``ToolInputParser/truncated(_:max:)``.
     static func truncated(_ s: String, max: Int) -> String {
         s.count <= max ? s : String(s.prefix(max - 1)) + "…"
     }

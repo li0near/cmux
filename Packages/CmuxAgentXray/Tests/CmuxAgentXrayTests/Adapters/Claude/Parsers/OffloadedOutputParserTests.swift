@@ -22,8 +22,8 @@ import Testing
 /// asserting the parser produces `.offloadedOutput`. Without the
 /// parser, the builder emits a plain `.text` section with the wrapper
 /// string — tests fail. Commit C.2 adds the parser and the tests pass.
-@Suite("ClaudeTranscriptBuilder — persisted-output wrapper")
-struct ClaudeTranscriptBuilderPersistedOutputTests {
+@Suite("OffloadedOutputParser — <persisted-output> wrapper")
+struct OffloadedOutputParserTests {
 
     private func decodeJSON(_ s: String) throws -> ClaudeJSONValue {
         try AgentXrayJSON.decoder.decode(ClaudeJSONValue.self, from: Data(s.utf8))
@@ -62,7 +62,7 @@ struct ClaudeTranscriptBuilderPersistedOutputTests {
     func wrapperWithCloseTag() throws {
         let wrapper = makeWrapperContent(size: "29.3KB", path: "/tmp/<redacted>/b1abc.txt")
         let value = try wrappedToolResult(wrapper)
-        let sections = ClaudeTranscriptBuilder.buildToolResultSections(value, isError: false)
+        let sections = ToolResultParser.parse(value, isError: false)
         #expect(sections.count == 1, "got \(sections.count) sections")
         guard case .offloadedOutput(let off) = sections.first else {
             Issue.record("Expected .offloadedOutput, got \(sections)")
@@ -77,7 +77,7 @@ struct ClaudeTranscriptBuilderPersistedOutputTests {
     func wrapperTruncatedTail() throws {
         let wrapper = makeWrapperContent(size: "1.2MB", path: "/tmp/<redacted>/big.txt", closeTag: false)
         let value = try wrappedToolResult(wrapper)
-        let sections = ClaudeTranscriptBuilder.buildToolResultSections(value, isError: false)
+        let sections = ToolResultParser.parse(value, isError: false)
         guard case .offloadedOutput(let off) = sections.first else {
             Issue.record("Expected .offloadedOutput for truncated tail, got \(sections)")
             return
@@ -91,7 +91,7 @@ struct ClaudeTranscriptBuilderPersistedOutputTests {
         for size in ["5KB", "29.3KB", "1.2MB", "100MB"] {
             let wrapper = makeWrapperContent(size: size, path: "/tmp/<redacted>/x.txt")
             let value = try wrappedToolResult(wrapper)
-            let sections = ClaudeTranscriptBuilder.buildToolResultSections(value, isError: false)
+            let sections = ToolResultParser.parse(value, isError: false)
             guard case .offloadedOutput(let off) = sections.first else {
                 Issue.record("Expected .offloadedOutput for size=\(size)")
                 continue
@@ -104,7 +104,7 @@ struct ClaudeTranscriptBuilderPersistedOutputTests {
     func wrapperJsonPath() throws {
         let wrapper = makeWrapperContent(size: "10KB", path: "/tmp/<redacted>/payload.json")
         let value = try wrappedToolResult(wrapper)
-        let sections = ClaudeTranscriptBuilder.buildToolResultSections(value, isError: false)
+        let sections = ToolResultParser.parse(value, isError: false)
         guard case .offloadedOutput(let off) = sections.first else {
             Issue.record("Expected .offloadedOutput")
             return
@@ -115,7 +115,7 @@ struct ClaudeTranscriptBuilderPersistedOutputTests {
     @Test("non-wrapper text passes through unchanged")
     func nonWrapperPassthrough() throws {
         let value = try decodeJSON(#""ordinary tool output, no wrapper""#)
-        let sections = ClaudeTranscriptBuilder.buildToolResultSections(value, isError: false)
+        let sections = ToolResultParser.parse(value, isError: false)
         guard case .text(let blocks, _) = sections.first else {
             Issue.record("Expected .text passthrough, got \(sections)")
             return
@@ -126,7 +126,7 @@ struct ClaudeTranscriptBuilderPersistedOutputTests {
     @Test("wrapper with malformed size+path falls through to plain text (defensive)")
     func wrapperMalformedFallthrough() throws {
         let value = try decodeJSON(#""<persisted-output>\noops, no canonical Output too large line\n</persisted-output>""#)
-        let sections = ClaudeTranscriptBuilder.buildToolResultSections(value, isError: false)
+        let sections = ToolResultParser.parse(value, isError: false)
         // Defensive: when we see the open tag but can't extract a path,
         // keep the original text so the user still has a debuggable
         // signal in the UI.
@@ -142,7 +142,7 @@ struct ClaudeTranscriptBuilderPersistedOutputTests {
         let escaped = wrapper.replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
         let value = try decodeJSON("[{\"type\":\"text\",\"text\":\"\(escaped)\"}]")
-        let sections = ClaudeTranscriptBuilder.buildToolResultSections(value, isError: false)
+        let sections = ToolResultParser.parse(value, isError: false)
         guard case .offloadedOutput(let off) = sections.first else {
             Issue.record("Expected .offloadedOutput from array-text-block wrapper, got \(sections)")
             return

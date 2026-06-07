@@ -8,8 +8,8 @@ import Testing
 /// rendered `UserEntry.body` — confirmed in the round-2 corpus audit
 /// (15 files exercise the path). The rewrite walks each block and
 /// emits a per-block ``Section``, keeping arrival order.
-@Suite("ClaudeTranscriptBuilder — user-paste image regression")
-struct ClaudeTranscriptBuilderUserContentTests {
+@Suite("UserContentParser — user-paste image regression")
+struct UserContentParserTests {
 
     private func decodeLine(_ json: String) throws -> ClaudeJSONLLine {
         try AgentXrayJSON.decoder.decode(ClaudeJSONLLine.self, from: Data(json.utf8))
