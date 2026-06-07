@@ -8,7 +8,7 @@ import Foundation
 /// starts with `"Base directory for this skill:"`. Built-ins have no
 /// such follow-up.
 ///
-/// Output is consumed by `UserLineParser` to route skill-shaped slash
+/// Output is consumed by `UserLineDispatcher` to route skill-shaped slash
 /// commands to a User entry (the user-typed prompt content) instead
 /// of the `slashCmdInput` meta surface (reserved for built-in
 /// session-control commands).
@@ -42,7 +42,7 @@ enum ClaudeSkillCommandResolver {
     }
 
     /// True when `line` is a `<command-message>`-shaped user line.
-    /// Local mirror of `UserLineParser.isSlashCommandUserLine` to keep
+    /// Local mirror of `UserLineDispatcher.isSlashCommandUserLine` to keep
     /// the resolver self-contained.
     private static func isCommandMessageUserLine(_ line: ClaudeJSONLLine) -> Bool {
         guard let content = line.message?.content else { return false }

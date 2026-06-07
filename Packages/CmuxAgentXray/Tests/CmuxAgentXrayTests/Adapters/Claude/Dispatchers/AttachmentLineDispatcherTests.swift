@@ -15,8 +15,8 @@ import Testing
 /// Older sessions emit `queued_command` without `commandMode` at all;
 /// those still render. The discriminator is a blacklist, not an
 /// allowlist.
-@Suite("AttachmentLineParser — queued_command commandMode routing")
-struct AttachmentParserTests {
+@Suite("AttachmentLineDispatcher — queued_command commandMode routing")
+struct AttachmentLineDispatcherTests {
 
     private func decodeLine(_ json: String) throws -> ClaudeJSONLLine {
         try AgentXrayJSON.decoder.decode(
@@ -38,7 +38,7 @@ struct AttachmentParserTests {
           }
         }
         """#)
-        let routing = AttachmentLineParser.parse(
+        let routing = AttachmentLineDispatcher.parse(
             line,
             activeBranch: [],
             activeBranchAvailable: false
@@ -58,7 +58,7 @@ struct AttachmentParserTests {
           }
         }
         """#)
-        let routing = AttachmentLineParser.parse(
+        let routing = AttachmentLineDispatcher.parse(
             line,
             activeBranch: [],
             activeBranchAvailable: false
@@ -79,7 +79,7 @@ struct AttachmentParserTests {
           }
         }
         """#)
-        let routing = AttachmentLineParser.parse(
+        let routing = AttachmentLineDispatcher.parse(
             line,
             activeBranch: [],
             activeBranchAvailable: false

@@ -8,7 +8,7 @@ import Foundation
 /// should dispatch to a per-type parser." Returning `nil` also causes
 /// the dispatcher to log unknown JSONL types in DEBUG so new envelope
 /// shapes from future Claude Code releases surface fast.
-enum CommonLineParser {
+enum CommonLineDispatcher {
     /// JSONL `type` values that carry session-global metadata or
     /// telemetry the panel ignores.
     private static let skipTypes: Set<String> = [

@@ -9,7 +9,7 @@ import Foundation
 /// wrapper, etc.), or — under the newer slash-command shape — an
 /// `isMeta=null` user line whose content opens with `<command-message>`
 /// / `<command-name>` and routes through the same meta classifier.
-enum UserLineParser {
+enum UserLineDispatcher {
     static func parse(
         _ line: ClaudeJSONLLine,
         activeBranch: Set<String>,

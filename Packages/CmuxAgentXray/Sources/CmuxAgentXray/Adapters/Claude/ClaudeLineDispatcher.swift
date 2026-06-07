@@ -62,7 +62,7 @@ enum ClaudeSpecialKind: Equatable {
 /// the entry-point switch + the shared `branchGated` helper.
 ///
 /// Dispatch order:
-///   1. `CommonLineParser` claims session-orphan metadata + `pr-link`.
+///   1. `CommonLineDispatcher` claims session-orphan metadata + `pr-link`.
 ///   2. Sidechain check — `isSidechain: true` → sub-agent pool.
 ///   3. Per-`type` parser.
 ///   4. Unknown `type` — log in DEBUG, route to `.skip`.
@@ -74,7 +74,7 @@ enum ClaudeLineDispatcher {
         skillCommandUuids: Set<String> = [],
         logger: any AgentXrayLogger = NoOpAgentXrayLogger()
     ) -> ClaudeLineRouting {
-        if let routing = CommonLineParser.parse(line) { return routing }
+        if let routing = CommonLineDispatcher.parse(line) { return routing }
 
         if line.isSidechain == true {
             return .sidechainMain
@@ -82,26 +82,26 @@ enum ClaudeLineDispatcher {
 
         switch line.type {
         case "user":
-            return UserLineParser.parse(
+            return UserLineDispatcher.parse(
                 line,
                 activeBranch: activeBranch,
                 activeBranchAvailable: activeBranchAvailable,
                 skillCommandUuids: skillCommandUuids
             )
         case "assistant":
-            return AssistantLineParser.parse(
+            return AssistantLineDispatcher.parse(
                 line,
                 activeBranch: activeBranch,
                 activeBranchAvailable: activeBranchAvailable
             )
         case "system":
-            return SystemLineParser.parse(
+            return SystemLineDispatcher.parse(
                 line,
                 activeBranch: activeBranch,
                 activeBranchAvailable: activeBranchAvailable
             )
         case "attachment":
-            return AttachmentLineParser.parse(
+            return AttachmentLineDispatcher.parse(
                 line,
                 activeBranch: activeBranch,
                 activeBranchAvailable: activeBranchAvailable

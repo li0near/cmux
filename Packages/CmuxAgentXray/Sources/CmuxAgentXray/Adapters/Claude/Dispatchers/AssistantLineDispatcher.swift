@@ -11,7 +11,7 @@ import Foundation
 /// the pending `AgentEntry`. Sidechain handling sits in
 /// `ClaudeLineDispatcher.route` upstream so this parser only sees
 /// main-branch assistant lines.
-enum AssistantLineParser {
+enum AssistantLineDispatcher {
     static func parse(
         _ line: ClaudeJSONLLine,
         activeBranch: Set<String>,

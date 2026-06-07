@@ -96,7 +96,7 @@ plus the matching emitter in `ClaudeTranscriptBuilder.emitSpecial`.
 ```
 ClaudeLineDispatcher.route(line)                                            ClaudeLineDispatcher.swift:69
 │
-├── CommonLineParser.parse(line)                                            Parsers/CommonLineParser.swift:32
+├── CommonLineDispatcher.parse(line)                                            Dispatchers/CommonLineDispatcher.swift:32
 │   ├── isSessionOrphanMetadata == true                       → .skip       ClaudeJSONLLine.swift:170
 │   ├── isLastPromptMarker (type == "last-prompt")            → .skip       ClaudeJSONLLine.swift:166
 │   ├── type ∈ {permission-mode, agent-name, custom-title,
@@ -107,7 +107,7 @@ ClaudeLineDispatcher.route(line)                                            Clau
 │
 ├── isSidechain == true                                       → .sidechainMain  (sub-agent pool, keyed by parentToolUseID)
 │
-├── type == "user"  ── UserLineParser.parse(line)                           Parsers/UserLineParser.swift:13
+├── type == "user"  ── UserLineDispatcher.parse(line)                           Dispatchers/UserLineDispatcher.swift:13
 │   ├── isCompactSummary == true                              → render(.compact)
 │   ├── uuid ∈ skillCommandUuids (resolver output)            → render(.user)   (skill-shaped slash command)
 │   ├── isMeta == true OR content starts with
@@ -130,11 +130,11 @@ ClaudeLineDispatcher.route(line)                                            Clau
 │           ├── blocks contains tool_result                                 → agent
 │           └── otherwise                                                    → user
 │
-├── type == "assistant" ── AssistantLineParser.parse(line)                  Parsers/AssistantLineParser.swift:14
+├── type == "assistant" ── AssistantLineDispatcher.parse(line)                  Dispatchers/AssistantLineDispatcher.swift:14
 │   ├── message.model == "<synthetic>"                        → .skip       (interrupt stub, partial cutoff)
 │   └── otherwise                                              → render(.agent)
 │
-├── type == "system" ── SystemLineParser.parse(line)                        Parsers/SystemLineParser.swift:13
+├── type == "system" ── SystemLineDispatcher.parse(line)                        Dispatchers/SystemLineDispatcher.swift:13
 │   ├── subtype == "turn_duration"                            → .skip       (consumed by ClaudeTurnDurationResolver)
 │   ├── subtype == "away_summary"                             → renderSpecial(.recap)
 │   ├── subtype == "compact_boundary"                         → render(.compact)
@@ -145,7 +145,7 @@ ClaudeLineDispatcher.route(line)                                            Clau
 │   ├── subtype ∈ {api_error, stop_hook_summary, informational}            → render(.system)
 │   └── otherwise (unknown subtype)                            → render(.system)   (catch-all so nothing disappears)
 │
-├── type == "attachment" ── AttachmentLineParser.parse(line)                Parsers/AttachmentLineParser.swift:15
+├── type == "attachment" ── AttachmentLineDispatcher.parse(line)                Dispatchers/AttachmentLineDispatcher.swift:15
 │   ├── attachment.type == "queued_command":
 │   │   ├── attachment.commandMode == "task-notification"     → .skip       (harness echo of background-task completion)
 │   │   └── otherwise                                          → renderSpecial(.queuedPrompt)
@@ -171,38 +171,38 @@ abandoned-branch link.
 
 | `line.type`   | Discriminator                                | Routing                                | Entry kind on render                 | Source                                                    |
 |---------------|----------------------------------------------|----------------------------------------|--------------------------------------|-----------------------------------------------------------|
-| (any)         | session-orphan metadata                      | `.skip`                                | —                                    | `CommonLineParser.swift:32`                               |
-| `pr-link`     | —                                            | `.renderSpecial(.prLink)`              | `SynthesizedEntry.prLink`            | `CommonLineParser.swift:27`                               |
+| (any)         | session-orphan metadata                      | `.skip`                                | —                                    | `CommonLineDispatcher.swift:32`                               |
+| `pr-link`     | —                                            | `.renderSpecial(.prLink)`              | `SynthesizedEntry.prLink`            | `CommonLineDispatcher.swift:27`                               |
 | (any)         | `isSidechain == true`                        | `.sidechainMain`                       | pooled (parent Task detail tab)      | `ClaudeLineDispatcher.swift:79`                           |
-| `user`        | `isCompactSummary == true`                   | `.render(.compact)`                    | `CompactEntry`                       | `UserLineParser.swift:20`                                 |
-| `user`        | uuid in `skillCommandUuids`                  | `.render(.user)`                       | `UserEntry` (typed `/cmd args`)      | `UserLineParser.swift:30`                                 |
-| `user`        | meta + tool_result block                     | `.render(.agent)`                      | merged into pending `AgentEntry`     | `UserLineParser.swift:64`                                 |
-| `user`        | meta + `<command-name>` / `<command-message>` | `.renderSpecial(.slashCmdInput)`      | `SystemEntry.slashCmdInput`          | `UserLineParser.swift:69`                                 |
-| `user`        | meta + `<local-command-stdout/stderr>`       | `.renderSpecial(.slashCmdOutput)`      | `SystemEntry.slashCmdOutput`         | `UserLineParser.swift:70`                                 |
-| `user`        | meta + `<system-reminder>`                   | `.renderSpecial(.systemReminder)`      | `SystemEntry.systemReminder`         | `UserLineParser.swift:71`                                 |
-| `user`        | meta + `Base directory for this skill:`      | `.renderSpecial(.skill)`               | `SystemEntry.skill(name, basePath)`  | `UserLineParser.swift:72`                                 |
-| `user`        | meta + `## Context Usage`                    | `.renderSpecial(.contextUsage)`        | `SystemEntry.contextUsage`           | `UserLineParser.swift:73`                                 |
-| `user`        | meta + `Continue from where you left off.`   | `.skip`                                | —                                    | `UserLineParser.swift:76`                                 |
-| `user`        | meta + `<local-command-caveat>`              | `.skip`                                | —                                    | `UserLineParser.swift:77`                                 |
-| `user`        | meta + unknown                               | `.renderSpecial(.unknownMeta)`         | `SystemEntry.systemReminder`         | `UserLineParser.swift:78`                                 |
-| `user`        | non-meta plain text                          | `.render(.user)`                       | `UserEntry`                          | `UserLineParser.swift:48`                                 |
+| `user`        | `isCompactSummary == true`                   | `.render(.compact)`                    | `CompactEntry`                       | `UserLineDispatcher.swift:20`                                 |
+| `user`        | uuid in `skillCommandUuids`                  | `.render(.user)`                       | `UserEntry` (typed `/cmd args`)      | `UserLineDispatcher.swift:30`                                 |
+| `user`        | meta + tool_result block                     | `.render(.agent)`                      | merged into pending `AgentEntry`     | `UserLineDispatcher.swift:64`                                 |
+| `user`        | meta + `<command-name>` / `<command-message>` | `.renderSpecial(.slashCmdInput)`      | `SystemEntry.slashCmdInput`          | `UserLineDispatcher.swift:69`                                 |
+| `user`        | meta + `<local-command-stdout/stderr>`       | `.renderSpecial(.slashCmdOutput)`      | `SystemEntry.slashCmdOutput`         | `UserLineDispatcher.swift:70`                                 |
+| `user`        | meta + `<system-reminder>`                   | `.renderSpecial(.systemReminder)`      | `SystemEntry.systemReminder`         | `UserLineDispatcher.swift:71`                                 |
+| `user`        | meta + `Base directory for this skill:`      | `.renderSpecial(.skill)`               | `SystemEntry.skill(name, basePath)`  | `UserLineDispatcher.swift:72`                                 |
+| `user`        | meta + `## Context Usage`                    | `.renderSpecial(.contextUsage)`        | `SystemEntry.contextUsage`           | `UserLineDispatcher.swift:73`                                 |
+| `user`        | meta + `Continue from where you left off.`   | `.skip`                                | —                                    | `UserLineDispatcher.swift:76`                                 |
+| `user`        | meta + `<local-command-caveat>`              | `.skip`                                | —                                    | `UserLineDispatcher.swift:77`                                 |
+| `user`        | meta + unknown                               | `.renderSpecial(.unknownMeta)`         | `SystemEntry.systemReminder`         | `UserLineDispatcher.swift:78`                                 |
+| `user`        | non-meta plain text                          | `.render(.user)`                       | `UserEntry`                          | `UserLineDispatcher.swift:48`                                 |
 | `user`        | non-meta + interrupt prefix                  | (builder) → `.agent`                   | merged into pending `AgentEntry`     | `ClaudeTranscriptBuilder.swift:975`                       |
 | `user`        | non-meta + stdout/stderr envelope            | (builder) → `.system`                  | `SystemEntry.localCommand`           | `ClaudeTranscriptBuilder.swift:965`                       |
-| `assistant`   | `model == "<synthetic>"`                     | `.skip`                                | —                                    | `AssistantLineParser.swift:20`                            |
-| `assistant`   | otherwise                                    | `.render(.agent)`                      | merged into pending `AgentEntry`     | `AssistantLineParser.swift:23`                            |
-| `system`      | `subtype == "turn_duration"`                 | `.skip`                                | (read by `ClaudeTurnDurationResolver`) | `SystemLineParser.swift:20`                             |
-| `system`      | `subtype == "away_summary"`                  | `.renderSpecial(.recap)`               | `SystemEntry.recap`                  | `SystemLineParser.swift:23`                               |
-| `system`      | `subtype == "compact_boundary"`              | `.render(.compact)`                    | `CompactEntry`                       | `SystemLineParser.swift:29`                               |
-| `system`      | `subtype == "local_command"` (input)         | `.renderSpecial(.slashCmdInput)`       | `SystemEntry.slashCmdInput`          | `SystemLineParser.swift:45`                               |
-| `system`      | `subtype == "local_command"` (output)        | `.renderSpecial(.slashCmdOutput)`      | `SystemEntry.slashCmdOutput`         | `SystemLineParser.swift:53`                               |
-| `system`      | other / unknown subtype                      | `.render(.system)`                     | `SystemEntry.localCommand`           | `SystemLineParser.swift:64,71`                            |
-| `attachment`  | `type == "queued_command"`, `commandMode == "task-notification"` | `.skip`     | —                                    | `AttachmentLineParser.swift:25`                           |
-| `attachment`  | `type == "queued_command"` (otherwise)       | `.renderSpecial(.queuedPrompt)`        | `UserEntry` (queued)                 | `AttachmentLineParser.swift:30`                           |
-| `attachment`  | `type == "plan_mode"`                        | `.renderSpecial(.planModeEntered)`     | `SystemEntry.planMode(.entered)`     | `AttachmentLineParser.swift:36`                           |
-| `attachment`  | `type == "plan_mode_exit"`                   | `.renderSpecial(.planModeExited)`      | `SystemEntry.planMode(.exited)`      | `AttachmentLineParser.swift:42`                           |
-| `attachment`  | `type == "plan_mode_reentry"`                | `.renderSpecial(.planModeReentered)`   | `SystemEntry.planMode(.reentered)`   | `AttachmentLineParser.swift:48`                           |
-| `attachment`  | `type == "edited_text_file"`                 | `.renderSpecial(.editedTextFile)`      | `SystemEntry.editedTextFile`         | `AttachmentLineParser.swift:54`                           |
-| `attachment`  | other types (hook_success, …)                | `.skip`                                | —                                    | `AttachmentLineParser.swift:60`                           |
+| `assistant`   | `model == "<synthetic>"`                     | `.skip`                                | —                                    | `AssistantLineDispatcher.swift:20`                            |
+| `assistant`   | otherwise                                    | `.render(.agent)`                      | merged into pending `AgentEntry`     | `AssistantLineDispatcher.swift:23`                            |
+| `system`      | `subtype == "turn_duration"`                 | `.skip`                                | (read by `ClaudeTurnDurationResolver`) | `SystemLineDispatcher.swift:20`                             |
+| `system`      | `subtype == "away_summary"`                  | `.renderSpecial(.recap)`               | `SystemEntry.recap`                  | `SystemLineDispatcher.swift:23`                               |
+| `system`      | `subtype == "compact_boundary"`              | `.render(.compact)`                    | `CompactEntry`                       | `SystemLineDispatcher.swift:29`                               |
+| `system`      | `subtype == "local_command"` (input)         | `.renderSpecial(.slashCmdInput)`       | `SystemEntry.slashCmdInput`          | `SystemLineDispatcher.swift:45`                               |
+| `system`      | `subtype == "local_command"` (output)        | `.renderSpecial(.slashCmdOutput)`      | `SystemEntry.slashCmdOutput`         | `SystemLineDispatcher.swift:53`                               |
+| `system`      | other / unknown subtype                      | `.render(.system)`                     | `SystemEntry.localCommand`           | `SystemLineDispatcher.swift:64,71`                            |
+| `attachment`  | `type == "queued_command"`, `commandMode == "task-notification"` | `.skip`     | —                                    | `AttachmentLineDispatcher.swift:25`                           |
+| `attachment`  | `type == "queued_command"` (otherwise)       | `.renderSpecial(.queuedPrompt)`        | `UserEntry` (queued)                 | `AttachmentLineDispatcher.swift:30`                           |
+| `attachment`  | `type == "plan_mode"`                        | `.renderSpecial(.planModeEntered)`     | `SystemEntry.planMode(.entered)`     | `AttachmentLineDispatcher.swift:36`                           |
+| `attachment`  | `type == "plan_mode_exit"`                   | `.renderSpecial(.planModeExited)`      | `SystemEntry.planMode(.exited)`      | `AttachmentLineDispatcher.swift:42`                           |
+| `attachment`  | `type == "plan_mode_reentry"`                | `.renderSpecial(.planModeReentered)`   | `SystemEntry.planMode(.reentered)`   | `AttachmentLineDispatcher.swift:48`                           |
+| `attachment`  | `type == "edited_text_file"`                 | `.renderSpecial(.editedTextFile)`      | `SystemEntry.editedTextFile`         | `AttachmentLineDispatcher.swift:54`                           |
+| `attachment`  | other types (hook_success, …)                | `.skip`                                | —                                    | `AttachmentLineDispatcher.swift:60`                           |
 | (any)         | `activeBranchAvailable && uuid ∉ activeBranch` | `.skipBranchAffiliated`              | rolled into `SynthesizedEntry.branchLink` at divergence point | `ClaudeLineDispatcher.swift:116`         |
 | (unknown)     | `type` doesn't match any case                | `.skip` + DEBUG warning                | —                                    | `ClaudeLineDispatcher.swift:110`                          |
 
@@ -307,18 +307,18 @@ shipping code does.
    handles the JSON; only add `CodingKeys` entries when the JSON name
    differs from the Swift property name.
 2. Decide whether the type is metadata-only (extend
-   `CommonLineParser.skipTypes` or `directRoutes`) or branches
+   `CommonLineDispatcher.skipTypes` or `directRoutes`) or branches
    internally (write a new `XLineParser` under
-   `Adapters/Claude/Parsers/`, dispatched by `type` in
+   `Adapters/Claude/Dispatchers/`, dispatched by `type` in
    `ClaudeLineDispatcher.route`).
 3. Update the **§4 tree** and **§5 table** in this doc.
 4. Add a `@Test` to
-   `Tests/CmuxAgentXrayTests/Adapters/Claude/Parsers/<X>ParserTests.swift`
+   `Tests/CmuxAgentXrayTests/Adapters/Claude/Dispatchers/<X>ParserTests.swift`
    exercising the routing decision (decode a sample line, assert the
    `ClaudeLineRouting` value).
 
 **Adding a new `attachment.type`:**
-1. Add a case to `AttachmentLineParser.parse`. Default arm is `.skip`,
+1. Add a case to `AttachmentLineDispatcher.parse`. Default arm is `.skip`,
    so unknown types remain quiet.
 2. If renderable, add the matching `ClaudeSpecialKind` case in
    `ClaudeLineDispatcher.swift` and the corresponding emitter arm in
@@ -326,7 +326,7 @@ shipping code does.
 3. Update §4 + §5; add an `AttachmentParserTests` case.
 
 **Adding a new `system.subtype`:**
-1. Add a case to `SystemLineParser.parse`. The default arm catches
+1. Add a case to `SystemLineDispatcher.parse`. The default arm catches
    unknowns as `render(.system)` so nothing disappears silently.
 2. Update §4 + §5; add a `SystemParserTests` case.
 
@@ -334,9 +334,9 @@ shipping code does.
 1. Add a `ClaudeMetaContent` case in
    `Adapters/Claude/ClaudeContentDetector.swift`.
 2. Add the detection branch in `ClaudeContentDetector.classify`.
-3. Route it in `UserLineParser.routingForMetaUser` (and, if the
+3. Route it in `UserLineDispatcher.routingForMetaUser` (and, if the
    `system, subtype: local_command` envelope can also carry it, in
-   `SystemLineParser.parse`).
+   `SystemLineDispatcher.parse`).
 4. Update §8 + §4/§5.
 
 **Adding a new origin discriminator on attachments**
@@ -352,7 +352,7 @@ shipping code does.
   needs the table to validate the blacklist set.
 
 **General rules:**
-- Per-line tests live in `Tests/CmuxAgentXrayTests/Adapters/Claude/Parsers/`
+- Per-line tests live in `Tests/CmuxAgentXrayTests/Adapters/Claude/Dispatchers/`
   and exercise `<X>LineParser.parse(...)` directly. Decode JSON via
   `AgentXrayJSON.decoder` so the tests cover the full string-→-value
   path.

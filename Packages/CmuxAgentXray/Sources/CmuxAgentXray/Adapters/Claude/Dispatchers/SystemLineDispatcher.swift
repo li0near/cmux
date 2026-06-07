@@ -10,7 +10,7 @@ import Foundation
 /// `turn_duration` is a special case: the line is consumed by
 /// `ClaudeTurnDurationResolver` for `AgentEntry` header stamping; no
 /// entry is emitted.
-enum SystemLineParser {
+enum SystemLineDispatcher {
     static func parse(
         _ line: ClaudeJSONLLine,
         activeBranch: Set<String>,

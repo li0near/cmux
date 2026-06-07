@@ -12,7 +12,7 @@ import Foundation
 /// `UserEntry` between them, breaking Claude's user/assistant
 /// alternation invariant. The plan-mode family + `edited_text_file`
 /// are also user-visible session events.
-enum AttachmentLineParser {
+enum AttachmentLineDispatcher {
     static func parse(
         _ line: ClaudeJSONLLine,
         activeBranch: Set<String>,
