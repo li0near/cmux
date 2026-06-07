@@ -53,6 +53,15 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
     /// vanishes without explicit cleanup.
     private var panelAdapters: [UUID: WeakPanelAdapterBox] = [:]
 
+    /// In-flight detail-tab materialization tasks keyed by cache key.
+    /// Prevents two near-simultaneous clicks on the same row from
+    /// racing two writes against one path (and a third concurrent
+    /// `openFileInPanel` reading the path). The materialize helpers
+    /// register an entry before spawning the detached writer and
+    /// remove it after the writer resolves; later callers `await`
+    /// the existing entry instead of spawning a duplicate.
+    var inflightMaterializations: [String: Task<URL?, Never>] = [:]
+
     func register(panel adapter: AgentXrayPanelAdapter) {
         panelAdapters[adapter.id] = WeakPanelAdapterBox(adapter)
     }

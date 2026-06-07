@@ -90,21 +90,27 @@ extension AgentXrayWorkspaceHost {
 
     /// Write inline UTF-8 text to a temp file at `<workspace>/<key>`,
     /// where the key embeds the suggested basename so the on-disk
-    /// extension matches what cmux's panel dispatch expects. Re-uses
-    /// an existing file when the key matches (so re-clicks of the
-    /// same row dedupe and `reuseExisting` on `openFileInPanel`
-    /// refocuses the existing panel).
+    /// extension matches what cmux's panel dispatch expects.
+    ///
+    /// Two-level dedup: existing on-disk file short-circuits without
+    /// rewriting; in-flight `Task` registered in
+    /// `inflightMaterializations` short-circuits a concurrent re-click
+    /// onto the same future, avoiding a write-write race against the
+    /// same path (and a concurrent `openFileInPanel` reading that path).
     fileprivate func materializeText(
         body: String,
         filename: String,
         key: String
     ) async -> URL? {
+        if let existing = inflightMaterializations[key] {
+            return await existing.value
+        }
         let dir = AgentXrayDetailFileCache.directory(for: workspaceID)
         let url = dir.appendingPathComponent(key)
         if FileManager.default.fileExists(atPath: url.path) {
             return url
         }
-        return await Task.detached(priority: .utility) { [dir, url, body] in
+        let task = Task.detached(priority: .utility) { [dir, url, body] () -> URL? in
             do {
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 try body.write(to: url, atomically: true, encoding: .utf8)
@@ -112,24 +118,32 @@ extension AgentXrayWorkspaceHost {
             } catch {
                 return nil
             }
-        }.value
+        }
+        inflightMaterializations[key] = task
+        let result = await task.value
+        inflightMaterializations.removeValue(forKey: key)
+        return result
     }
 
     /// Decode + write base64 image bytes to a temp file at
     /// `<workspace>/<key>`. The key embeds `filename` so the on-disk
-    /// extension matches the image's media type.
+    /// extension matches the image's media type. Same two-level dedup
+    /// as `materializeText`.
     fileprivate func materializeImage(
         base64: String,
         mediaType: String,
         filename: String,
         key: String
     ) async -> URL? {
+        if let existing = inflightMaterializations[key] {
+            return await existing.value
+        }
         let dir = AgentXrayDetailFileCache.directory(for: workspaceID)
         let url = dir.appendingPathComponent(key)
         if FileManager.default.fileExists(atPath: url.path) {
             return url
         }
-        return await Task.detached(priority: .utility) { [dir, url, base64] in
+        let task = Task.detached(priority: .utility) { [dir, url, base64] () -> URL? in
             do {
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 guard let bytes = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) else {
@@ -140,7 +154,11 @@ extension AgentXrayWorkspaceHost {
             } catch {
                 return nil
             }
-        }.value
+        }
+        inflightMaterializations[key] = task
+        let result = await task.value
+        inflightMaterializations.removeValue(forKey: key)
+        return result
     }
 
     /// Cache key combines the source entry id with the suggested
