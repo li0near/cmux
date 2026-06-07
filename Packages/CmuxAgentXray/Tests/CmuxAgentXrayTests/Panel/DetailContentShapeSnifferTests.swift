@@ -128,6 +128,67 @@ struct DetailContentShapeSnifferTests {
         #expect(sections.isEmpty)
     }
 
+    // MARK: - Diff detection (≥2-of-3 signals)
+
+    @Test("git diff with all three signals → .diff")
+    func gitDiffAllSignals() {
+        let text = """
+        diff --git a/foo.swift b/foo.swift
+        --- a/foo.swift
+        +++ b/foo.swift
+        @@ -1,3 +1,3 @@
+        -let x = 1
+        +let x = 2
+         println(x)
+        """
+        #expect(DetailContentShapeSniffer.sniff(text: text) == .diff)
+    }
+
+    @Test("Unified diff without diff --git but with hunk header + file headers → .diff")
+    func unifiedDiffWithoutGitWrapper() {
+        let text = """
+        --- a/foo.py
+        +++ b/foo.py
+        @@ -1 +1 @@
+        -print('a')
+        +print('b')
+        """
+        #expect(DetailContentShapeSniffer.sniff(text: text) == .diff)
+    }
+
+    @Test("Single --- a/ line without hunk header or +++ b/ → .plainText (one signal isn't enough)")
+    func singleMinusALineNotDiff() {
+        let text = "Some build output\n--- a/foo.py was modified\nNo other diff markers."
+        #expect(DetailContentShapeSniffer.sniff(text: text) == .plainText)
+    }
+
+    @Test("diff --git alone (one signal) → .plainText")
+    func diffGitAloneNotEnough() {
+        let text = "Bash log:\ndiff --git was mentioned in the commit message\nbut no actual diff body"
+        #expect(DetailContentShapeSniffer.sniff(text: text) == .plainText)
+    }
+
+    @Test("Hunk header + diff --git (two signals; no file headers) → .diff")
+    func hunkPlusDiffGit() {
+        let text = """
+        diff --git a/foo.swift b/foo.swift
+        @@ -1,2 +1,2 @@
+        -old
+        +new
+        """
+        #expect(DetailContentShapeSniffer.sniff(text: text) == .diff)
+    }
+
+    @Test("Empty hunk-shape with no @@ markers but with file-header pair → still one signal → .plainText")
+    func filePairAloneNotDiff() {
+        let text = """
+        --- a/foo.swift
+        +++ b/foo.swift
+        (no hunks)
+        """
+        #expect(DetailContentShapeSniffer.sniff(text: text) == .plainText)
+    }
+
     // MARK: - mcpServer (reserved for future hints)
 
     @Test("mcpServer hint is currently unused — same content returns same result regardless")

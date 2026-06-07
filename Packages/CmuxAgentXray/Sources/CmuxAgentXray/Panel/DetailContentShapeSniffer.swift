@@ -10,11 +10,16 @@ import Foundation
 ///    Leading-char only would misfire on Bash output starting with
 ///    `{` (e.g. raw `jq` lines, partial JSON Lines), so the validity
 ///    parse is the conservative fallback.
-/// 2. **Markdown** — text contains two or more lines starting with
+/// 2. **Diff** — text contains at least **two** of:
+///    `^diff --git` line, `^@@ -X,Y +X,Y @@` hunk header,
+///    `^--- a/` + `^+++ b/` file-header pair. The two-of-three
+///    threshold mirrors the JSON validity-parse conservatism so a
+///    Bash log line containing a single `--- a/` doesn't misclassify.
+/// 3. **Markdown** — text contains two or more lines starting with
 ///    `^### `. The single-heading case is treated as plain prose
 ///    (avoids overfitting against tool output that happens to use
 ///    one heading).
-/// 3. **Plain text** — everything else.
+/// 4. **Plain text** — everything else.
 ///
 /// `mcpServer` is currently unused; reserved for future per-server
 /// hints if the corpus shows stable conventions (e.g. a server known
@@ -30,43 +35,13 @@ enum DetailContentShapeSniffer {
         if isJSON(text) {
             return .json
         }
+        if isDiff(text) {
+            return .diff
+        }
         if isMarkdown(text) {
             return .markdown
         }
         return .plainText
-    }
-
-    /// Map a file-path extension to a highlight.js-compatible
-    /// language identifier. Used by the detail-tab resolver for
-    /// Read / Write tool results — the file_path is known, so we
-    /// classify the result text as `.code(language:)` directly
-    /// instead of running the text-shape ladder. Unmapped extensions
-    /// return nil so callers fall through to the existing ladder.
-    static func languageHint(forFilePath path: String?) -> String? {
-        guard let path else { return nil }
-        let ext = (path as NSString).pathExtension.lowercased()
-        guard !ext.isEmpty else { return nil }
-        switch ext {
-        case "swift":         return "swift"
-        case "py":            return "python"
-        case "ts":            return "typescript"
-        case "tsx":           return "tsx"
-        case "js":            return "javascript"
-        case "jsx":           return "jsx"
-        case "json":          return "json"
-        case "md", "markdown": return "markdown"
-        case "diff", "patch": return "diff"
-        case "sh", "bash":    return "bash"
-        case "html", "htm":   return "html"
-        case "css":           return "css"
-        case "yaml", "yml":   return "yaml"
-        case "rs":            return "rust"
-        case "go":            return "go"
-        case "c", "h":        return "c"
-        case "cpp", "cc", "cxx", "hpp": return "cpp"
-        case "m", "mm":       return "objectivec"
-        default:              return nil
-        }
     }
 
     /// True when the trimmed text starts with `{` or `[` AND parses
@@ -98,6 +73,33 @@ enum DetailContentShapeSniffer {
             }
         }
         return false
+    }
+
+    /// True when the text shows at least two of the three structural
+    /// signals of a unified diff:
+    /// - a `diff --git` line (`git diff` only),
+    /// - a `@@ -X[,Y] +A[,B] @@` hunk header (any unified diff),
+    /// - a paired `--- a/` and `+++ b/` file-header pair (any unified diff).
+    /// One signal is too weak — Bash logs sometimes carry a single
+    /// `+++ ...` style line. Two-of-three matches the JSON
+    /// validity-parse conservatism elsewhere in the ladder.
+    private static func isDiff(_ text: String) -> Bool {
+        var hasDiffGit = false
+        var hasHunkHeader = false
+        var hasMinusA = false
+        var hasPlusB = false
+        let hunkRegex = /^@@ -\d+(,\d+)? \+\d+(,\d+)? @@/
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            if !hasDiffGit, line.hasPrefix("diff --git") { hasDiffGit = true }
+            if !hasMinusA, line.hasPrefix("--- a/") { hasMinusA = true }
+            if !hasPlusB, line.hasPrefix("+++ b/") { hasPlusB = true }
+            if !hasHunkHeader, line.starts(with: hunkRegex) { hasHunkHeader = true }
+        }
+        let hasFileHeaders = hasMinusA && hasPlusB
+        let signals = (hasDiffGit ? 1 : 0)
+            + (hasHunkHeader ? 1 : 0)
+            + (hasFileHeaders ? 1 : 0)
+        return signals >= 2
     }
 
     /// Split a markdown text on `^### ` heading boundaries. Each
