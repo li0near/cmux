@@ -96,6 +96,53 @@ enum ToolInputParser {
         }
     }
 
+    /// Convert an `Edit` / `MultiEdit` tool input into a list of
+    /// diff-styled body sections — one `.diffRemoved` + `.diffAdded`
+    /// pair per edit, in arrival order — so inline rendering shows
+    /// colored old/new blocks and the detail-tab resolver can emit a
+    /// unified-diff materialization without re-reading the tool input.
+    ///
+    /// Shape for `Edit`: `[.text([old_string], .diffRemoved),
+    /// .text([new_string], .diffAdded)]`.
+    ///
+    /// Shape for `MultiEdit`: every entry in `input.edits[]` flattened
+    /// into the same removed/added pair, in arrival order. Replaces
+    /// the old `editStrings(...)` helper, which silently kept only the
+    /// first edit.
+    ///
+    /// Returns `nil` for any other tool name, or when the input doesn't
+    /// carry the expected `old_string` / `new_string` strings.
+    static func diffSections(
+        name: String,
+        input: ClaudeJSONValue?
+    ) -> [Section]? {
+        guard let input, case .object(let obj) = input else { return nil }
+        switch name {
+        case "Edit":
+            guard case .string(let oldStr)? = obj["old_string"],
+                  case .string(let newStr)? = obj["new_string"] else { return nil }
+            return [
+                .text([oldStr], style: .diffRemoved),
+                .text([newStr], style: .diffAdded)
+            ]
+        case "MultiEdit":
+            guard case .array(let edits)? = obj["edits"], !edits.isEmpty else {
+                return nil
+            }
+            var sections: [Section] = []
+            for edit in edits {
+                guard case .object(let e) = edit,
+                      case .string(let oldStr)? = e["old_string"],
+                      case .string(let newStr)? = e["new_string"] else { continue }
+                sections.append(.text([oldStr], style: .diffRemoved))
+                sections.append(.text([newStr], style: .diffAdded))
+            }
+            return sections.isEmpty ? nil : sections
+        default:
+            return nil
+        }
+    }
+
     static func format(_ input: ClaudeJSONValue?) -> String {
         guard let input else { return "" }
         guard case .object(let obj) = input else { return input.displayString }
