@@ -87,8 +87,14 @@ public protocol AgentXrayHost: AnyObject {
     /// identified by `panelID`. Returns the detail panel object the
     /// host created (opaque to the package — used by tests / future
     /// programmatic close).
+    ///
+    /// `activate: true` (default) focuses the new panel after open;
+    /// `activate: false` opens it in the background. AgentX-ray's
+    /// click handler maps Cmd-click → `activate: false` so users can
+    /// queue up multiple detail tabs without losing AgentX-ray
+    /// context.
     @discardableResult
-    func openDetailTab(content: DetailContent, fromPanelID panelID: UUID) -> AgentXrayPanel?
+    func openDetailTab(content: DetailContent, fromPanelID panelID: UUID, activate: Bool) -> AgentXrayPanel?
 
     /// Update the host-side display title for `panelID` (tab label,
     /// window subtitle).
@@ -140,11 +146,15 @@ public protocol AgentXrayHost: AnyObject {
     /// `DetailContent` — image clicks short-circuit at the
     /// click-handler level and call this directly.
     ///
+    /// `activate: true` (default) focuses the new panel; Cmd-click
+    /// flips it to `false` so the panel opens in the background.
+    ///
     /// Default: no-op.
     func openImageInPanel(
         source: ImageSource,
         sourceEntryID: String,
-        sectionIndex: Int
+        sectionIndex: Int,
+        activate: Bool
     )
 
     // MARK: Remote attach (path 3)
@@ -192,7 +202,8 @@ extension AgentXrayHost {
     public func openImageInPanel(
         source: ImageSource,
         sourceEntryID: String,
-        sectionIndex: Int
+        sectionIndex: Int,
+        activate: Bool
     ) {
         // No-op default. cmux's host conformance overrides.
     }

@@ -132,7 +132,8 @@ extension DetailContent {
                 body: body,
                 sourceEntryID: user.id.stableString,
                 icon: EntryIcon.user,
-                accent: .blue
+                accent: .blue,
+                contentType: .markdown
             )
 
         case .system(let sys):
@@ -309,7 +310,8 @@ extension DetailContent {
                 body: body,
                 sourceEntryID: text.id.stableString,
                 icon: isThinking ? EntryIcon.thinking : EntryIcon.agent,
-                accent: .claude
+                accent: .claude,
+                contentType: .markdown
             )
 
         case .tool(let tool):

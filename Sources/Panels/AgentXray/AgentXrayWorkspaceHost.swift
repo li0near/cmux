@@ -287,8 +287,16 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
     // MARK: - AgentXrayHost: per-panel routing
 
     @discardableResult
-    func openDetailTab(content: DetailContent, fromPanelID panelID: UUID) -> AgentXrayPanel? {
-        return openDetailTabRouting(content: content, fromPanelID: panelID)
+    func openDetailTab(
+        content: DetailContent,
+        fromPanelID panelID: UUID,
+        activate: Bool
+    ) -> AgentXrayPanel? {
+        return openDetailTabRouting(
+            content: content,
+            fromPanelID: panelID,
+            activate: activate
+        )
     }
 
     func updateTitle(panelID: UUID, title: String) {

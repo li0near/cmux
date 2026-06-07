@@ -23,7 +23,8 @@ extension AgentXrayWorkspaceHost {
     @discardableResult
     func openDetailTabRouting(
         content: DetailContent,
-        fromPanelID panelID: UUID
+        fromPanelID panelID: UUID,
+        activate: Bool
     ) -> AgentXrayPanel? {
         // 1. Transcript: keep in-package rendering (sub-agent /
         //    abandoned-branch entries are structured Entry arrays,
@@ -41,7 +42,7 @@ extension AgentXrayWorkspaceHost {
         if let existingPath = content.existingFilePath {
             _ = openFileInPanel(
                 URL(fileURLWithPath: existingPath),
-                activate: false,
+                activate: activate,
                 reuseExisting: true
             )
             return nil
@@ -56,7 +57,7 @@ extension AgentXrayWorkspaceHost {
             if let url = await self.materializeText(body: body, ext: ext, key: key) {
                 _ = self.openFileInPanel(
                     url,
-                    activate: false,
+                    activate: activate,
                     reuseExisting: true
                 )
             }
@@ -72,7 +73,8 @@ extension AgentXrayWorkspaceHost {
     func openImageInPanel(
         source: ImageSource,
         sourceEntryID: String,
-        sectionIndex: Int
+        sectionIndex: Int,
+        activate: Bool
     ) {
         let key = cacheKey(
             sourceEntryID: sourceEntryID,
@@ -89,7 +91,7 @@ extension AgentXrayWorkspaceHost {
             ) {
                 _ = self.openFileInPanel(
                     url,
-                    activate: false,
+                    activate: activate,
                     reuseExisting: true
                 )
             }

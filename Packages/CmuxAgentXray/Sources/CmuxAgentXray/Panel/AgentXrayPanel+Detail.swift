@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @available(macOS 15, *)
@@ -14,9 +15,16 @@ extension AgentXrayPanel {
     /// URL-click pipeline. Everything else flows through
     /// `DetailContent.resolve(...)` and `host.openDetailTab(...)`.
     ///
+    /// **Cmd-click** (modifier read at click time via
+    /// `NSApp.currentEvent`) flips focus-on-open off so users can
+    /// queue multiple detail tabs without losing AgentX-ray context.
+    /// Default click activates the new panel.
+    ///
     /// No-op in `.detail` mode (frozen panels don't host a live stream).
     public func openDetail(request: DetailRequest) {
         guard case .live = mode else { return }
+        let cmdHeld = NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
+        let activate = !cmdHeld
         let targetID = request.sourceEntryID
 
         // Walk the transcript: a sub-entry's id never collides with a
@@ -48,7 +56,8 @@ extension AgentXrayPanel {
             host.openImageInPanel(
                 source: source,
                 sourceEntryID: targetID,
-                sectionIndex: sectionIndex
+                sectionIndex: sectionIndex,
+                activate: activate
             )
             return
         }
@@ -56,7 +65,7 @@ extension AgentXrayPanel {
         guard let content = DetailContent.resolve(request: request, entry: entry) else {
             return
         }
-        _ = host.openDetailTab(content: content, fromPanelID: id)
+        _ = host.openDetailTab(content: content, fromPanelID: id, activate: activate)
     }
 
     /// Returns the `.image(...)` section at the requested index if the
