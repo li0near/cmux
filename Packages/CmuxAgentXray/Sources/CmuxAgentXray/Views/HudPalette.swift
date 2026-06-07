@@ -87,19 +87,21 @@ public struct HudPalette: Sendable {
         }
     }
 
-    /// Resolve a ``TextStyle`` to its rendering color. Single source of
-    /// truth for both inline-row rendering (`AgentEntryView+CappedBody`,
-    /// `EntryBodyView`) and any future detail-mode renderers; eliminates
-    /// the pre-Phase-D divergence where two view files mapped
-    /// `.thinking` to two different colors.
-    public func color(for style: TextStyle) -> Color {
+    /// Resolve a ``TextStyle`` to its foreground + background rendering
+    /// pair. Single source of truth for inline-row rendering
+    /// (`AgentEntryView+CappedBody`, `EntryBodyView`); eliminates the
+    /// pre-Phase-D divergence where two view files mapped `.thinking`
+    /// to two different colors. Diff styles get a tinted background
+    /// (light-green / light-red) so old/new blocks read as a hunk;
+    /// non-diff styles share `expandedBackground` and stay rounded.
+    public func colors(for style: TextStyle) -> (foreground: Color, background: Color) {
         switch style {
-        case .normal:        return primary.opacity(0.85)
-        case .thinking:      return primary.opacity(0.85)
-        case .error:         return red
-        case .diffAdded:     return green
-        case .diffRemoved:   return red
-        case .codeMonospace: return primary.opacity(0.85)
+        case .normal:        return (primary.opacity(0.85), expandedBackground)
+        case .thinking:      return (primary.opacity(0.85), expandedBackground)
+        case .error:         return (red, expandedBackground)
+        case .diffAdded:     return (green, green.opacity(0.15))
+        case .diffRemoved:   return (red, red.opacity(0.15))
+        case .codeMonospace: return (primary.opacity(0.85), expandedBackground)
         }
     }
 }

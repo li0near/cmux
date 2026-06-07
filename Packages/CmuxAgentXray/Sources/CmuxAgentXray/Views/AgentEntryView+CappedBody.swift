@@ -66,15 +66,13 @@ extension AgentEntryView {
             displayMode: .compact
         )
         if !content.inlineBody.isEmpty {
+            let colors = palette.colors(for: style)
             Text(content.inlineBody)
                 .font(font(for: style))
-                .foregroundStyle(color(for: style))
+                .foregroundStyle(colors.foreground)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Theme.Padding.expandedBodyBlock)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.expandedBodyBlock)
-                        .fill(palette.expandedBackground)
-                )
+                .background(sectionBackground(style: style, color: colors.background))
                 .textSelection(.enabled)
         }
         if content.overflow {
@@ -86,8 +84,18 @@ extension AgentEntryView {
         }
     }
 
-    private func color(for style: TextStyle) -> Color {
-        palette.color(for: style)
+    /// Diff styles paint as a flat rectangle so adjacent removed /
+    /// added sections look like one contiguous hunk; every other
+    /// style keeps its rounded chip.
+    @ViewBuilder
+    private func sectionBackground(style: TextStyle, color: Color) -> some View {
+        switch style {
+        case .diffAdded, .diffRemoved:
+            Rectangle().fill(color)
+        case .normal, .thinking, .error, .codeMonospace:
+            RoundedRectangle(cornerRadius: Theme.CornerRadius.expandedBodyBlock)
+                .fill(color)
+        }
     }
 
     private func font(for style: TextStyle) -> Font {
