@@ -5,9 +5,14 @@ import Foundation
 /// `↗ Open detail` link is clicked because an expandable section
 /// overflowed the inline cap.
 ///
-/// The detail panel reuses the live panel's renderer (palette, badges,
-/// layout) in `.fullDetail` mode so users get a consistent look — it's
-/// the *same* panel kind, just frozen on one entry's expanded slice.
+/// Phase F reshape: the content payload now lives in a single
+/// discriminated `source: DetailSource` field instead of the prior
+/// mix of `body` / `entries` / `existingFilePath` / `contentType`
+/// fields. The host conformance switches on `DetailSource` directly
+/// — file paths open via cmux's panel pipeline, inline text /
+/// image content materializes to a temp file with the suggested
+/// basename (extension drives cmux dispatch), and transcripts keep
+/// in-package rendering.
 public struct DetailContent: Equatable, Sendable {
     /// Title shown in the tab bar and detail header
     /// (e.g. "Tool result · Read /foo.ts").
@@ -15,10 +20,8 @@ public struct DetailContent: Equatable, Sendable {
     /// Optional subtitle
     /// (e.g. "from entry at 14:23:01 · 1.2k lines").
     public let subtitle: String?
-    /// Full unfolded body text — rendered without truncation when
-    /// ``contentType`` is `.plainText`.
-    public let body: String
-    /// Source entry id, kept for future cross-references / search.
+    /// Source entry id — kept for cross-references / search and for
+    /// the host's per-row materialization cache key.
     public let sourceEntryID: String
     /// Leading glyph in the detail-mode header. Resolver picks the
     /// canonical ``EntryIcon`` for the source variant; the view reads
@@ -29,43 +32,23 @@ public struct DetailContent: Equatable, Sendable {
     /// so DetailContent stays SwiftUI-free; the view resolves via
     /// `HudPalette.color(for:)`.
     public let accent: PaletteRole
-    /// How the body should be rendered. ``ContentType/transcript`` is
-    /// used for surfaces backed by `entries` (abandoned-branch and
-    /// sub-agent transcripts); everything else is ``ContentType/plainText``.
-    public let contentType: ContentType
-    /// Optional entry transcript. When non-nil and `contentType` is
-    /// ``ContentType/transcript``, the detail view renders these
-    /// entries using the standard `EntryView` instead of the plain
-    /// `body` text.
-    public let entries: [Entry]?
-    /// Path to a real on-disk file the detail tab should open via
-    /// the host's `openFileInPanel(_:activate:reuseExisting:)` instead
-    /// of materializing `body` to a temp file. Populated for
-    /// offloaded-output content (CC's `<persisted-output>` already
-    /// lives on disk at this path); nil for inline content the
-    /// host has to materialize itself.
-    public let existingFilePath: String?
+    /// Discriminated payload — file / text / image / transcript.
+    public let source: DetailSource
 
     public init(
         title: String,
         subtitle: String? = nil,
-        body: String,
         sourceEntryID: String,
         icon: EntryIcon,
         accent: PaletteRole,
-        contentType: ContentType = .plainText,
-        entries: [Entry]? = nil,
-        existingFilePath: String? = nil
+        source: DetailSource
     ) {
         self.title = title
         self.subtitle = subtitle
-        self.body = body
         self.sourceEntryID = sourceEntryID
         self.icon = icon
         self.accent = accent
-        self.contentType = contentType
-        self.entries = entries
-        self.existingFilePath = existingFilePath
+        self.source = source
     }
 }
 
@@ -110,7 +93,7 @@ extension DetailContent {
 
     /// Resolve a `.bodySection` request whose target is a top-level
     /// `Entry`. The variant + section combine to pick the icon, accent,
-    /// and content-type triple.
+    /// and source triple.
     private static func resolveTopLevel(
         _ entry: Entry,
         sectionIndex: Int,
@@ -118,6 +101,32 @@ extension DetailContent {
     ) -> DetailContent? {
         switch entry {
         case .user(let user):
+            // Image-only message: text body is empty but the user
+            // pasted an image. Open the image directly instead of
+            // returning nil (Phase F fix — the prior resolver bailed
+            // here, so user-paste images couldn't reach a detail tab
+            // through the normal click flow).
+            if let imageSource = firstImageSection(user.body) {
+                let body = user.body.textContent
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if body.isEmpty {
+                    let filename = imageSuggestedFilename(
+                        for: imageSource,
+                        prefix: "image"
+                    )
+                    return DetailContent(
+                        title: localized(
+                            "agentXray.detail.title.userImage",
+                            defaultValue: "User image"
+                        ),
+                        subtitle: subtitleFromTimestamp(timestamp),
+                        sourceEntryID: user.id.stableString,
+                        icon: EntryIcon.user,
+                        accent: .blue,
+                        source: .image(imageSource, suggestedFilename: filename)
+                    )
+                }
+            }
             let body = user.body.textContent
             guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return DetailContent(
@@ -129,10 +138,10 @@ extension DetailContent {
                     "agentXray.detail.subtitle.userPrompt",
                     defaultValue: "from \(timestamp) · \(body.count) chars"
                 ),
-                body: body,
                 sourceEntryID: user.id.stableString,
                 icon: EntryIcon.user,
-                accent: .blue
+                accent: .blue,
+                source: .text(body: body, suggestedFilename: "prompt.txt")
             )
 
         case .system(let sys):
@@ -147,15 +156,12 @@ extension DetailContent {
                     defaultValue: "System output"
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
-                body: body,
                 sourceEntryID: c.id.stableString,
                 icon: EntryIcon.system,
                 // Match `EntryView.kindAccentColor`'s live-row mapping
-                // for `.compact` (`palette.dim`). The pre-Phase-A code
-                // mistakenly mapped to `.cyan` via the legacy
-                // `Kind.systemOutput`; corrected here so live row +
-                // detail header read identically.
-                accent: .dim
+                // for `.compact` (`palette.dim`).
+                accent: .dim,
+                source: .text(body: body, suggestedFilename: "system-output.txt")
             )
 
         case .synthesized(let s):
@@ -164,12 +170,8 @@ extension DetailContent {
                 let rewindIndex,
                 let totalRewinds,
                 let entryCount,
-                let firstPromptPreview
+                _
             ) = s.kind else { return nil }
-            let preview = firstPromptPreview ?? localized(
-                "agentXray.detail.body.noPromptPreview",
-                defaultValue: "(no prompt preview)"
-            )
             let transcript = s.body.subentriesContent
             return DetailContent(
                 title: localized(
@@ -180,12 +182,10 @@ extension DetailContent {
                     "agentXray.detail.subtitle.abandonedBranch",
                     defaultValue: "\(entryCount) entries · diverged at \(timestamp)"
                 ),
-                body: preview,
                 sourceEntryID: rootUuid,
                 icon: EntryIcon.branchLink,
                 accent: .dim,
-                contentType: transcript.isEmpty ? .plainText : .transcript,
-                entries: transcript.isEmpty ? nil : transcript
+                source: .transcript(sourceEntryID: rootUuid, entries: transcript)
             )
 
         case .agent:
@@ -212,10 +212,13 @@ extension DetailContent {
                     "agentXray.detail.subtitle.skill",
                     defaultValue: "from \(timestamp) · \(basePath ?? "")"
                 ),
-                body: sys.body.textContent,
                 sourceEntryID: id,
                 icon: EntryIcon.skill,
-                accent: .cyan
+                accent: .cyan,
+                source: .text(
+                    body: sys.body.textContent,
+                    suggestedFilename: "skill.md"
+                )
             )
         case .slashCmdInput(let name, let args):
             let body = args ?? ""
@@ -226,10 +229,10 @@ extension DetailContent {
                     defaultValue: "Slash command · /\(name)"
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
-                body: body,
                 sourceEntryID: id,
                 icon: EntryIcon.slashCommand,
-                accent: .cyan
+                accent: .cyan,
+                source: .text(body: body, suggestedFilename: "slash-command.txt")
             )
         case .slashCmdOutput:
             let body = sys.body.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -240,10 +243,10 @@ extension DetailContent {
                     defaultValue: "Slash command output"
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
-                body: body,
                 sourceEntryID: id,
                 icon: EntryIcon.slashCommand,
-                accent: .cyan
+                accent: .cyan,
+                source: .text(body: body, suggestedFilename: "slash-output.txt")
             )
         case .systemReminder:
             return DetailContent(
@@ -252,10 +255,13 @@ extension DetailContent {
                     defaultValue: "System reminder"
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
-                body: sys.body.textContent,
                 sourceEntryID: id,
                 icon: EntryIcon.systemReminder,
-                accent: .yellow
+                accent: .yellow,
+                source: .text(
+                    body: sys.body.textContent,
+                    suggestedFilename: "system-reminder.md"
+                )
             )
         case .recap:
             return DetailContent(
@@ -264,10 +270,13 @@ extension DetailContent {
                     defaultValue: "Recap"
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
-                body: sys.body.textContent,
                 sourceEntryID: id,
                 icon: EntryIcon.recap,
-                accent: .cyan
+                accent: .cyan,
+                source: .text(
+                    body: sys.body.textContent,
+                    suggestedFilename: "recap.md"
+                )
             )
         case .localCommand, .contextUsage, .planMode, .editedTextFile, .other:
             let body = sys.body.textContent.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -278,18 +287,18 @@ extension DetailContent {
                     defaultValue: "System output"
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
-                body: body,
                 sourceEntryID: id,
                 icon: EntryIcon.system,
-                accent: .cyan
+                accent: .cyan,
+                source: .text(body: body, suggestedFilename: "system-output.txt")
             )
         }
     }
 
     /// Resolve a `.bodySection` request whose target is one of an
     /// agent turn's sub-entries (text or tool). The sub-entry kind +
-    /// `sectionIndex` combine to pick the icon, accent, and
-    /// content-type triple.
+    /// `sectionIndex` combine to pick the icon, accent, and source
+    /// triple.
     private static func resolveSubEntry(
         _ sub: AgentEntry.SubEntry,
         sectionIndex: Int,
@@ -300,131 +309,178 @@ extension DetailContent {
             let body = text.body.textContent
             guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             let isThinking = text.kind == .thinking
+            let filename = isThinking ? "thinking.md" : "response.md"
             return DetailContent(
                 title: localized(
                     isThinking ? "agentXray.detail.title.thinking" : "agentXray.detail.title.assistantResponse",
                     defaultValue: isThinking ? "Thinking" : "Assistant response"
                 ),
                 subtitle: subtitleLines(timestamp, lineCount: lineCount(body)),
-                body: body,
                 sourceEntryID: text.id.stableString,
                 icon: isThinking ? EntryIcon.thinking : EntryIcon.agent,
                 accent: .claude,
-                contentType: .markdown
+                source: .text(body: body, suggestedFilename: filename)
             )
 
         case .tool(let tool):
-            // Section 0 = input, 1 = result text, 2+ = sub-agent
-            // transcript (`.subentries`).
-            if sectionIndex == 2 || (sectionIndex == 1 && tool.body.sections.count >= 3) {
-                guard let transcript = tool.sidechainTranscript,
-                      !transcript.isEmpty else { return nil }
-                return DetailContent(
-                    title: localized(
-                        "agentXray.detail.title.subagentTranscript",
-                        defaultValue: "Sub-agent transcript · \(tool.toolName)"
-                    ),
-                    subtitle: localized(
-                        "agentXray.detail.subtitle.subagentTranscript",
-                        defaultValue: "from \(timestamp) · \(transcript.count) entries"
-                    ),
-                    body: "",
+            return resolveToolSection(
+                tool: tool,
+                sectionIndex: sectionIndex,
+                timestamp: timestamp
+            )
+        }
+    }
+
+    private static func resolveToolSection(
+        tool: ToolEntry,
+        sectionIndex: Int,
+        timestamp: String
+    ) -> DetailContent? {
+        // Sub-agent transcript opens — sectionIndex 2 (or 1 when the
+        // tool also has a result section) addresses the trailing
+        // `.subentries` section in `body.sections`.
+        if sectionIndex == 2 || (sectionIndex == 1 && tool.body.sections.count >= 3) {
+            guard let transcript = tool.sidechainTranscript,
+                  !transcript.isEmpty else { return nil }
+            return DetailContent(
+                title: localized(
+                    "agentXray.detail.title.subagentTranscript",
+                    defaultValue: "Sub-agent transcript · \(tool.toolName)"
+                ),
+                subtitle: localized(
+                    "agentXray.detail.subtitle.subagentTranscript",
+                    defaultValue: "from \(timestamp) · \(transcript.count) entries"
+                ),
+                sourceEntryID: tool.id.stableString,
+                icon: EntryIcon.tool(named: "Task"),
+                accent: .primary,
+                source: .transcript(
                     sourceEntryID: tool.id.stableString,
-                    icon: EntryIcon.tool(named: "Task"),
-                    accent: .primary,
-                    contentType: .transcript,
                     entries: transcript
                 )
-            }
-            // `.offloadedOutput` section — read the file lazily and
-            // surface its full bytes in the detail tab. Phase C feature.
-            if sectionIndex >= 0,
-               sectionIndex < tool.body.sections.count,
-               case .offloadedOutput(let off) = tool.body.sections[sectionIndex] {
-                return resolveOffloadedOutput(off, tool: tool, timestamp: timestamp)
-            }
-            guard let text = sectionText(tool.body, index: sectionIndex) else { return nil }
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            if sectionIndex == 0 {
-                return DetailContent(
-                    title: localized(
-                        "agentXray.detail.title.toolInput",
-                        defaultValue: "Tool input · \(tool.toolName)"
-                    ),
-                    subtitle: subtitleFromTimestamp(timestamp),
-                    body: text,
-                    sourceEntryID: tool.id.stableString,
-                    icon: EntryIcon.tool(named: tool.toolName),
-                    accent: .primary,
-                    contentType: .json
-                )
-            }
-            // Read / Write — file_path is known; classify result as
-            // `.code(language:)` from the extension so the host
-            // materializes a `.swift` / `.py` / `.ts` / etc. temp
-            // file and cmux's FilePreviewPanel + highlight.js color it.
-            if let path = tool.inputFilePath,
-               let language = DetailContentShapeSniffer.languageHint(forFilePath: path) {
-                return DetailContent(
-                    title: localized(
-                        "agentXray.detail.title.toolResult",
-                        defaultValue: "Tool result · \(tool.toolName)"
-                    ),
-                    subtitle: subtitleFromTimestamp(timestamp),
-                    body: text,
-                    sourceEntryID: tool.id.stableString,
-                    icon: EntryIcon.tool(named: tool.toolName),
-                    accent: tool.status == .error ? .red : .primary,
-                    contentType: .code(language: language)
-                )
-            }
+            )
+        }
+        // Section-shape branches.
+        guard sectionIndex >= 0,
+              sectionIndex < tool.body.sections.count else { return nil }
+        let section = tool.body.sections[sectionIndex]
+
+        // Offloaded `<persisted-output>` — host opens the on-disk
+        // file directly via `openFileInPanel`.
+        if case .offloadedOutput(let off) = section {
+            return DetailContent(
+                title: localized(
+                    "agentXray.detail.title.toolResult",
+                    defaultValue: "Tool result · \(tool.toolName)"
+                ),
+                subtitle: localized(
+                    "agentXray.detail.subtitle.offloadedOutput",
+                    defaultValue: "from \(timestamp) · offloaded \(off.sizeLabel)"
+                ),
+                sourceEntryID: tool.id.stableString,
+                icon: EntryIcon.tool(named: tool.toolName),
+                accent: tool.status == .error ? .red : .primary,
+                source: .file(path: off.path)
+            )
+        }
+
+        // Tool-returned image (e.g. Playwright screenshot).
+        if case .image(let imageSource) = section {
+            let filename = imageSuggestedFilename(
+                for: imageSource,
+                prefix: "screenshot"
+            )
             return DetailContent(
                 title: localized(
                     "agentXray.detail.title.toolResult",
                     defaultValue: "Tool result · \(tool.toolName)"
                 ),
                 subtitle: subtitleFromTimestamp(timestamp),
-                body: text,
                 sourceEntryID: tool.id.stableString,
                 icon: EntryIcon.tool(named: tool.toolName),
                 accent: tool.status == .error ? .red : .primary,
-                // Phase E: shape-sniff the result text for rich
-                // detail-tab rendering. Inline rendering ignores the
-                // contentType — only the detail tab dispatches.
-                contentType: DetailContentShapeSniffer.sniff(
-                    text: text,
-                    mcpServer: tool.mcpServer
-                )
+                source: .image(imageSource, suggestedFilename: filename)
             )
         }
-    }
 
-    /// Build a `DetailContent` for an offloaded `<persisted-output>`
-    /// tool result. Carries `existingFilePath: off.path`; the host
-    /// opens that file directly via `openFileInPanel` (cmux's panel
-    /// pipeline reads the bytes itself). The package never decodes
-    /// the file — replaces the prior sync `String(contentsOf:)`
-    /// read on `@MainActor` (HI #2 resolved by avoidance, not
-    /// async).
-    private static func resolveOffloadedOutput(
-        _ off: OffloadedOutput,
-        tool: ToolEntry,
-        timestamp: String
-    ) -> DetailContent {
+        // Diff-styled section (Edit / MultiEdit input). Concatenate
+        // every diff-styled section in the body into a unified diff
+        // so the detail tab opens with a single full-context view.
+        if case .text(_, let style) = section,
+           style == .diffAdded || style == .diffRemoved,
+           let diffBody = synthesizeUnifiedDiff(from: tool.body) {
+            return DetailContent(
+                title: localized(
+                    "agentXray.detail.title.toolInput",
+                    defaultValue: "Tool input · \(tool.toolName)"
+                ),
+                subtitle: subtitleFromTimestamp(timestamp),
+                sourceEntryID: tool.id.stableString,
+                icon: EntryIcon.tool(named: tool.toolName),
+                accent: .primary,
+                source: .text(body: diffBody, suggestedFilename: "tool-input.diff")
+            )
+        }
+
+        // Plain-text section.
+        guard case .text(let blocks, _) = section else { return nil }
+        let text = blocks.joined(separator: "\n")
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+
+        // Tool input section — sectionIndex 0 for non-Edit tools.
+        if sectionIndex == 0 {
+            return DetailContent(
+                title: localized(
+                    "agentXray.detail.title.toolInput",
+                    defaultValue: "Tool input · \(tool.toolName)"
+                ),
+                subtitle: subtitleFromTimestamp(timestamp),
+                sourceEntryID: tool.id.stableString,
+                icon: EntryIcon.tool(named: tool.toolName),
+                accent: .primary,
+                source: .text(body: text, suggestedFilename: "tool-input.json")
+            )
+        }
+
+        // Tool result. With a known `inputFilePath`, the suggested
+        // basename is the file's basename so cmux's panel pipeline
+        // dispatches to the right syntax mode by extension. Otherwise
+        // sniff the content shape and pick a `tool-result.<ext>`
+        // filename; plain text gets wrapped in a fenced code block
+        // and surfaced as `.md` so cmux's markdown renderer paints
+        // it with monospace + copy/edit chrome.
+        let icon = EntryIcon.tool(named: tool.toolName)
+        let accent: PaletteRole = tool.status == .error ? .red : .primary
+        let title = localized(
+            "agentXray.detail.title.toolResult",
+            defaultValue: "Tool result · \(tool.toolName)"
+        )
+        let subtitle = subtitleFromTimestamp(timestamp)
+        if let path = tool.inputFilePath {
+            let basename = (path as NSString).lastPathComponent
+            return DetailContent(
+                title: title,
+                subtitle: subtitle,
+                sourceEntryID: tool.id.stableString,
+                icon: icon,
+                accent: accent,
+                source: .text(body: text, suggestedFilename: basename)
+            )
+        }
+        let filename = suggestedFilenameForToolResult(
+            text: text,
+            mcpServer: tool.mcpServer
+        )
+        let suggestedBody = filename.wrapAsFencedMarkdown
+            ? wrapAsFencedMarkdown(text)
+            : text
         return DetailContent(
-            title: localized(
-                "agentXray.detail.title.toolResult",
-                defaultValue: "Tool result · \(tool.toolName)"
-            ),
-            subtitle: localized(
-                "agentXray.detail.subtitle.offloadedOutput",
-                defaultValue: "from \(timestamp) · offloaded \(off.sizeLabel)"
-            ),
-            body: "",
+            title: title,
+            subtitle: subtitle,
             sourceEntryID: tool.id.stableString,
-            icon: EntryIcon.tool(named: tool.toolName),
-            accent: tool.status == .error ? .red : .primary,
-            existingFilePath: off.path
+            icon: icon,
+            accent: accent,
+            source: .text(body: suggestedBody, suggestedFilename: filename.name)
         )
     }
 
@@ -446,15 +502,6 @@ extension DetailContent {
         s.split(separator: "\n", omittingEmptySubsequences: false).count
     }
 
-    /// Concatenated text of a `Body`'s `.text` section at `index`,
-    /// joined by `\n`. Returns nil if the section doesn't exist or
-    /// isn't a text section.
-    private static func sectionText(_ body: Body, index: Int) -> String? {
-        guard index >= 0, index < body.sections.count,
-              case .text(let blocks, _) = body.sections[index] else { return nil }
-        return blocks.joined(separator: "\n")
-    }
-
     /// Subtitle template `"from HH:mm:ss"`.
     private static func subtitleFromTimestamp(_ ts: String) -> String {
         localized(
@@ -471,12 +518,93 @@ extension DetailContent {
         )
     }
 
-    /// Wrapper around `String(localized:defaultValue:bundle:)` so the
-    /// resolver doesn't repeat `bundle: .module` at every call site.
-    /// `key` is a `StaticString` so the call site looks like a plain
-    /// string literal — same shape as direct `String(localized:)` usage.
     private static func localized(_ key: StaticString, defaultValue: String.LocalizationValue) -> String {
         String(localized: key, defaultValue: defaultValue, bundle: .module)
+    }
+
+    /// Walk every `.text(_, .diffAdded/.diffRemoved)` section in
+    /// arrival order and build a unified-diff-shaped string — `-`
+    /// prefix for removed lines, `+` for added. Returns nil when no
+    /// diff sections are present (caller falls through to the
+    /// plain-text resolution path).
+    private static func synthesizeUnifiedDiff(from body: Body) -> String? {
+        var lines: [String] = []
+        var sawAny = false
+        for section in body.sections {
+            guard case .text(let blocks, let style) = section else { continue }
+            let prefix: String
+            switch style {
+            case .diffRemoved: prefix = "-"
+            case .diffAdded:   prefix = "+"
+            default: continue
+            }
+            sawAny = true
+            for block in blocks {
+                for line in block.split(separator: "\n", omittingEmptySubsequences: false) {
+                    lines.append("\(prefix)\(line)")
+                }
+            }
+        }
+        return sawAny ? lines.joined(separator: "\n") : nil
+    }
+
+    /// First `.image` section in a body, if any. Used by the user
+    /// image-only message arm.
+    private static func firstImageSection(_ body: Body) -> ImageSource? {
+        for section in body.sections {
+            if case .image(let source) = section { return source }
+        }
+        return nil
+    }
+
+    /// Map an ``ImageSource``'s media type to a
+    /// `<prefix>.<ext>` filename suggestion. Cmux's
+    /// `Workspace.openFileSurfaces` dispatches by extension to
+    /// `FilePreviewPanel`'s image preview.
+    private static func imageSuggestedFilename(
+        for source: ImageSource,
+        prefix: String
+    ) -> String {
+        let ext: String
+        switch source.mediaType.lowercased() {
+        case "image/png":      ext = "png"
+        case "image/jpeg", "image/jpg": ext = "jpg"
+        case "image/gif":      ext = "gif"
+        case "image/webp":     ext = "webp"
+        case "image/heic":     ext = "heic"
+        case "image/svg+xml":  ext = "svg"
+        default:               ext = "bin"
+        }
+        return "\(prefix).\(ext)"
+    }
+
+    /// Sniff the result text's shape (markdown / json / diff /
+    /// plaintext) and return the basename to use plus whether the
+    /// body should be wrapped in a fenced code block before being
+    /// written as markdown.
+    private static func suggestedFilenameForToolResult(
+        text: String,
+        mcpServer: String?
+    ) -> (name: String, wrapAsFencedMarkdown: Bool) {
+        let shape = DetailContentShapeSniffer.sniff(text: text, mcpServer: mcpServer)
+        switch shape {
+        case .markdown:  return ("tool-result.md", false)
+        case .json:      return ("tool-result.json", false)
+        case .diff:      return ("tool-result.diff", false)
+        case .plainText: return ("tool-result.md", true)
+        case .transcript, .code:
+            // Sniffer doesn't currently return these; defensive
+            // fallback keeps the panel pipeline picking a known
+            // extension.
+            return ("tool-result.md", true)
+        }
+    }
+
+    /// Wrap a plain-text body in a triple-backtick fenced code block
+    /// so the markdown renderer paints it as a monospace block with
+    /// copy/edit chrome.
+    private static func wrapAsFencedMarkdown(_ body: String) -> String {
+        "```\n\(body)\n```"
     }
 }
 

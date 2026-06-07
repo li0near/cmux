@@ -453,7 +453,7 @@ public struct TranscriptView: View {
                 }
                 Spacer(minLength: 0)
             }
-            if let entries = content.entries, !entries.isEmpty {
+            if case .transcript(_, let entries) = content.source, !entries.isEmpty {
                 detailEntriesList(entries: entries, palette: palette)
             } else {
                 Text(

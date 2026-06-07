@@ -138,25 +138,6 @@ public protocol AgentXrayHost: AnyObject {
         reuseExisting: Bool
     ) -> UUID?
 
-    /// Convenience for image-shaped Section content. Decodes the
-    /// base64 bytes off-main, writes them to a stable temp path keyed
-    /// by `(sourceEntryID, sectionIndex)`, then opens the resulting
-    /// file via ``openFileInPanel(_:activate:reuseExisting:)``. Means
-    /// the package never has to thread `ImageSource` through
-    /// `DetailContent` — image clicks short-circuit at the
-    /// click-handler level and call this directly.
-    ///
-    /// `activate: true` (default) focuses the new panel; Cmd-click
-    /// flips it to `false` so the panel opens in the background.
-    ///
-    /// Default: no-op.
-    func openImageInPanel(
-        source: ImageSource,
-        sourceEntryID: String,
-        sectionIndex: Int,
-        activate: Bool
-    )
-
     // MARK: Remote attach (path 3)
 
     /// Snapshot of "what would AgentX-ray need to attach the focused
@@ -197,14 +178,5 @@ extension AgentXrayHost {
         reuseExisting: Bool
     ) -> UUID? {
         nil
-    }
-
-    public func openImageInPanel(
-        source: ImageSource,
-        sourceEntryID: String,
-        sectionIndex: Int,
-        activate: Bool
-    ) {
-        // No-op default. cmux's host conformance overrides.
     }
 }

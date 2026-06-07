@@ -5,112 +5,102 @@ import SwiftUI
 
 // MARK: - Host conformance
 
-/// cmux-side implementation of `AgentXrayHost`'s detail-tab routing
-/// + image-open seam. Phase E redirects every non-transcript detail
-/// click through cmux's existing panel-open pipeline
-/// (`Workspace.openFileSurfaces`) so users get full panel chrome
-/// (font / copy / edit / "Open in…" / image zoom) for free instead
-/// of in-package embedded renderers.
+/// cmux-side implementation of `AgentXrayHost`'s detail-tab routing.
+/// Switches on `DetailSource` directly: file paths open via cmux's
+/// panel pipeline, inline text / image content materializes to a
+/// temp file with the suggested basename (extension drives cmux's
+/// dispatch — `.md` → `MarkdownPanel`; everything else →
+/// `FilePreviewPanel`), and transcripts keep in-package detail-mode
+/// rendering.
 ///
 /// The package never imports cmux types; all panel-open construction
 /// happens here behind the `AgentXrayHost` protocol seam.
 @available(macOS 15, *)
 extension AgentXrayWorkspaceHost {
-    /// Phase E routing: transcript content keeps the existing
-    /// AgentXrayPanel.detail flow; everything else materializes (or
-    /// opens an existing path) and dispatches to a real cmux panel
-    /// via `openFileInPanel`.
     @discardableResult
     func openDetailTabRouting(
         content: DetailContent,
         fromPanelID panelID: UUID,
         activate: Bool
     ) -> AgentXrayPanel? {
-        // 1. Transcript: keep in-package rendering (sub-agent /
-        //    abandoned-branch entries are structured Entry arrays,
-        //    not file-shaped).
-        if let entries = content.entries, !entries.isEmpty {
+        switch content.source {
+        case .file(let path):
+            _ = openFileInPanel(
+                URL(fileURLWithPath: path),
+                activate: activate,
+                reuseExisting: true
+            )
+            return nil
+
+        case .text(let body, let filename):
+            let key = cacheKey(
+                sourceEntryID: content.sourceEntryID,
+                filename: filename
+            )
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let url = await self.materializeText(
+                    body: body,
+                    filename: filename,
+                    key: key
+                ) {
+                    _ = self.openFileInPanel(
+                        url,
+                        activate: activate,
+                        reuseExisting: true
+                    )
+                }
+            }
+            return nil
+
+        case .image(let source, let filename):
+            let key = cacheKey(
+                sourceEntryID: content.sourceEntryID,
+                filename: filename
+            )
+            let mediaType = source.mediaType
+            let data = source.data
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let url = await self.materializeImage(
+                    base64: data,
+                    mediaType: mediaType,
+                    filename: filename,
+                    key: key
+                ) {
+                    _ = self.openFileInPanel(
+                        url,
+                        activate: activate,
+                        reuseExisting: true
+                    )
+                }
+            }
+            return nil
+
+        case .transcript:
             guard let workspace else { return nil }
             return workspace.openAgentXrayDetail(
                 content: content,
                 fromPanelID: panelID
             )?.xrayPanel
         }
-
-        // 2. Already on disk (offloaded `<persisted-output>`): hand
-        //    the path straight to cmux's panel pipeline.
-        if let existingPath = content.existingFilePath {
-            _ = openFileInPanel(
-                URL(fileURLWithPath: existingPath),
-                activate: activate,
-                reuseExisting: true
-            )
-            return nil
-        }
-
-        // 3. Inline text content: materialize to a temp file, then open.
-        let body = content.body
-        let ext = fileExtension(for: content.contentType)
-        let key = cacheKey(sourceEntryID: content.sourceEntryID, suffix: nil)
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            if let url = await self.materializeText(body: body, ext: ext, key: key) {
-                _ = self.openFileInPanel(
-                    url,
-                    activate: activate,
-                    reuseExisting: true
-                )
-            }
-        }
-        return nil
-    }
-
-    /// Image short-circuit (called from `AgentXrayPanel.openDetail` for
-    /// `.image` sections). Decodes base64 off-main, writes a stable
-    /// temp PNG/JPEG, and opens it via cmux's panel pipeline — the
-    /// resulting `FilePreviewPanel` gives users zoom / pan / rotate
-    /// / spacebar QuickLook / "Open in Preview" for free.
-    func openImageInPanel(
-        source: ImageSource,
-        sourceEntryID: String,
-        sectionIndex: Int,
-        activate: Bool
-    ) {
-        let key = cacheKey(
-            sourceEntryID: sourceEntryID,
-            suffix: "img\(sectionIndex)"
-        )
-        let mediaType = source.mediaType
-        let data = source.data
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            if let url = await self.materializeImage(
-                base64: data,
-                mediaType: mediaType,
-                key: key
-            ) {
-                _ = self.openFileInPanel(
-                    url,
-                    activate: activate,
-                    reuseExisting: true
-                )
-            }
-        }
     }
 
     // MARK: - Materialization helpers
 
-    /// Write inline text to a temp file with the right extension.
-    /// Re-uses an existing file when the key matches (so re-clicks of
-    /// the same row dedupe and `reuseExisting` on `openFileInPanel`
+    /// Write inline UTF-8 text to a temp file at `<workspace>/<key>`,
+    /// where the key embeds the suggested basename so the on-disk
+    /// extension matches what cmux's panel dispatch expects. Re-uses
+    /// an existing file when the key matches (so re-clicks of the
+    /// same row dedupe and `reuseExisting` on `openFileInPanel`
     /// refocuses the existing panel).
     fileprivate func materializeText(
         body: String,
-        ext: String,
+        filename: String,
         key: String
     ) async -> URL? {
         let dir = AgentXrayDetailFileCache.directory(for: workspaceID)
-        let url = dir.appendingPathComponent("\(key).\(ext)")
+        let url = dir.appendingPathComponent(key)
         if FileManager.default.fileExists(atPath: url.path) {
             return url
         }
@@ -125,16 +115,17 @@ extension AgentXrayWorkspaceHost {
         }.value
     }
 
-    /// Decode + write base64 image bytes to a temp file. Re-uses the
-    /// file when the key already exists.
+    /// Decode + write base64 image bytes to a temp file at
+    /// `<workspace>/<key>`. The key embeds `filename` so the on-disk
+    /// extension matches the image's media type.
     fileprivate func materializeImage(
         base64: String,
         mediaType: String,
+        filename: String,
         key: String
     ) async -> URL? {
-        let ext = extensionForMediaType(mediaType)
         let dir = AgentXrayDetailFileCache.directory(for: workspaceID)
-        let url = dir.appendingPathComponent("\(key).\(ext)")
+        let url = dir.appendingPathComponent(key)
         if FileManager.default.fileExists(atPath: url.path) {
             return url
         }
@@ -152,60 +143,16 @@ extension AgentXrayWorkspaceHost {
         }.value
     }
 
-    fileprivate func cacheKey(sourceEntryID: String, suffix: String?) -> String {
+    /// Cache key combines the source entry id with the suggested
+    /// filename so two clicks on the same row produce the same path
+    /// (re-uses the existing materialized file) but two different
+    /// rows that happen to share content (rare) still get distinct
+    /// files. The id-side is sanitized for filesystem safety.
+    fileprivate func cacheKey(sourceEntryID: String, filename: String) -> String {
         let safe = sourceEntryID
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: ":", with: "_")
-        if let suffix { return "\(safe)-\(suffix)" }
-        return safe
-    }
-
-    fileprivate func fileExtension(for contentType: ContentType) -> String {
-        switch contentType {
-        case .markdown:           return "md"
-        case .json:               return "json"
-        case .diff:               return "diff"
-        case .plainText:          return "txt"
-        case .transcript:         return "txt"
-        case .code(let language): return mapLanguageToExtension(language)
-        }
-    }
-
-    fileprivate func mapLanguageToExtension(_ language: String?) -> String {
-        guard let lang = language?.lowercased() else { return "txt" }
-        switch lang {
-        case "swift":              return "swift"
-        case "python", "py":       return "py"
-        case "typescript", "ts":   return "ts"
-        case "tsx":                return "tsx"
-        case "javascript", "js":   return "js"
-        case "jsx":                return "jsx"
-        case "bash", "sh":         return "sh"
-        case "json":               return "json"
-        case "markdown", "md":     return "md"
-        case "diff":               return "diff"
-        case "html":               return "html"
-        case "css":                return "css"
-        case "yaml", "yml":        return "yml"
-        case "rust", "rs":         return "rs"
-        case "go":                 return "go"
-        case "c":                  return "c"
-        case "cpp", "c++":         return "cpp"
-        case "objc", "objectivec": return "m"
-        default:                   return "txt"
-        }
-    }
-}
-
-private func extensionForMediaType(_ mediaType: String) -> String {
-    switch mediaType.lowercased() {
-    case "image/png":  return "png"
-    case "image/jpeg", "image/jpg": return "jpg"
-    case "image/gif":  return "gif"
-    case "image/webp": return "webp"
-    case "image/heic": return "heic"
-    case "image/svg+xml": return "svg"
-    default:           return "bin"
+        return "\(safe)-\(filename)"
     }
 }
 
