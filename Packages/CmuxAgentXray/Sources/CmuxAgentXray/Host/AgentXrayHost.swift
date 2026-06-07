@@ -1,4 +1,5 @@
 public import Foundation
+public import SwiftUI
 
 /// The protocol the cmux app conforms to in order to embed
 /// `AgentXrayPanel`. Strict isolation contract: the package never
@@ -98,6 +99,48 @@ public protocol AgentXrayHost: AnyObject {
     /// notification-style highlighting).
     func flashAttention(panelID: UUID, reason: AttentionFlashReason)
 
+    // MARK: Detail-tab rich content rendering
+
+    /// Render the body of a detail tab using the host's native
+    /// content rendering. Called by ``TranscriptView`` for every
+    /// non-transcript detail content type (markdown, code, diff,
+    /// json, plain text). The host adapter inspects
+    /// ``DetailContent/contentType`` and routes to its preferred
+    /// renderer (e.g. cmux's bundled markdown WebView with
+    /// fenced-block coercion driving highlight.js for non-markdown
+    /// content).
+    ///
+    /// A default protocol-extension implementation returns an empty
+    /// view so out-of-tree hosts and test stubs that don't render
+    /// rich detail content compile without conforming to this
+    /// method.
+    func detailBodyView(content: DetailContent) -> AnyView
+
+    /// Render a base64-encoded image at full size with native zoom
+    /// and pan. The host adapter materializes the bytes to a temp
+    /// file (lifecycle host-owned) and wraps a system preview view
+    /// (e.g. Apple's `QLPreviewView` from `QuickLookUI`) pointed at
+    /// the resulting URL.
+    ///
+    /// `sourceEntryID` + `sectionIndex` deduplicate the temp file
+    /// across detail-tab opens of the same image.
+    ///
+    /// Default: empty view.
+    func detailImageView(
+        source: ImageSource,
+        sourceEntryID: String,
+        sectionIndex: Int
+    ) -> AnyView
+
+    /// Optional accessory shown in the detail-tab header when the
+    /// content is backed by a real on-disk file path. Populates a
+    /// menu like cmux's `FileExternalOpenMenu` (Open in Xcode / VS
+    /// Code / Preview / …). Returns `nil` when the host can't
+    /// resolve a stable file URL for `content`.
+    ///
+    /// Default: `nil`.
+    func detailExternalOpenAccessory(for content: DetailContent) -> AnyView?
+
     // MARK: Remote attach (path 3)
 
     /// Snapshot of "what would AgentX-ray need to attach the focused
@@ -122,4 +165,30 @@ public protocol AgentXrayHost: AnyObject {
     /// scenes (e.g. resolving `$HOME` on first attach) before the next
     /// recompute fires.
     func attachRemoteClaudeSessionID(_ sessionID: String?)
+}
+
+// MARK: - Default no-op detail renderers
+
+/// Default implementations for detail-tab rich rendering. Out-of-tree
+/// hosts and test stubs that don't supply rich rendering inherit
+/// these, which surface an empty view (the package shows its
+/// localized fallback). cmux's app-side conformance overrides them
+/// with `MarkdownWebRenderer` and `QLPreviewView` wrappers.
+@available(macOS 15, *)
+extension AgentXrayHost {
+    public func detailBodyView(content: DetailContent) -> AnyView {
+        AnyView(EmptyView())
+    }
+
+    public func detailImageView(
+        source: ImageSource,
+        sourceEntryID: String,
+        sectionIndex: Int
+    ) -> AnyView {
+        AnyView(EmptyView())
+    }
+
+    public func detailExternalOpenAccessory(for content: DetailContent) -> AnyView? {
+        nil
+    }
 }
