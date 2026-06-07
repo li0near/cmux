@@ -308,6 +308,35 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
         workspace?.requestFlash(panelId: panelID, reason: .navigation)
     }
 
+    // MARK: - AgentXrayHost: open file in cmux panel
+
+    /// Routes through cmux's standard URL-click pipeline:
+    /// `Workspace.openFileSurfaces(...)` (`Sources/Panels/FilePreviewWorkspaceOpenSupport.swift:6`)
+    /// dispatches by extension to `MarkdownPanel` (markdown-shaped) or
+    /// `FilePreviewPanel` (everything else). Mirrors what
+    /// `RightSidebarToolPanel.openFilePreview(_:)` does for the
+    /// sidebar's file-list tap, minus the remote-workspace
+    /// materialization branch (AgentX-ray detail content is local).
+    @discardableResult
+    func openFileInPanel(
+        _ fileURL: URL,
+        activate: Bool,
+        reuseExisting: Bool
+    ) -> UUID? {
+        guard let workspace else { return nil }
+        guard
+            let paneId = workspace.bonsplitController.focusedPaneId
+                ?? workspace.bonsplitController.allPaneIds.first
+        else { return nil }
+        let panels = workspace.openFileSurfaces(
+            inPane: paneId,
+            filePaths: [fileURL.path(percentEncoded: false)],
+            focus: activate,
+            reuseExisting: reuseExisting
+        )
+        return panels.first?.id
+    }
+
     // MARK: - AgentXrayHost: remote attach (path 3)
 
     func currentTerminalRemoteContext() -> RemoteAttachContext? {
