@@ -140,7 +140,12 @@ in-package stubs to cmux-native surfaces (cmux's `MarkdownWebRenderer`
 The 2026-06-08 Phase E redesign **superseded Phase D-rev's embed
 approach** — detail-tab opens now redirect through cmux's existing
 panel-open pipeline (`Workspace.openFileSurfaces`), giving users
-full panel chrome for free. See §14 row 19t.
+full panel chrome for free. See §14 row 19t. The 2026-06-08 Phase F
+content-type cleanup made Edit / MultiEdit input render as colored
+diff hunks at parse time, collapsed `DetailContent` to a single
+discriminated `source: DetailSource`, dropped the parallel
+`openImageInPanel` host method, and added a sniffer arm for `git
+diff` Bash output. See §14 row 19u.
 
 **Active queue** (`docs/next-session-handover.md`):
 1. **Richer transcript renderer (FU 3)** — sticky header, search,
