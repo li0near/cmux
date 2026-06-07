@@ -43,7 +43,7 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
     let logger: any AgentXrayLogger = AgentXrayWorkspaceLogger()
 
     private let workspaceUUID: UUID
-    private weak var workspace: Workspace?
+    weak var workspace: Workspace?
 
     // MARK: - Per-panel registry
 
@@ -288,11 +288,7 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
 
     @discardableResult
     func openDetailTab(content: DetailContent, fromPanelID panelID: UUID) -> AgentXrayPanel? {
-        guard let workspace else { return nil }
-        return workspace.openAgentXrayDetail(
-            content: content,
-            fromPanelID: panelID
-        )?.xrayPanel
+        return openDetailTabRouting(content: content, fromPanelID: panelID)
     }
 
     func updateTitle(panelID: UUID, title: String) {
