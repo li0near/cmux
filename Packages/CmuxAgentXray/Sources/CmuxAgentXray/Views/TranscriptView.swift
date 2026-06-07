@@ -459,14 +459,6 @@ public struct TranscriptView: View {
             }
             if let entries = content.entries, !entries.isEmpty {
                 detailEntriesList(entries: entries, palette: palette)
-            } else if let img = content.imageSource,
-                      let idx = content.imageSectionIndex {
-                host.detailImageView(
-                    source: img,
-                    sourceEntryID: content.sourceEntryID,
-                    sectionIndex: idx
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 host.detailBodyView(content: content)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

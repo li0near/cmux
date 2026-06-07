@@ -38,17 +38,13 @@ public struct DetailContent: Equatable, Sendable {
     /// entries using the standard `EntryView` instead of the plain
     /// `body` text.
     public let entries: [Entry]?
-    /// Image content carrier for image-bearing detail tabs. Non-nil
-    /// only when the source section is `.image(ImageSource)` (user-
-    /// pasted screenshot or a tool result that returned an image).
-    /// When set, `body` is empty and the detail view routes to the
-    /// host's `detailImageView(...)` instead of `detailBodyView(...)`.
-    public let imageSource: ImageSource?
-    /// Section index that produced ``imageSource``, used by the host
-    /// adapter to deduplicate the temp-file path across detail-tab
-    /// re-opens of the same image. Required whenever
-    /// ``imageSource`` is non-nil.
-    public let imageSectionIndex: Int?
+    /// Path to a real on-disk file the detail tab should open via
+    /// the host's `openFileInPanel(_:activate:reuseExisting:)` instead
+    /// of materializing `body` to a temp file. Populated for
+    /// offloaded-output content (CC's `<persisted-output>` already
+    /// lives on disk at this path); nil for inline content the
+    /// host has to materialize itself.
+    public let existingFilePath: String?
 
     public init(
         title: String,
@@ -59,8 +55,7 @@ public struct DetailContent: Equatable, Sendable {
         accent: PaletteRole,
         contentType: ContentType = .plainText,
         entries: [Entry]? = nil,
-        imageSource: ImageSource? = nil,
-        imageSectionIndex: Int? = nil
+        existingFilePath: String? = nil
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -70,8 +65,7 @@ public struct DetailContent: Equatable, Sendable {
         self.accent = accent
         self.contentType = contentType
         self.entries = entries
-        self.imageSource = imageSource
-        self.imageSectionIndex = imageSectionIndex
+        self.existingFilePath = existingFilePath
     }
 }
 
@@ -124,27 +118,6 @@ extension DetailContent {
     ) -> DetailContent? {
         switch entry {
         case .user(let user):
-            // Image section click — the source body has a
-            // `.image(ImageSource)` at this index. The detail tab
-            // routes to the host's image renderer, so `body` is
-            // empty and the carrier fields drive the UI.
-            if sectionIndex >= 0,
-               sectionIndex < user.body.sections.count,
-               case .image(let img) = user.body.sections[sectionIndex] {
-                return DetailContent(
-                    title: localized(
-                        "agentXray.detail.title.userImage",
-                        defaultValue: "User-pasted image"
-                    ),
-                    subtitle: subtitleFromTimestamp(timestamp),
-                    body: "",
-                    sourceEntryID: user.id.stableString,
-                    icon: EntryIcon.user,
-                    accent: .blue,
-                    imageSource: img,
-                    imageSectionIndex: sectionIndex
-                )
-            }
             let body = user.body.textContent
             guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return DetailContent(
@@ -369,26 +342,6 @@ extension DetailContent {
                case .offloadedOutput(let off) = tool.body.sections[sectionIndex] {
                 return resolveOffloadedOutput(off, tool: tool, timestamp: timestamp)
             }
-            // `.image` section — tool returned an image
-            // (e.g. Playwright `browser_take_screenshot`). The
-            // detail tab routes to the host's image renderer.
-            if sectionIndex >= 0,
-               sectionIndex < tool.body.sections.count,
-               case .image(let img) = tool.body.sections[sectionIndex] {
-                return DetailContent(
-                    title: localized(
-                        "agentXray.detail.title.toolResult",
-                        defaultValue: "Tool result · \(tool.toolName)"
-                    ),
-                    subtitle: subtitleFromTimestamp(timestamp),
-                    body: "",
-                    sourceEntryID: tool.id.stableString,
-                    icon: EntryIcon.tool(named: tool.toolName),
-                    accent: tool.status == .error ? .red : .primary,
-                    imageSource: img,
-                    imageSectionIndex: sectionIndex
-                )
-            }
             guard let text = sectionText(tool.body, index: sectionIndex) else { return nil }
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             if sectionIndex == 0 {
@@ -425,36 +378,18 @@ extension DetailContent {
         }
     }
 
-    /// Read the offloaded file at `off.path` lazily and surface its
-    /// full bytes in the detail tab. Falls back to a localized error
-    /// message + the wrapper's preview (when available) if the file
-    /// can't be read.
-    ///
-    /// **KNOWN LIMITATION (audited 2026-06-07):** `String(contentsOf:encoding:)`
-    /// is synchronous. The corpus contains files up to ~1.2MB which is
-    /// fast on modern hardware (a few ms) but can perceptibly jank the
-    /// UI for very large outputs. Migrating to an async resolver would
-    /// cascade through every `DetailContent.resolve(...)` caller; for
-    /// now the read stays sync. Bounded by the offload size cap CC
-    /// uses and the user's click rate (low frequency). Track in
-    /// `MIGRATION_PLAN.md` §16 for a future async-resolver pass.
+    /// Build a `DetailContent` for an offloaded `<persisted-output>`
+    /// tool result. Carries `existingFilePath: off.path`; the host
+    /// opens that file directly via `openFileInPanel` (cmux's panel
+    /// pipeline reads the bytes itself). The package never decodes
+    /// the file — replaces the prior sync `String(contentsOf:)`
+    /// read on `@MainActor` (HI #2 resolved by avoidance, not
+    /// async).
     private static func resolveOffloadedOutput(
         _ off: OffloadedOutput,
         tool: ToolEntry,
         timestamp: String
     ) -> DetailContent {
-        let url = URL(fileURLWithPath: off.path)
-        let body: String
-        do {
-            body = try String(contentsOf: url, encoding: .utf8)
-        } catch {
-            let template = localized(
-                "agentXray.detail.offloadedOutput.readError",
-                defaultValue: "Failed to read offloaded result at %1$@: %2$@"
-            )
-            let summary = String(format: template, off.path, "\(error.localizedDescription)")
-            body = off.preview.map { "\(summary)\n\nPreview from transcript:\n\($0)" } ?? summary
-        }
         return DetailContent(
             title: localized(
                 "agentXray.detail.title.toolResult",
@@ -464,10 +399,11 @@ extension DetailContent {
                 "agentXray.detail.subtitle.offloadedOutput",
                 defaultValue: "from \(timestamp) · offloaded \(off.sizeLabel)"
             ),
-            body: body,
+            body: "",
             sourceEntryID: tool.id.stableString,
             icon: EntryIcon.tool(named: tool.toolName),
-            accent: tool.status == .error ? .red : .primary
+            accent: tool.status == .error ? .red : .primary,
+            existingFilePath: off.path
         )
     }
 

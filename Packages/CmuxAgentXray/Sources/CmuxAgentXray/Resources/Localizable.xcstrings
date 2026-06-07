@@ -12,17 +12,6 @@
         }
       }
     },
-    "agentXray.detail.offloadedOutput.readError" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Failed to read offloaded result at %1$@: %2$@"
-          }
-        }
-      }
-    },
     "agentXray.detail.subtitle.offloadedOutput" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -217,17 +206,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tool result · %@"
-          }
-        }
-      }
-    },
-    "agentXray.detail.title.userImage" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "User-pasted image"
           }
         }
       }
