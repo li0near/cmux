@@ -12,6 +12,17 @@
         }
       }
     },
+    "agentXray.detail.openedExternally" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This content opened in a separate panel."
+          }
+        }
+      }
+    },
     "agentXray.detail.subtitle.offloadedOutput" : {
       "extractionState" : "manual",
       "localizations" : {

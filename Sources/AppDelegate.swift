@@ -1224,12 +1224,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         )
         AppIconLaunchState.markDidFinishLaunching()
         AppearanceSettingsUserDefaultsObserver.shared.startObserving()
-        // Purge AgentX-ray detail-tab image cache from the prior
+        // Purge AgentX-ray detail-tab file cache from the prior
         // session. Cache lives under
-        // NSTemporaryDirectory()/cmux-agentxray-images/<workspaceID>/;
-        // each workspace re-materializes its images on demand.
+        // NSTemporaryDirectory()/cmux-agentxray-files/<workspaceID>/;
+        // each workspace re-materializes its files on demand.
         if #available(macOS 15, *) {
-            AgentXrayDetailImageCache.purgeAll()
+            AgentXrayDetailFileCache.purgeAll()
         }
         if isRunningUnderXCTest {
             NSApp.setActivationPolicy(.regular)

@@ -424,22 +424,18 @@ public struct TranscriptView: View {
 
     // MARK: - Detail view (frozen)
 
-    /// Detail-mode rendering. Three branches by content shape:
-    /// - ``DetailContent/entries`` non-nil (abandoned-branch or
-    ///   sub-agent transcript) — render an entries list using the
-    ///   same `EntryView` dispatcher used for live transcripts (in
-    ///   `.fullDetail` mode). Stays in-package; the next-phase
-    ///   transcript renderer will iterate here.
-    /// - ``DetailContent/imageSource`` non-nil — defer to the
-    ///   host's image preview (typically `QLPreviewView` from
-    ///   `QuickLookUI`).
-    /// - Otherwise — defer to the host's text content view
-    ///   (typically the cmux markdown WebView with fenced-block
-    ///   coercion driving highlight.js for code/diff/json).
+    /// Detail-mode rendering. Phase E redirects every non-transcript
+    /// detail click through cmux's panel-open pipeline before reaching
+    /// the package's `.detail` mode at all (see
+    /// `AgentXrayWorkspaceHost.openDetailTab` routing). This view is
+    /// therefore reachable only for `.transcript` content
+    /// (sub-agent / abandoned-branch transcripts) — structured Entry
+    /// arrays that don't fit cmux's file-driven panel system.
+    /// Anything else hitting `.detail` mode is a defensive fallback
+    /// path that surfaces a localized "opened externally" placeholder.
     private func detailView(content: DetailContent) -> some View {
         let palette = HudPalette(foreground: appearance.foregroundColor)
         let accent = palette.color(for: content.accent)
-        let host = panel.host
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: Theme.Spacing.rowIconText) {
                 Image(systemName: content.icon.collapsed)
@@ -460,8 +456,17 @@ public struct TranscriptView: View {
             if let entries = content.entries, !entries.isEmpty {
                 detailEntriesList(entries: entries, palette: palette)
             } else {
-                host.detailBodyView(content: content)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Text(
+                    String(
+                        localized: "agentXray.detail.openedExternally",
+                        defaultValue: "This content opened in a separate panel.",
+                        bundle: .module
+                    )
+                )
+                .font(Theme.DetailPanel.body)
+                .foregroundStyle(palette.dim)
+                .padding(Theme.Padding.expandedBodyBlock)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         .padding(.horizontal, 16)

@@ -135,13 +135,13 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
             NotificationCenter.default.removeObserver(scrollbarObserverToken)
         }
         pendingRetryWorkItem?.cancel()
-        // Clear AgentX-ray detail-tab image cache for this workspace
-        // (rendered base64 → temp file materializations). Per-launch
-        // root purge runs in AppDelegate.applicationDidFinishLaunching;
-        // this catches the workspace-close case so users don't see
-        // leftover thumbnails when a workspace tears down without
-        // restarting the app.
-        AgentXrayDetailImageCache.clear(workspaceID: workspaceUUID)
+        // Clear AgentX-ray detail-tab file cache for this workspace
+        // (rendered text + base64 → temp file materializations).
+        // Per-launch root purge runs in
+        // AppDelegate.applicationDidFinishLaunching; this catches the
+        // workspace-close case so users don't see leftover files
+        // when a workspace tears down without restarting the app.
+        AgentXrayDetailFileCache.clear(workspaceID: workspaceUUID)
         // storeWatcher.stopWatching is implicitly handled when the
         // store is deallocated.
     }
