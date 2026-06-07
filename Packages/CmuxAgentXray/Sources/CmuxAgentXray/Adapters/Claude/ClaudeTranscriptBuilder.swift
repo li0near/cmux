@@ -615,9 +615,12 @@ struct ClaudeTranscriptBuilder {
                 }
             }
 
-            let bodySections: [Section] = subEntries.isEmpty
-                ? []
-                : [.subentries(subEntries.map(Self.subEntryToTopLevel))]
+            // AgentEntry's body is intentionally empty: the renderer
+            // walks `subEntries` directly via `AgentEntryView` (which
+            // bypasses the generic `EntryBodyView` / `EntryComputedCache`
+            // dispatch entirely). The earlier body.sections mirror via
+            // `subEntryToTopLevel` was dead computation — the cache
+            // signature it contributed to was never read for AgentEntry.
             let agentLabel = ClaudeTranscriptBuilder.loc("agentXray.entry.agent.label.claude", "Claude")
             var trailing: [TrailingItem] = []
             let totalTokens = pending.usage.inputTokens
@@ -637,7 +640,7 @@ struct ClaudeTranscriptBuilder {
                     trailing: trailing,
                     timeMarker: .clock(pending.startTime)
                 ),
-                body: Body(sections: bodySections),
+                body: Body(sections: []),
                 usage: pending.usage,
                 stopReason: pending.stopReason,
                 perTurnDurationMs: stamp?.durationMs,
@@ -647,34 +650,6 @@ struct ClaudeTranscriptBuilder {
                 subEntries: subEntries
             )))
             pendingTurn = nil
-        }
-
-        /// Project a turn's `SubEntry` to a top-level `Entry` for the
-        /// body's `.subentries(...)` mirror. Only the renderer's own
-        /// per-turn subview consumes this; AgentEntry.subEntries is the
-        /// structurally-typed source of truth.
-        static func subEntryToTopLevel(_ s: AgentEntry.SubEntry) -> Entry {
-            // SubEntry types aren't top-level Entry cases, so we wrap
-            // them into a SystemEntry with subType: .other for the
-            // body's recursive [.subentries(...)] mirror. The renderer
-            // resolves them via AgentEntry.subEntries; this projection
-            // is only present so Body.sections is uniform across all
-            // entries.
-            switch s {
-            case .text(let t):
-                let kindLabel = t.kind == .thinking ? "thinking" : "assistantText"
-                return .system(SystemEntry(
-                    id: t.id,
-                    header: t.header, body: t.body,
-                    subType: .other(kindLabel)
-                ))
-            case .tool(let t):
-                return .system(SystemEntry(
-                    id: t.id,
-                    header: t.header, body: t.body,
-                    subType: .other("tool")
-                ))
-            }
         }
 
         mutating func collectSidechainLine(_ line: ClaudeJSONLLine) {
