@@ -336,12 +336,16 @@ extension DetailContent {
         sectionIndex: Int,
         timestamp: String
     ) -> DetailContent? {
-        // Sub-agent transcript opens — sectionIndex 2 (or 1 when the
-        // tool also has a result section) addresses the trailing
-        // `.subentries` section in `body.sections`.
-        if sectionIndex == 2 || (sectionIndex == 1 && tool.body.sections.count >= 3) {
-            guard let transcript = tool.sidechainTranscript,
-                  !transcript.isEmpty else { return nil }
+        guard sectionIndex >= 0,
+              sectionIndex < tool.body.sections.count else { return nil }
+        let section = tool.body.sections[sectionIndex]
+
+        // Sub-agent transcript opens — discriminate by section shape,
+        // not by index. Tools with a sub-agent transcript carry the
+        // entries in a trailing `.subentries(...)` section regardless
+        // of how many input / result sections precede it.
+        if case .subentries(let nested) = section {
+            guard !nested.isEmpty else { return nil }
             return DetailContent(
                 title: localized(
                     "agentXray.detail.title.subagentTranscript",
@@ -349,21 +353,17 @@ extension DetailContent {
                 ),
                 subtitle: localized(
                     "agentXray.detail.subtitle.subagentTranscript",
-                    defaultValue: "from \(timestamp) · \(transcript.count) entries"
+                    defaultValue: "from \(timestamp) · \(nested.count) entries"
                 ),
                 sourceEntryID: tool.id.stableString,
                 icon: EntryIcon.tool(named: "Task"),
                 accent: .primary,
                 source: .transcript(
                     sourceEntryID: tool.id.stableString,
-                    entries: transcript
+                    entries: nested
                 )
             )
         }
-        // Section-shape branches.
-        guard sectionIndex >= 0,
-              sectionIndex < tool.body.sections.count else { return nil }
-        let section = tool.body.sections[sectionIndex]
 
         // Offloaded `<persisted-output>` — host opens the on-disk
         // file directly via `openFileInPanel`.
