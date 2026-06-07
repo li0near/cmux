@@ -1,25 +1,20 @@
-# AgentX-ray — pending work handover (2026-06-08, post-Phase-D-rev)
+# AgentX-ray — pending work handover (2026-06-08, post-Phase-E)
 
-This doc replaces the prior 2026-06-07 handover (which queued four
-hand-rolled rich renderers — JSON / Diff / Markdown / Code — as Phase
-D follow-ups). That queue is **fully retired**: Phase D-rev landed the
-detail-tab rich rendering by delegating to cmux-native surfaces
-(commits `4006c9a1f` … `bb4a9c524`, MIGRATION_PLAN.md §14 row 19s).
-At HEAD `bb4a9c524`, clicking a detail tab renders markdown / code /
-diff / json / plain text via cmux's bundled `MarkdownWebRenderer`
-(marked.js + highlight.js) and inline-base64 images via Apple's
-`QLPreviewView` (`QuickLookUI`) with native zoom + pan + spacebar
-QuickLook.
-
-Active queue below is short — only the audit-deferred items that
-weren't part of Phase D-rev.
+This doc replaces the prior 2026-06-08 handover (which queued
+HI #2 + M2 + FU 1 + FU 2 as small deferrals on top of Phase D-rev).
+**That entire queue is retired** — Phase E (commits `b2a14e895` …
+`87a5ac1d1`, MIGRATION_PLAN.md §14 row 19t) made all four moot by
+redirecting detail-tab opens through cmux's existing
+`Workspace.openFileSurfaces` panel pipeline. Users now get full
+cmux panel chrome (font / copy / edit / "Open in…" / image zoom)
+on every detail tab for free.
 
 ## Verify baseline before starting
 
 ```bash
 cd /Users/<user>/temp/github/cmux-agentxray
-git log -1 --oneline                              # → bb4a9c524 (or later)
-swift test --package-path Packages/CmuxAgentXray  # → 114 tests / 18 suites green
+git log -1 --oneline                              # → 87a5ac1d1 (or later)
+swift test --package-path Packages/CmuxAgentXray  # → 110 tests / 17 suites green
 ```
 
 For UI verification:
@@ -30,95 +25,60 @@ CMUX_ZIG=/opt/homebrew/opt/zig@0.15/bin/zig \
 ./scripts/reload.sh --tag agentxray --launch
 ```
 
----
-
-## Audit deferred items
-
-These came out of the post-Phase-A–E independent audit pass and
-weren't trimmable in the cleanup commits.
-
-### HI #2 — Async resolver for `resolveOffloadedOutput`
-
-**File**: `Panel/DetailContent.swift:resolveOffloadedOutput(_:tool:timestamp:)`.
-
-The Phase C file-read uses synchronous `String(contentsOf:encoding:)`
-on the `@MainActor`. Corpus contains files up to ~1.2 MB — bounded
-but perceptibly janky on slow disks or very large outputs.
-
-Migrating requires making `DetailContent.resolve(...)` async and
-cascading through every caller (`AgentXrayPanel.openDetail`,
-`TranscriptView.detailView`). A wider resolver-pipeline async
-refactor.
-
-Tracked in `MIGRATION_PLAN.md` §16.O. Not blocking — file reads stay
-under main-thread budget for the corpus's median size.
-
-### S3 — System / compact entries silently drop images
-
-**Files**: `ClaudeTranscriptBuilder.swift`'s `buildSystemEntry` and
-`buildCompactEntry`.
-
-After commit 3 of the cleanup pass, these use `allText()` from the
-Wire layer for text projection. Image blocks aren't projected (system
-and compact paths return a `String`, not `[Section]`).
-
-Corpus has 0 hits today for system/compact entries with images, so
-silent drop is fine. If a future corpus shows them, lift these two
-builders to `[Section]` emission via a sibling parser
-(structurally similar to `UserContentParser`).
-
-### M2 — `DetailContentOffloadedOutputTests` resolver-arm test
-
-The Phase C resolver's file-read arm (`resolveOffloadedOutput`) is
-covered indirectly via integration but has no dedicated test file.
-Fast to add: temp-file fixture for the success path, deleted-file
-fixture for the error fallback path.
-
-Files: new `Tests/CmuxAgentXrayTests/Panel/DetailContentOffloadedOutputTests.swift`.
-
-Cost: trivial. Should land alongside HI #2's async-resolver migration.
+Click `↗ Open detail` on each row content shape and confirm the
+right cmux panel opens:
+- markdown / code / diff / json / plain text → cmux
+  `MarkdownPanel` or `FilePreviewPanel` (extension-driven dispatch)
+- image (user paste or Playwright screenshot) → `FilePreviewPanel`
+  with native zoom / pan / rotate
+- offloaded outputs → cmux opens the on-disk file directly
+- sub-agent / abandoned-branch transcript → AgentX-ray detail mode
+  (in-package rendering, unchanged)
 
 ---
 
-## Phase D-rev follow-ups (small, optional)
+## Pending work queue (small)
 
-The detail-tab delegation strategy left two minor hooks that the
-next session may want to wire when they become user-visible:
+### D-rev FU 3 — Richer transcript renderer
 
-### Language detection from `file_path` extension
+The only `.transcript`-shaped detail content (sub-agent + abandoned
+branches) still renders in-package via `TranscriptView.detailEntriesList`
++ the `EntryView` dispatcher. Functional and intentional — those
+are structured Entry arrays, not file-shaped. A future phase may
+add navigation chrome (sticky turn header, per-turn stats,
+search-in-transcript, fold-to-headers, diff-vs-parent for
+abandoned branches). Scope decisions deferred until the user is
+ready to design that phase.
 
-Read / Edit.new_string / Write.content tool-result text is currently
-classified `.plainText` despite the surrounding tool input carrying a
-known `file_path`. After detection, those would land as
-`.code(language: ext)` and the host's MarkdownWebRenderer wrapper
-fences them with the right highlight.js language hint instead of the
-no-language fallback. Verified worthwhile in the corpus survey: ~36%
-of tool-results would gain syntax highlighting (525 Read + 342
-Edit.new_string + 36 Write.content out of 2353 results sampled).
+### Screenshot vs Image discrimination (small)
 
-Edits go in `Panel/DetailContentShapeSniffer.swift` — extend the
-classifier to take an optional `tool: ToolEntry?` so it can read
-sibling input. New tests for the extension → language mapping.
+Inline label is universally "Image" today. Discriminating
+"Screenshot" specifically (for tool-result images from
+`browser_take_screenshot`-shaped tools) needs the tool name
+threaded into `ToolResultParser`. Small follow-up if it becomes
+user-visible. Not blocking.
 
-### `FileExternalOpenMenu` accessory wiring
+### Pane placement fine-tuning
 
-The host protocol seam `detailExternalOpenAccessory(for:)` returns
-`nil` today. Wires up alongside the language-detection PR — when a
-detail tab is backed by a real on-disk path (e.g. Read of
-`/foo/bar.swift`), the host returns `FileExternalOpenMenu(fileURL:)`
-which gives users "Open in Xcode / VS Code / Preview / …" identical
-to cmux's terminal-URL-click flow.
+Phase E uses cmux's default placement (focused pane, no focus
+steal — `activate: false` on `openFileInPanel`). If users want a
+specific behavior — sibling-pane open, dedicated detail
+workspace, etc. — a one-line change in
+`AgentXrayWorkspaceHost.openFileInPanel` (or the
+`openDetailTabRouting` call sites) tunes the parameters.
 
-### Transcript renderer (next big phase, deferred from Phase D-rev)
+### Audit deferred items
 
-`.transcript` content (sub-agent transcripts, abandoned-branch
-links) still renders in-package via `TranscriptView.detailEntriesList`
-and the `EntryView` dispatcher — same code that powers the live
-panel. That's intentional: per the Phase D-rev scope, the transcript
-case is the only `ContentType` that stays in-package for now.
-Future phase can promote this to a richer surface if desired
-(e.g. timeline view, collapsible turns) but the current shape is
-production-ready.
+- **S3** — system / compact entries silently drop images. Builder
+  side; corpus has 0 hits today, deferred. Files:
+  `ClaudeTranscriptBuilder.buildSystemEntry` and `buildCompactEntry`.
+
+### `AgentXrayPanel.detail` mode survives but is shrunk
+
+Used only for transcript content now. A future phase may decide
+whether the detail mode itself is still warranted given that
+transcripts could become a separate cmux panel kind. Out of scope
+for now.
 
 ---
 
@@ -127,10 +87,10 @@ production-ready.
 | Doc | Role |
 |---|---|
 | `README.md` | Package overview, vocabulary, layer map, host integration. |
-| `MIGRATION_PLAN.md` | Per-phase commit ledger (§14 rows 19a–19s), bug-fix ledger (§15), deferred-by-policy items (§16), origin cross-reference (§18). |
+| `MIGRATION_PLAN.md` | Per-phase commit ledger (§14 rows 19a–19t), bug-fix ledger (§15), deferred-by-policy items (§16), origin cross-reference (§18). |
 | `docs/claude-jsonl-mapping.md` | How Claude JSONL maps to entries (§11 has the canonical block-type table). |
 | `docs/session-attach.md` | Session-attach resolver flow (paths 1/2/3, SSH, RemoteSessionStore). |
-| `docs/next-session-handover.md` | **(this doc)** Pending work queue — audit deferrals + Phase D-rev follow-ups. |
+| `docs/next-session-handover.md` | **(this doc)** Pending work queue — transcript renderer, screenshot discrimination, pane placement, S3. |
 
 If any doc disagrees with the code, the code wins — fix the doc in
 the same change.

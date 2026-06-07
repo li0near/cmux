@@ -137,13 +137,21 @@ from 1441 → 1050 LOC. See `MIGRATION_PLAN.md` §14 rows 19j–19r. The
 2026-06-08 Phase D-rev pass migrated detail-tab rich rendering from
 in-package stubs to cmux-native surfaces (cmux's `MarkdownWebRenderer`
 + Apple's `QLPreviewView`, zero new dependencies). See §14 row 19s.
+The 2026-06-08 Phase E redesign **superseded Phase D-rev's embed
+approach** — detail-tab opens now redirect through cmux's existing
+panel-open pipeline (`Workspace.openFileSurfaces`), giving users
+full panel chrome for free. See §14 row 19t.
 
 **Active queue** (`docs/next-session-handover.md`):
-1. **Audit deferrals** — HI #2 (async `resolveOffloadedOutput`), S3
-   (system/compact image drop), M2 (offloaded-output resolver test).
-2. **Phase D-rev follow-ups** — language-detection-from-`file_path`
-   wiring, `FileExternalOpenMenu` accessory, future transcript
-   renderer.
+1. **Richer transcript renderer (FU 3)** — sticky header, search,
+   fold, diff-vs-parent. Sub-agent / abandoned-branch transcripts
+   stay in-package; future enhancement.
+2. **Screenshot vs Image discrimination** — small follow-up if
+   it becomes user-visible.
+3. **Pane placement fine-tuning** — single-parameter change if
+   default placement isn't what users expect.
+4. **Audit deferral S3** — system/compact image drop (corpus
+   has 0 hits today).
 
 **Deferred-by-policy items** still tracked in `MIGRATION_PLAN.md` §16:
 - B. Inline sub-agent transcript rendering (future UX evolution)
