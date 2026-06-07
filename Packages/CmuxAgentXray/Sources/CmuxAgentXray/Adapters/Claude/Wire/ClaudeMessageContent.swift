@@ -19,6 +19,9 @@ enum ClaudeMessageContent: Decodable, Equatable {
 
     /// String content of this message: the wrapped string for `.text`,
     /// the first text-block's payload for `.blocks` (else empty).
+    /// Used as a probe for prefix sniffs (slash-command detection,
+    /// classifier dispatch). For the full text projection across all
+    /// blocks, use ``allText()``.
     func firstText() -> String {
         switch self {
         case .text(let s): return s
@@ -27,6 +30,19 @@ enum ClaudeMessageContent: Decodable, Equatable {
                 if let t = block.text { return t }
             }
             return ""
+        }
+    }
+
+    /// Concatenated text across every block exposing a `text` field
+    /// (text + thinking blocks), joined by `\n`. Returns the wrapped
+    /// string verbatim for `.text`. Used by system/compact builders
+    /// where the body is rendered verbatim and non-text blocks aren't
+    /// expected.
+    func allText() -> String {
+        switch self {
+        case .text(let s): return s
+        case .blocks(let blocks):
+            return blocks.compactMap(\.text).joined(separator: "\n")
         }
     }
 }

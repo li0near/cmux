@@ -206,7 +206,7 @@ struct ClaudeTranscriptBuilder {
     ) {
         let id = line.stableId
         let ts = line.timestamp ?? .distantPast
-        let body = extractMetaText(line)
+        let body = line.metaBody
 
         switch kind {
         case .recap:
@@ -300,7 +300,7 @@ struct ClaudeTranscriptBuilder {
                 subType: .systemReminder
             ))
         case .queuedPrompt:
-            let text = Self.joinText(from: line.attachment?.prompt)
+            let text = (line.attachment?.prompt?.firstText() ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if text.isEmpty { return }
             ctx.entries.append(.user(makeUserEntry(
@@ -355,13 +355,6 @@ struct ClaudeTranscriptBuilder {
         default:
             return (.entered, loc("agentXray.entry.planMode.entered", "Plan mode entered"))
         }
-    }
-
-    private func extractMetaText(_ line: ClaudeJSONLLine) -> String {
-        if let body = line.content, !body.isEmpty {
-            return body
-        }
-        return line.message?.content?.firstText() ?? ""
     }
 
     // MARK: - User / System / Compact / pending-prompt builders
@@ -437,10 +430,10 @@ struct ClaudeTranscriptBuilder {
     private func buildUserEntry(from line: ClaudeJSONLLine, ctx: BuildContext) -> UserEntry? {
         guard line.message?.content != nil else { return nil }
         let sections = UserContentParser.parse(from: line.message?.content)
-        // Slash-command detection runs against the **text** projection of
-        // the sections — a slash-command line never carries images, so
-        // checking the text-only joined string is correct.
-        let rawText = Self.joinText(from: line.message?.content)
+        // Slash-command detection runs against the **first text block** —
+        // a slash-command line never carries multiple text blocks, so
+        // `firstText()` is the canonical probe.
+        let rawText = (line.message?.content?.firstText() ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let isSlash = rawText.hasPrefix("<command-message>")
             || rawText.hasPrefix("<command-name>")
@@ -470,8 +463,8 @@ struct ClaudeTranscriptBuilder {
         let raw: String
         if line.type == "system", let body = line.content, !body.isEmpty {
             raw = body
-        } else if line.message?.content != nil {
-            raw = Self.joinText(from: line.message?.content, filterTextBlocksOnly: false)
+        } else if let content = line.message?.content {
+            raw = content.allText()
         } else {
             return nil
         }
@@ -491,7 +484,7 @@ struct ClaudeTranscriptBuilder {
             summary = body.trimmingCharacters(in: .whitespacesAndNewlines)
         } else {
             summary = line.summary
-                ?? Self.joinText(from: line.message?.content, filterTextBlocksOnly: false)
+                ?? (line.message?.content?.allText() ?? "")
         }
         return CompactEntry(
             id: .fromJSONL(line.stableId),
@@ -1097,36 +1090,6 @@ struct ClaudeTranscriptBuilder {
             }
         }
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// Walk a `ClaudeMessageContent` and join its text payload into one
-    /// string. The shape varies across call sites:
-    ///
-    /// - `filterTextBlocksOnly: true` (default) drops every block whose
-    ///   `type` isn't `"text"` — used when blocks may contain `image` or
-    ///   `tool_result` payloads that shouldn't contribute to the joined
-    ///   string (user messages, queued prompt attachments).
-    /// - `filterTextBlocksOnly: false` keeps any block exposing a `text`
-    ///   field — used for compact summaries and system content where
-    ///   non-text blocks aren't expected.
-    ///
-    /// Returns "" when content is nil. The five legacy in-builder
-    /// extractors collapsed onto this one helper.
-    private static func joinText(
-        from content: ClaudeMessageContent?,
-        filterTextBlocksOnly: Bool = true
-    ) -> String {
-        guard let content else { return "" }
-        switch content {
-        case .text(let s): return s
-        case .blocks(let blocks):
-            if filterTextBlocksOnly {
-                return blocks
-                    .compactMap { $0.type == "text" ? $0.text : nil }
-                    .joined(separator: "\n")
-            }
-            return blocks.compactMap(\.text).joined(separator: "\n")
-        }
     }
 
     /// Hard length cap with `…` ellipsis. Used by ``buildSystemEntry``

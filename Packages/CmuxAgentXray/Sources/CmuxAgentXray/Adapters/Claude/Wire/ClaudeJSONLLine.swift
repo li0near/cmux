@@ -179,4 +179,15 @@ struct ClaudeJSONLLine: Decodable {
             return false
         }
     }
+
+    /// Render-shape body for `isMeta`-flavored user lines and other
+    /// special-kind emit paths. Reads `line.content` when present and
+    /// non-empty; falls back to the first text block of
+    /// `message.content`. Used as the input to wrapper-tag extraction
+    /// (e.g. ``ClaudeContentDetector/classify(_:)``) when a line's
+    /// renderable text isn't already available.
+    var metaBody: String {
+        if let body = content, !body.isEmpty { return body }
+        return message?.content?.firstText() ?? ""
+    }
 }
