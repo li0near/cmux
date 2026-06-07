@@ -1269,7 +1269,7 @@ struct ClaudeTranscriptBuilder {
         logger: any AgentXrayLogger = NoOpAgentXrayLogger()
     ) -> [Section] {
         let raw = rawSections(value, isError: isError, logger: logger)
-        return promotePersistedOutput(raw)
+        return OffloadedOutputParser.promote(raw)
     }
 
     /// Per-block emission without the `<persisted-output>` post-pass.
@@ -1295,84 +1295,6 @@ struct ClaudeTranscriptBuilder {
             // representation rather than dropping the block entirely.
             return [.text([value.displayString], style: textStyle)]
         }
-    }
-
-    /// Walk every `.text` section; if its content is a Claude Code
-    /// `<persisted-output>` wrapper, replace it with `.offloadedOutput`.
-    /// Non-text sections pass through unchanged.
-    ///
-    /// Robust to truncated tails — ~21 of 252 corpus occurrences
-    /// 2026-06-07 omit the `</persisted-output>` close tag. Detection
-    /// only requires the open tag + the canonical "Output too large"
-    /// line.
-    private static func promotePersistedOutput(_ sections: [Section]) -> [Section] {
-        sections.map { section in
-            if case .text(let blocks, let style) = section {
-                let joined = blocks.joined(separator: "\n")
-                if let off = parsePersistedOutput(joined) {
-                    return .offloadedOutput(off)
-                }
-                return .text(blocks, style: style)
-            }
-            return section
-        }
-    }
-
-    /// Parse a `<persisted-output>...</persisted-output>` wrapper.
-    /// Returns nil when:
-    ///  - the open tag is absent, OR
-    ///  - the canonical `"Output too large (<size>). Full output saved
-    ///    to: <path>"` line cannot be found / extracted.
-    ///
-    /// The close tag is optional (truncated-tail tolerance).
-    static func parsePersistedOutput(_ text: String) -> OffloadedOutput? {
-        guard text.contains("<persisted-output>") else { return nil }
-        guard let (sizeLabel, path) = extractPersistedSizeAndPath(text) else {
-            return nil
-        }
-        let preview = extractPersistedPreview(text)
-        return OffloadedOutput(path: path, sizeLabel: sizeLabel, preview: preview)
-    }
-
-    /// Match the `Output too large (<size>). Full output saved to: <path>`
-    /// line. Size is `<digits>(.<digits>)?(KB|MB)`; path ends in `.txt`
-    /// or `.json`. Both flavors are corpus-validated.
-    private static func extractPersistedSizeAndPath(_ text: String) -> (size: String, path: String)? {
-        guard let regex = persistedOutputRegex else { return nil }
-        let range = NSRange(text.startIndex..., in: text)
-        guard let match = regex.firstMatch(in: text, range: range),
-              match.numberOfRanges >= 3,
-              let sizeRange = Range(match.range(at: 1), in: text),
-              let pathRange = Range(match.range(at: 2), in: text) else {
-            return nil
-        }
-        return (String(text[sizeRange]), String(text[pathRange]))
-    }
-
-    /// Compiled-once regex for the canonical persisted-output line.
-    /// Validated against 252 corpus occurrences 2026-06-07; format is
-    /// invariant across CC versions in the corpus.
-    private static let persistedOutputRegex: NSRegularExpression? = {
-        // Anchored to a line: ^Output too large \(<size>\)\. Full output saved to: <path>$
-        // Size: digits, optional decimal, KB or MB.
-        // Path: non-whitespace ending in .txt or .json.
-        try? NSRegularExpression(
-            pattern: #"^Output too large \(([0-9]+(?:\.[0-9]+)?(?:KB|MB))\)\. Full output saved to: (\S+?\.(?:txt|json))$"#,
-            options: [.anchorsMatchLines]
-        )
-    }()
-
-    /// Extract the inline preview (first ~2KB CC inlines after the
-    /// path line). Returns nil when the wrapper truncated before the
-    /// preview header (rare).
-    private static func extractPersistedPreview(_ text: String) -> String? {
-        guard let headerRange = text.range(of: "Preview (first 2KB):") else { return nil }
-        var preview = String(text[headerRange.upperBound...])
-        if let closeRange = preview.range(of: "</persisted-output>") {
-            preview = String(preview[..<closeRange.lowerBound])
-        }
-        let trimmed = preview.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Map a single `tool_result.content[]` block (must be a JSON
