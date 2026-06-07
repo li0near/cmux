@@ -38,6 +38,17 @@ public struct DetailContent: Equatable, Sendable {
     /// entries using the standard `EntryView` instead of the plain
     /// `body` text.
     public let entries: [Entry]?
+    /// Image content carrier for image-bearing detail tabs. Non-nil
+    /// only when the source section is `.image(ImageSource)` (user-
+    /// pasted screenshot or a tool result that returned an image).
+    /// When set, `body` is empty and the detail view routes to the
+    /// host's `detailImageView(...)` instead of `detailBodyView(...)`.
+    public let imageSource: ImageSource?
+    /// Section index that produced ``imageSource``, used by the host
+    /// adapter to deduplicate the temp-file path across detail-tab
+    /// re-opens of the same image. Required whenever
+    /// ``imageSource`` is non-nil.
+    public let imageSectionIndex: Int?
 
     public init(
         title: String,
@@ -47,7 +58,9 @@ public struct DetailContent: Equatable, Sendable {
         icon: EntryIcon,
         accent: PaletteRole,
         contentType: ContentType = .plainText,
-        entries: [Entry]? = nil
+        entries: [Entry]? = nil,
+        imageSource: ImageSource? = nil,
+        imageSectionIndex: Int? = nil
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -57,6 +70,8 @@ public struct DetailContent: Equatable, Sendable {
         self.accent = accent
         self.contentType = contentType
         self.entries = entries
+        self.imageSource = imageSource
+        self.imageSectionIndex = imageSectionIndex
     }
 }
 
@@ -109,6 +124,27 @@ extension DetailContent {
     ) -> DetailContent? {
         switch entry {
         case .user(let user):
+            // Image section click — the source body has a
+            // `.image(ImageSource)` at this index. The detail tab
+            // routes to the host's image renderer, so `body` is
+            // empty and the carrier fields drive the UI.
+            if sectionIndex >= 0,
+               sectionIndex < user.body.sections.count,
+               case .image(let img) = user.body.sections[sectionIndex] {
+                return DetailContent(
+                    title: localized(
+                        "agentXray.detail.title.userImage",
+                        defaultValue: "User-pasted image"
+                    ),
+                    subtitle: subtitleFromTimestamp(timestamp),
+                    body: "",
+                    sourceEntryID: user.id.stableString,
+                    icon: EntryIcon.user,
+                    accent: .blue,
+                    imageSource: img,
+                    imageSectionIndex: sectionIndex
+                )
+            }
             let body = user.body.textContent
             guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return DetailContent(
@@ -332,6 +368,26 @@ extension DetailContent {
                sectionIndex < tool.body.sections.count,
                case .offloadedOutput(let off) = tool.body.sections[sectionIndex] {
                 return resolveOffloadedOutput(off, tool: tool, timestamp: timestamp)
+            }
+            // `.image` section — tool returned an image
+            // (e.g. Playwright `browser_take_screenshot`). The
+            // detail tab routes to the host's image renderer.
+            if sectionIndex >= 0,
+               sectionIndex < tool.body.sections.count,
+               case .image(let img) = tool.body.sections[sectionIndex] {
+                return DetailContent(
+                    title: localized(
+                        "agentXray.detail.title.toolResult",
+                        defaultValue: "Tool result · \(tool.toolName)"
+                    ),
+                    subtitle: subtitleFromTimestamp(timestamp),
+                    body: "",
+                    sourceEntryID: tool.id.stableString,
+                    icon: EntryIcon.tool(named: tool.toolName),
+                    accent: tool.status == .error ? .red : .primary,
+                    imageSource: img,
+                    imageSectionIndex: sectionIndex
+                )
             }
             guard let text = sectionText(tool.body, index: sectionIndex) else { return nil }
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }

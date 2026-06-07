@@ -221,6 +221,17 @@
         }
       }
     },
+    "agentXray.detail.title.userImage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "User-pasted image"
+          }
+        }
+      }
+    },
     "agentXray.detail.title.userPrompt" : {
       "extractionState" : "manual",
       "localizations" : {
