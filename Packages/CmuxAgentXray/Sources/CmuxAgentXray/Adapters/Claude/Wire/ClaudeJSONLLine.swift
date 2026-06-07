@@ -63,7 +63,6 @@ struct ClaudeJSONLLine: Decodable {
 
     /// Sidechain / sub-agent wiring.
     let parentToolUseID: String?
-    let toolUseID: String?
 
     /// Newer `compact_boundary` flow.
     let compactMetadata: ClaudeCompactMetadata?
@@ -91,7 +90,7 @@ struct ClaudeJSONLLine: Decodable {
         case leafUuid, lastPrompt
         case prNumber, prUrl, prRepository
         case agentName, customTitle
-        case parentToolUseID, toolUseID
+        case parentToolUseID
         case compactMetadata, logicalParentUuid
         case attachment, operation
     }
@@ -125,7 +124,6 @@ struct ClaudeJSONLLine: Decodable {
         agentName: String? = nil,
         customTitle: String? = nil,
         parentToolUseID: String? = nil,
-        toolUseID: String? = nil,
         compactMetadata: ClaudeCompactMetadata? = nil,
         logicalParentUuid: String? = nil,
         attachment: ClaudeAttachment? = nil,
@@ -153,7 +151,6 @@ struct ClaudeJSONLLine: Decodable {
         self.agentName = agentName
         self.customTitle = customTitle
         self.parentToolUseID = parentToolUseID
-        self.toolUseID = toolUseID
         self.compactMetadata = compactMetadata
         self.logicalParentUuid = logicalParentUuid
         self.attachment = attachment

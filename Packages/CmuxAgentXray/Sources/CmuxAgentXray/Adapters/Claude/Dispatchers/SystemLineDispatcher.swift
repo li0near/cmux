@@ -62,12 +62,10 @@ enum SystemLineDispatcher {
                     activeBranchAvailable: activeBranchAvailable
                 )
             }
-        case "api_error", "stop_hook_summary", "informational":
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .render(.system),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+        // Generic system body — known subtypes (`api_error`,
+        // `stop_hook_summary`, `informational`) and any future
+        // subtype fall through here so the entry never silently
+        // disappears.
         default:
             return ClaudeLineDispatcher.branchGated(
                 line, kind: .render(.system),

@@ -1072,11 +1072,4 @@ struct ClaudeTranscriptBuilder {
         }
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-
-    /// Hard length cap with `…` ellipsis. Used by ``buildSystemEntry``
-    /// on the legacy `joinText` flatten path. Tool-input formatting now
-    /// lives in ``ToolInputParser/truncated(_:max:)``.
-    static func truncated(_ s: String, max: Int) -> String {
-        s.count <= max ? s : String(s.prefix(max - 1)) + "…"
-    }
 }
