@@ -13,6 +13,7 @@
 		D36A00030000000000000003 /* AgentHibernationLifecycleState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36A00030000000000000002 /* AgentHibernationLifecycleState.swift */; };
 		D36A00020000000000000001 /* AgentHibernationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36A00020000000000000002 /* AgentHibernationTests.swift */; };
 		D3610B010000000000000001 /* AgentSessionAutoResumeSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3610B010000000000000002 /* AgentSessionAutoResumeSettingsTests.swift */; };
+		AGNTRY080000000000000002 /* AgentXrayDetailRenderers.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGNTRY080000000000000001 /* AgentXrayDetailRenderers.swift */; };
 		AGNTRY010000000000000002 /* AgentXrayPanelAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGNTRY010000000000000001 /* AgentXrayPanelAdapter.swift */; };
 		AGNTRY020000000000000002 /* AgentXrayWorkspaceHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGNTRY020000000000000001 /* AgentXrayWorkspaceHost.swift */; };
 		F4350A110000000000000001 /* AppBundleIconPersistencePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4350A130000000000000001 /* AppBundleIconPersistencePolicy.swift */; };
@@ -721,6 +722,7 @@
 		D36A00030000000000000002 /* AgentHibernationLifecycleState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHibernation/AgentHibernationLifecycleState.swift; sourceTree = "<group>"; };
 		D36A00020000000000000002 /* AgentHibernationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHibernationTests.swift; sourceTree = "<group>"; };
 		D3610B010000000000000002 /* AgentSessionAutoResumeSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionAutoResumeSettingsTests.swift; sourceTree = "<group>"; };
+		AGNTRY080000000000000001 /* AgentXrayDetailRenderers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Panels/AgentXray/AgentXrayDetailRenderers.swift"; sourceTree = "<group>"; };
 		AGNTRY010000000000000001 /* AgentXrayPanelAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Panels/AgentXray/AgentXrayPanelAdapter.swift"; sourceTree = "<group>"; };
 		AGNTRY020000000000000001 /* AgentXrayWorkspaceHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Panels/AgentXray/AgentXrayWorkspaceHost.swift"; sourceTree = "<group>"; };
 		F4350A130000000000000001 /* AppBundleIconPersistencePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AppBundleIconPersistencePolicy.swift; sourceTree = "<group>"; };
@@ -1642,6 +1644,7 @@
 				C3744E020000000000000001 /* Workspace+PanelLifecycle.swift */,
 				AGNTRY010000000000000001 /* AgentXrayPanelAdapter.swift */,
 				AGNTRY020000000000000001 /* AgentXrayWorkspaceHost.swift */,
+				AGNTRY080000000000000001 /* AgentXrayDetailRenderers.swift */,
 				AGNTRY050000000000000001 /* Workspace+AgentXray.swift */,
 				AGNTRY060000000000000001 /* RemoteHomeResolver.swift */,
 				E30780000000000000000001 /* WorkspaceRemoteConfiguration.swift */,
@@ -2439,6 +2442,7 @@
 				C0DEF0C10000000000000001 /* AgentForkSupport.swift in Sources */,
 				D36A00010000000000000001 /* AgentHibernationController.swift in Sources */,
 				D36A00030000000000000001 /* AgentHibernationLifecycleState.swift in Sources */,
+					AGNTRY080000000000000002 /* AgentXrayDetailRenderers.swift in Sources */,
 					AGNTRY010000000000000002 /* AgentXrayPanelAdapter.swift in Sources */,
 					AGNTRY020000000000000002 /* AgentXrayWorkspaceHost.swift in Sources */,
 				F4350A110000000000000001 /* AppBundleIconPersistencePolicy.swift in Sources */,
