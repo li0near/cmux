@@ -222,12 +222,8 @@ public struct TranscriptView: View {
     @ViewBuilder
     private func synthesizedEntryRow(entry: SynthesizedEntry, palette: HudPalette) -> some View {
         switch entry.kind {
-        case .branchLink(let rootUUID, let rewindIndex, let totalRewinds, let entryCount, let firstPromptPreview):
+        case .branchLink(let rootUUID):
             BranchLinkEntryRow(
-                rewindIndex: rewindIndex,
-                totalRewinds: totalRewinds,
-                entryCount: entryCount,
-                firstPromptPreview: firstPromptPreview,
                 palette: palette,
                 onOpenDetail: {
                     panel.openDetail(request: .bodySection(targetID: rootUUID, sectionIndex: 0))
@@ -541,10 +537,6 @@ private struct EntryAnchorsKey: PreferenceKey {
 /// transcript opens in a sibling detail tab.
 @available(macOS 15, *)
 private struct BranchLinkEntryRow: View {
-    let rewindIndex: Int
-    let totalRewinds: Int
-    let entryCount: Int
-    let firstPromptPreview: String?
     let palette: HudPalette
     let onOpenDetail: () -> Void
 
@@ -572,14 +564,6 @@ private struct BranchLinkEntryRow: View {
                     .foregroundStyle(palette.dim)
                     .underline(true, color: palette.dim.opacity(Theme.Opacity.dim))
                     .lineLimit(1)
-                Text("·")
-                    .font(Theme.SubRow.title)
-                    .foregroundStyle(palette.dim.opacity(Theme.Opacity.detail))
-                Text(subtitleText)
-                    .font(Theme.SubRow.title)
-                    .foregroundStyle(palette.dim.opacity(Theme.Opacity.detail))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, Theme.Padding.horizontal)
@@ -594,20 +578,8 @@ private struct BranchLinkEntryRow: View {
     private var titleText: String {
         String(
             localized: "agentXray.entry.branchLink.title",
-            defaultValue: "Rewind \(rewindIndex) of \(totalRewinds)",
+            defaultValue: "Rewind",
             bundle: .module
         )
-    }
-
-    private var subtitleText: String {
-        let countText = String(
-            localized: "agentXray.entry.branchLink.subtitle.count",
-            defaultValue: "\(entryCount) entries",
-            bundle: .module
-        )
-        if let preview = firstPromptPreview, !preview.isEmpty {
-            return "\(countText) · \(preview)"
-        }
-        return countText
     }
 }

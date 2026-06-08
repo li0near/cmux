@@ -46,13 +46,12 @@ public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
         /// abandoned-branch transcript travels on the parent
         /// ``SynthesizedEntry/subEntries`` field; the renderer walks
         /// it like any other transcript.
-        case branchLink(
-            branchRootUuid: String,
-            rewindIndex: Int,
-            totalRewinds: Int,
-            entryCount: Int,
-            firstPromptPreview: String?
-        )
+        ///
+        /// `branchRootUuid` is the JSONL uuid of the *first* abandoned
+        /// entry — derives the link's own id (`.derived(parent: branchRootUuid,
+        /// kind: "branchLink")`), making it unique across multiple
+        /// rewinds to the same divergence point.
+        case branchLink(branchRootUuid: String)
         /// External PR link row. Carries the prNumber/url/repository so
         /// the renderer can format both title and external link target.
         case prLink(prNumber: Int, url: String, repository: String)

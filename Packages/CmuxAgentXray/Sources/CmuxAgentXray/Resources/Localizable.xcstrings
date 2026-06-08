@@ -40,7 +40,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$lld entries · diverged at %2$@"
+            "value" : "diverged at %@"
           }
         }
       }
@@ -106,7 +106,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abandoned branch — rewind %1$lld of %2$lld"
+            "value" : "Abandoned branch"
           }
         }
       }
@@ -265,35 +265,13 @@
         }
       }
     },
-    "agentXray.entry.branchLink.noPrompt" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(no prompt)"
-          }
-        }
-      }
-    },
-    "agentXray.entry.branchLink.subtitle" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$lld entries · %2$@"
-          }
-        }
-      }
-    },
     "agentXray.entry.branchLink.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rewind %1$lld of %2$lld"
+            "value" : "Rewind"
           }
         }
       }
@@ -580,17 +558,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stream error: %@"
-          }
-        }
-      }
-    },
-    "agentXray.entry.branchLink.subtitle.count" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld entries"
           }
         }
       }

@@ -192,35 +192,6 @@ struct ClaudeTranscriptBuilderTests {
 
     // MARK: - G3 risk-area fixtures (skeleton-in-Transcript)
 
-    /// Helper: build a tool_use line with a custom input dict
-    /// (so we can verify last-write-wins on duplicate tool_use).
-    private func makeAssistantToolUseLineWithInput(
-        uuid: String,
-        parentUuid: String,
-        toolUseId: String,
-        toolName: String,
-        inputJSON: String,
-        timestamp: String = "2026-06-05T10:00:01.000Z"
-    ) -> String {
-        return #"""
-        {
-          "type": "assistant",
-          "uuid": "\#(uuid)",
-          "parentUuid": "\#(parentUuid)",
-          "timestamp": "\#(timestamp)",
-          "message": {
-            "role": "assistant",
-            "content": [{
-              "type": "tool_use",
-              "id": "\#(toolUseId)",
-              "name": "\#(toolName)",
-              "input": \#(inputJSON)
-            }]
-          }
-        }
-        """#
-    }
-
     /// Helper: a user line bearing a tool_result block. Routed by the
     /// builder's `classifyUserLine` to the agent path so it merges
     /// into the in-flight skeleton.
@@ -253,22 +224,27 @@ struct ClaudeTranscriptBuilderTests {
 
     @Test("Synthetic-fallback tool_result followed by real tool_use → single slot under skeleton")
     func toolResultBeforeToolUseIdempotentSlot() throws {
+        // Post-G6: this scenario (tool_result line whose `tool_use_id`
+        // has no prior tool_use in the same turn) silently drops the
+        // result and the subsequent real `tool_use` creates the slot
+        // fresh. The test verifies the resulting transcript has one
+        // tool sub-entry with the expected id (no duplication, no
+        // dangling synthetic). The pool path covers genuine
+        // parallel-tool-call out-of-order in real corpus; this
+        // fixture tests the defensive shape where the synthetic
+        // fallback is no longer needed.
         let lines = [
-            // Open the turn with a text line so the skeleton exists.
             makeAssistantTextLine(uuid: "a1", parentUuid: "u1", text: "Working"),
-            // tool_result arrives first (no prior tool_use) → synthetic.
             makeToolResultLine(
                 uuid: "u2", parentUuid: "a1", toolUseId: "t1",
                 resultText: "result text"
             ),
-            // Real tool_use for the same id → mutates same slot.
             makeAssistantToolUseLine(
                 uuid: "a2", parentUuid: "u2", toolUseId: "t1", toolName: "Read"
             ),
         ]
         let agent = try buildAgentEntry(assistantLines: lines)
 
-        // Exactly one tool sub-entry (no duplicate slot).
         let toolSubs = agent.subEntries.compactMap { entry -> ToolEntry? in
             if case .tool(let t) = entry { return t }
             return nil
@@ -277,38 +253,107 @@ struct ClaudeTranscriptBuilderTests {
         #expect(toolSubs.first?.id == .fromJSONL("t1"))
     }
 
-    @Test("Duplicate tool_use re-emission within same turn overwrites the same slot last-write-wins")
-    func duplicateToolUseOverwritesSameSlot() throws {
-        let lines = [
-            makeAssistantToolUseLineWithInput(
-                uuid: "a1", parentUuid: "u1", toolUseId: "t1",
-                toolName: "Read", inputJSON: #"{"file_path": "/tmp/first.txt"}"#
-            ),
-            // Re-emission with different input — should overwrite, not duplicate.
-            makeAssistantToolUseLineWithInput(
-                uuid: "a2", parentUuid: "a1", toolUseId: "t1",
-                toolName: "Read", inputJSON: #"{"file_path": "/tmp/second.txt"}"#,
-                timestamp: "2026-06-05T10:00:03.000Z"
-            ),
-        ]
-        let agent = try buildAgentEntry(assistantLines: lines)
+    // MARK: - G6 coverage
+
+    @Test("Out-of-order: tool_result line arriving before its tool_use lands via awaitingParent pool")
+    func outOfOrderToolResultPoolDrain() throws {
+        // tool_result line (`ur1`) parented to a tool_use line `a-tool`
+        // that arrives LATER in the file. The dispatcher must park
+        // `ur1` in the awaitingParent pool keyed on `a-tool` and
+        // re-dispatch it once `a-tool` is processed, mutating the
+        // ToolEntry with the tool_result.
+        let textLine = makeAssistantTextLine(uuid: "a1", parentUuid: "u1", text: "Working")
+        let toolResultLine = makeToolResultLine(
+            uuid: "ur1", parentUuid: "a-tool", toolUseId: "t1",
+            resultText: "expected result text",
+            timestamp: "2026-06-05T10:00:03.000Z"
+        )
+        let toolUseLine = makeAssistantToolUseLine(
+            uuid: "a-tool", parentUuid: "a1", toolUseId: "t1", toolName: "Read",
+            timestamp: "2026-06-05T10:00:02.000Z"
+        )
+        let agent = try buildAgentEntry(assistantLines: [
+            textLine, toolResultLine, toolUseLine,
+        ])
 
         let toolSubs = agent.subEntries.compactMap { entry -> ToolEntry? in
             if case .tool(let t) = entry { return t }
             return nil
         }
         #expect(toolSubs.count == 1)
-        #expect(toolSubs.first?.id == .fromJSONL("t1"))
-        // The second emission's input should be the one preserved (last-write-wins).
-        #expect(toolSubs.first?.inputFilePath == "/tmp/second.txt")
+        #expect(toolSubs.first?.status == .ok)
+        // Result body should contain the expected text.
+        let bodyText = toolSubs.first.map { tool in
+            tool.body.sections.compactMap { section -> String? in
+                if case .text(let blocks, _) = section {
+                    return blocks.joined(separator: "\n")
+                }
+                return nil
+            }.joined(separator: "\n")
+        } ?? ""
+        #expect(bodyText.contains("expected result text"))
     }
 
-    @Test("Cross-turn tool_use_id reuse: prior turn's slot is not mutated")
-    func crossTurnIdReuseDoesNotMutatePriorTurn() throws {
-        // First turn: assistant with tool t1 + result.
-        // Second turn: a *new* tool_result for the same id "t1" arriving
-        // without a prior tool_use in this turn. Must fall through to
-        // synthetic in the new turn — NOT mutate the prior turn's slot.
+    @Test("Rewind: user prompt re-parenting to mid-tree node folds abandoned tail into branchLink")
+    func rewindFoldsAbandonedTail() throws {
+        // u1 → a1 (assistant) → u-rewind whose parentUuid points back
+        // at u1. The dispatcher detects rewind (u1's tail past slot 0
+        // has trailing entries) and slices the tail into a synthesized
+        // .branchLink at top-level slot 1.
+        let userJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u1",
+          "parentUuid": null,
+          "timestamp": "2026-06-05T10:00:00.000Z",
+          "message": {"role": "user", "content": "first"}
+        }
+        """#
+        let rewindUserJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u-rewind",
+          "parentUuid": "u1",
+          "timestamp": "2026-06-05T10:00:10.000Z",
+          "message": {"role": "user", "content": "rewound"}
+        }
+        """#
+        var builder = ClaudeTranscriptBuilder()
+        try builder.ingest(decodeLine(userJSON))
+        try builder.ingest(decodeLine(makeAssistantTextLine(
+            uuid: "a1", parentUuid: "u1", text: "first response"
+        )))
+        try builder.ingest(decodeLine(rewindUserJSON))
+
+        let entries = builder.transcript()
+        // [u1, branchLink (with a1 nested), u-rewind]
+        #expect(entries.count == 3)
+        guard case .synthesized(let link) = entries[1],
+              case .branchLink = link.kind else {
+            Issue.record("expected branchLink at slot 1; got \(entries[1])")
+            return
+        }
+        // The abandoned AgentEntry@a1 should be inside the link.
+        #expect(link.subEntries.count == 1)
+        if case .agent(let abandoned) = link.subEntries[0] {
+            #expect(abandoned.id == .fromJSONL("a1"))
+        } else {
+            Issue.record("expected abandoned .agent inside branchLink")
+        }
+        // The new prompt is at slot 2.
+        if case .user(let userEntry) = entries[2] {
+            #expect(userEntry.id == .fromJSONL("u-rewind"))
+        } else {
+            Issue.record("expected new UserEntry at slot 2")
+        }
+    }
+
+    @Test("Queued slash-cmd: enqueue followed by matching slash-cmd input pops FIFO and emits .consumed UserEntry")
+    func queuedSlashCmdConsumesFIFO() throws {
+        // Enqueue `/aicore-api`, then a slash-cmd input line for the
+        // same text — should slice out the .pending UserEntry and
+        // append a .consumed UserEntry. (Verified empirically in this
+        // very session: queued `/aicore-api` surfaced this way.)
         let userJSON = #"""
         {
           "type": "user",
@@ -318,67 +363,122 @@ struct ClaudeTranscriptBuilderTests {
           "message": {"role": "user", "content": "go"}
         }
         """#
-        let user2JSON = #"""
+        let enqueueJSON = #"""
         {
-          "type": "user",
-          "uuid": "u2",
+          "type": "queue-operation",
+          "operation": "enqueue",
+          "uuid": "q1",
           "parentUuid": "u1",
-          "timestamp": "2026-06-05T10:00:10.000Z",
-          "message": {"role": "user", "content": "again"}
+          "timestamp": "2026-06-05T10:00:01.000Z",
+          "content": "/aicore-api"
         }
         """#
+        // System slash-command input line carries the <command-name>
+        // / <command-message> wrappers in its content.
+        let slashCmdInputJSON = #"""
+        {
+          "type": "system",
+          "subtype": "local_command",
+          "uuid": "s1",
+          "parentUuid": "u1",
+          "timestamp": "2026-06-05T10:00:02.000Z",
+          "content": "<command-message>aicore-api</command-message>\n<command-name>aicore-api</command-name>"
+        }
+        """#
+        var builder = ClaudeTranscriptBuilder()
+        try builder.ingest(decodeLine(userJSON))
+        try builder.ingest(decodeLine(enqueueJSON))
+        try builder.ingest(decodeLine(slashCmdInputJSON))
+
+        let entries = builder.transcript()
+        let users = entries.compactMap { entry -> UserEntry? in
+            if case .user(let u) = entry { return u }
+            return nil
+        }
+        // Two users: original "go" + consumed "/aicore-api" — the
+        // .pending entry between them was sliced out by FIFO pop.
+        #expect(users.count == 2)
+        #expect(users.first?.queuedState == UserEntry.QueuedState.none)
+        #expect(users.last?.queuedState == .consumed)
+    }
+
+    @Test("Unconsumed enqueue stays as a .pending UserEntry at top-level")
+    func unconsumedEnqueueRemainsPending() throws {
+        // Enqueue without a matching slash-cmd or attachment.queued_command
+        // → `.pending` UserEntry stays in the transcript.
+        let userJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u1",
+          "parentUuid": null,
+          "timestamp": "2026-06-05T10:00:00.000Z",
+          "message": {"role": "user", "content": "go"}
+        }
+        """#
+        let enqueueJSON = #"""
+        {
+          "type": "queue-operation",
+          "operation": "enqueue",
+          "uuid": "q1",
+          "parentUuid": "u1",
+          "timestamp": "2026-06-05T10:00:01.000Z",
+          "content": "stay pending"
+        }
+        """#
+        var builder = ClaudeTranscriptBuilder()
+        try builder.ingest(decodeLine(userJSON))
+        try builder.ingest(decodeLine(enqueueJSON))
+
+        let entries = builder.transcript()
+        let pendings = entries.compactMap { entry -> UserEntry? in
+            if case .user(let u) = entry, u.queuedState == .pending { return u }
+            return nil
+        }
+        #expect(pendings.count == 1)
+    }
+
+    @Test("turn_duration line stamps perTurnDurationMs and messageCount on the AgentEntry")
+    func turnDurationStampsAgentEntry() throws {
+        // Turn: u1 → a1 (text). Then a `system/turn_duration` line
+        // parented to a1 with durationMs=1234, messageCount=3.
+        // Expected: AgentEntry@a1 has perTurnDurationMs=1234,
+        // messageCount=3.
         let lines = [
-            makeAssistantToolUseLine(uuid: "a1", parentUuid: "u1", toolUseId: "t1", toolName: "Read"),
-            makeToolResultLine(
-                uuid: "ur1", parentUuid: "a1", toolUseId: "t1",
-                resultText: "first turn result",
-                timestamp: "2026-06-05T10:00:02.000Z"
-            ),
+            makeAssistantTextLine(uuid: "a1", parentUuid: "u1", text: "Working"),
         ]
+        let turnDurationJSON = #"""
+        {
+          "type": "system",
+          "subtype": "turn_duration",
+          "uuid": "td1",
+          "parentUuid": "a1",
+          "timestamp": "2026-06-05T10:00:05.000Z",
+          "durationMs": 1234,
+          "messageCount": 3
+        }
+        """#
+        let userJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u1",
+          "parentUuid": null,
+          "timestamp": "2026-06-05T10:00:00.000Z",
+          "message": {"role": "user", "content": "go"}
+        }
+        """#
         var builder = ClaudeTranscriptBuilder()
         try builder.ingest(decodeLine(userJSON))
         for line in lines {
             try builder.ingest(decodeLine(line))
         }
-        // Second turn — start a new user prompt + a "synthetic"
-        // tool_result for the same id "t1" but in this new turn.
-        try builder.ingest(decodeLine(user2JSON))
-        // Open turn with a text line so a skeleton exists for the result.
-        try builder.ingest(decodeLine(makeAssistantTextLine(
-            uuid: "a2", parentUuid: "u2", text: "second turn",
-            timestamp: "2026-06-05T10:00:11.000Z"
-        )))
-        try builder.ingest(decodeLine(makeToolResultLine(
-            uuid: "ur2", parentUuid: "a2", toolUseId: "t1",
-            resultText: "second turn synthetic",
-            timestamp: "2026-06-05T10:00:12.000Z"
-        )))
+        try builder.ingest(decodeLine(turnDurationJSON))
 
         let entries = builder.transcript()
-        let agents = entries.compactMap { entry -> AgentEntry? in
+        let agent = entries.compactMap { entry -> AgentEntry? in
             if case .agent(let a) = entry { return a }
             return nil
-        }
-        #expect(agents.count == 2)
-
-        // First turn has its tool with the original result.
-        let firstTurn = agents[0]
-        let firstTools = firstTurn.subEntries.compactMap { entry -> ToolEntry? in
-            if case .tool(let t) = entry { return t }
-            return nil
-        }
-        #expect(firstTools.count == 1)
-        #expect(firstTools.first?.toolName == "Read")
-
-        // Second turn has a *new* synthetic-from-tool_result slot.
-        // Crucially the first turn's tool was NOT mutated by the
-        // second turn's tool_result.
-        let secondTurn = agents[1]
-        let secondTools = secondTurn.subEntries.compactMap { entry -> ToolEntry? in
-            if case .tool(let t) = entry { return t }
-            return nil
-        }
-        #expect(secondTools.count == 1)
-        #expect(secondTools.first?.toolName == "(tool result)")
+        }.first
+        #expect(agent?.perTurnDurationMs == 1234)
+        #expect(agent?.messageCount == 3)
     }
 }

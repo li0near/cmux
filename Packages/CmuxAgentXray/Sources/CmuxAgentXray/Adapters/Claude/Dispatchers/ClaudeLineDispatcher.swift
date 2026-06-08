@@ -3,22 +3,23 @@ import Foundation
 /// Routing decision for one `ClaudeJSONLLine`. Single source of truth for
 /// "what should the transcript builder do with this line."
 enum ClaudeLineRouting: Equatable {
-    /// Drop the line entirely — session-orphan metadata, or telemetry
-    /// that the builder consumes elsewhere (`turn_duration` is read for
-    /// per-turn duration stamping but never rendered as its own entry).
+    /// Drop the line entirely — session-orphan metadata, telemetry the
+    /// builder consumes elsewhere, or sidechain lines (sub-agent
+    /// transcripts surface as separate top-level rows in a future
+    /// commit; for now they're skipped wholesale).
     case skip
-
-    /// Sidechain (sub-agent) message. Builder collects these into a
-    /// `[parentToolUseID: [Entry]]` map keyed by their `Task` tool's
-    /// `tool_use_id`; the parent Task's sidechain transcript surfaces
-    /// them via the detail-tab link.
-    case sidechainMain
 
     /// Render as one of the standard core entry kinds.
     case render(ClaudeRenderKind)
 
     /// Render as a specialised entry kind.
     case renderSpecial(ClaudeSpecialKind)
+
+    /// `queue-operation` line whose `operation == "enqueue"` — the
+    /// builder appends a `.pending` UserEntry directly and pushes its
+    /// id onto the pending-prompt FIFO. Other queue-operation
+    /// operations route to `.skip`.
+    case queueOperation(text: String)
 }
 
 /// Core renderable destinations — match the four pre-existing top-level
@@ -65,16 +66,19 @@ enum ClaudeSpecialKind: Equatable {
 /// the entry-point switch.
 ///
 /// Dispatch order:
-///   1. `CommonLineDispatcher` claims session-orphan metadata + `pr-link`.
-///   2. Sidechain check — `isSidechain: true` → sub-agent pool.
+///   1. `CommonLineDispatcher` claims session-orphan metadata + `pr-link`
+///      + `queue-operation` (post-G6 inline FIFO routing).
+///   2. Sidechain check — `isSidechain: true` → `.skip` wholesale
+///      (sub-agent transcripts will surface as top-level AgentEntry
+///      rows in a future commit; pre-G6's collect-and-attach pipeline
+///      is gone).
 ///   3. Per-`type` parser.
 ///   4. Unknown `type` — log in DEBUG, route to `.skip`.
 ///
 /// Post-G4 the active-branch filter is gone — `ClaudeTranscriptBuilder`
 /// detects rewinds inline at user-prompt arrival and slices the
 /// abandoned tail into a synthesized branch link via
-/// `Transcript.branchOff`. Pre-G4 routes that returned
-/// `.skipBranchAffiliated` no longer have a routing case.
+/// `Transcript.branchOff`.
 enum ClaudeLineDispatcher {
     static func route(
         _ line: ClaudeJSONLLine,
@@ -83,7 +87,7 @@ enum ClaudeLineDispatcher {
         if let routing = CommonLineDispatcher.parse(line) { return routing }
 
         if line.isSidechain == true {
-            return .sidechainMain
+            return .skip
         }
 
         switch line.type {

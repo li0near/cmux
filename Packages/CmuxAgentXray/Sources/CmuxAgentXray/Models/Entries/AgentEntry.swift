@@ -6,9 +6,9 @@ public import Foundation
 /// text. Token usage and per-turn metadata travel on the turn itself.
 ///
 /// `subEntries` is the canonical ordered projection of the turn's
-/// content, normally `[thinking?, ...tools, assistantText?]`. The body's
-/// `.subentries(...)` section mirrors `subEntries` so the renderer can
-/// walk children uniformly via `body.sections` regardless of variant.
+/// content, normally `[thinking?, ...tools, assistantText?]` interleaved
+/// in JSONL arrival order. The renderer walks `subEntries` directly;
+/// `body.sections` is reserved for inline rendering payloads only.
 public struct AgentEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
     /// Header data (icon, name, label, trailing items, time marker).
@@ -174,22 +174,30 @@ public struct TextSubEntry: Identifiable, Equatable, Sendable {
 }
 
 /// One tool invocation inside an assistant turn. Body normally carries
-/// `[.text(input), .text(result)?]`; for Task / Agent tools that spawn a
-/// sub-agent, the spawned transcript appears as a trailing
-/// `.subentries(...)` section. The renderer policy decides whether to
-/// surface the sub-transcript inline or as a link to a detail tab.
+/// `[.text(input), .text(result)?]`. Sub-agent (Task / Agent tool)
+/// transcripts surface as separate top-level ``AgentEntry`` rows; the
+/// `.tool` variant is a leaf.
 public struct ToolEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
     public let parentEntryID: EntryID
-    public let header: Header
-    public let body: Body
+    /// Header data. Settable inside the package (post-G6) so
+    /// ``ToolResultUpdate`` can swap `timeMarker` from `.clock(...)`
+    /// (set at tool_use append time) to `.duration(ms)` when the
+    /// matching `tool_result` lands.
+    public internal(set) var header: Header
+    /// Body sections — `[.text(input)]` at append time;
+    /// ``ToolResultUpdate`` appends one or more result sections when
+    /// the matching `tool_result` lands.
+    public internal(set) var body: Body
 
     /// Three-state tool status. `pending` = awaiting result; `ok` =
     /// completed without error; `error` = result was an error.
-    public let status: Status
+    /// Settable inside the package (post-G6).
+    public internal(set) var status: Status
     /// Duration in milliseconds between `tool_use` and `tool_result`
     /// entries when both timestamps are known. nil while pending.
-    public let durationMs: Int?
+    /// Settable inside the package (post-G6).
+    public internal(set) var durationMs: Int?
     /// Sub-agent metadata for `Task` / `Agent` tools — `subagent_type`,
     /// `name`, `team_name`. nil for non-Task tools.
     public let subagentType: String?
@@ -253,13 +261,15 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     /// Tool body sections are constructed in this order by the
     /// transcript builder:
     ///   sections[0]            — `.text([input], .normal)`
-    ///   sections[1] (optional) — `.text([result], .normal/.error)`
+    ///   sections[1+] (optional) — result sections (one per
+    ///                              `tool_result.content[]` block)
+    ///                              appended by ``ToolResultUpdate``
+    ///                              when the matching `tool_result`
+    ///                              user line lands.
     ///
-    /// Sub-agent (Task / Agent tool) transcripts are NOT carried on
-    /// the tool entry — the proper data shape surfaces them as
-    /// top-level `AgentEntry` rows in the main transcript. That
-    /// implementation is a follow-up; until it lands, sidechain
-    /// transcripts are not rendered through the detail-tab path.
+    /// Sub-agent (Task / Agent tool) transcripts surface as separate
+    /// top-level ``AgentEntry`` rows in the main transcript, NOT as
+    /// children of this tool entry.
 }
 
 // (`AssistantTextEntry` and `ThinkingEntry` are gone — use

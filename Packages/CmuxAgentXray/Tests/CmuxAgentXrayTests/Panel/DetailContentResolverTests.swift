@@ -127,13 +127,7 @@ struct DetailContentResolverTests {
                 id: .fromJSONL("synth-1"),
                 header: Header(),
                 body: Body(sections: []),
-                kind: .branchLink(
-                    branchRootUuid: "branch-root-uuid",
-                    rewindIndex: 1,
-                    totalRewinds: 2,
-                    entryCount: 1,
-                    firstPromptPreview: "old prompt"
-                ),
+                kind: .branchLink(branchRootUuid: "branch-root-uuid"),
                 subEntries: abandoned
             )
         )

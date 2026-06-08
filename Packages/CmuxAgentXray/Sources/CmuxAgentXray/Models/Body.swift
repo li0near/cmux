@@ -4,9 +4,8 @@
 ///
 /// Sections cover inline rendering payloads only. Nested children
 /// (sub-agent transcripts, abandoned-branch entries, agent turn
-/// sub-entries) live on the entry's top-level `subEntries` field
-/// (post-G1.5 — was `Section.subentries(...)` before; that variant
-/// was deleted to keep `Body` a pure rendering payload).
+/// sub-entries) live on the entry's top-level `subEntries` field, not
+/// in `body.sections`.
 public struct Body: Equatable, Sendable {
     public let sections: [Section]
 

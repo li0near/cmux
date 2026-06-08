@@ -185,13 +185,17 @@ struct ClaudeJSONLLine: Decodable {
 
     /// True when this line is session-global metadata with no
     /// `parentUuid` and no renderable body.
+    ///
+    /// `queue-operation` is **not** in this set anymore (post-G6) —
+    /// `CommonLineDispatcher` routes `enqueue` operations to
+    /// `.queueOperation(text:)` so the builder can append a
+    /// `.pending` UserEntry inline.
     var isSessionOrphanMetadata: Bool {
         switch type {
         case "permission-mode",
              "file-history-snapshot",
              "agent-name",
-             "custom-title",
-             "queue-operation":
+             "custom-title":
             return true
         default:
             return false

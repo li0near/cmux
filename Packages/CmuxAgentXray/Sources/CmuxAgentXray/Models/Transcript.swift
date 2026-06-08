@@ -22,6 +22,18 @@ public import Foundation
 /// Reads are ``entry(id:)`` (any depth) and ``entries`` (top-level
 /// projection — what the panel renders).
 ///
+/// **Index aliasing (post-G6).** ``index`` carries two kinds of rows:
+/// real entries (written by ``append``) and **aliases** (written by
+/// ``registerAlias(lineUuid:path:)``). Aliases let JSONL line uuids
+/// that don't themselves produce a transcript entry — chained
+/// assistant lines whose blocks fold into an existing AgentEntry,
+/// `tool_result` user lines that mutate a ToolEntry, `turn_duration`
+/// system lines, skipped decorator attachments — point at the
+/// containing entry's path so future children resolve in O(1) without
+/// re-walking the raw JSONL chain. Aliases share the same key space
+/// as real entries (EntryID), and ``slice``'s post-pass drops or
+/// shifts aliases identically to real-entry rows.
+///
 /// **The `internal(set) var subEntries` unlock.** ``AgentEntry`` and
 /// ``SynthesizedEntry`` declare `subEntries` as `internal(set) var`,
 /// and ``Entry/subEntries`` is a settable computed property that
@@ -31,27 +43,17 @@ public import Foundation
 /// recursive helpers (`doAppend` / `doMutate` / `doSlice`) descend
 /// without copy-extract-repack.
 ///
-/// **Real-world simplification (verified 2026-06-08).** Every slice
-/// in production today is **top-level + tail-only** — both code-side
-/// (zero non-tail call sites in `Sources/`, `remove(id:)` is unused,
-/// `branchOff` always slices `divIdx + 1 ..< entries.count`) and
-/// corpus-side (200 sampled Claude sessions, 85/85 rewinds abandon a
-/// contiguous tail past the divergence point). Concretely:
-/// `prefix == []`, `startIdx + length == entries.count`, the post-pass
-/// shift rule never fires, and the tail-slice could be expressed as
-/// `entries.replaceSubrange(startIdx..., with: …)`. The general
-/// algorithm in ``slice(from:length:replacingWith:)`` stays in place
-/// for future-proofing — if Claude/Codex evolve to nested or
-/// mid-array slices, the index update is already correct.
+/// **Slice scope (post-G6).** Production callers slice top-level only
+/// — both tail (``branchOff`` slices `divIdx + 1 ..< entries.count`)
+/// and non-tail (FIFO consumption slices a single `.pending` UserEntry
+/// by id, length=1, regardless of position). The general algorithm
+/// in ``slice(from:length:replacingWith:)`` supports nested slices,
+/// kept as a safety net for future containers; no production caller
+/// exercises that path today.
 ///
-/// Also: ``mutate(id:_:)`` closures never replace `entry.subEntries`
-/// AND never change `entry.id` (verified — zero call sites of
-/// ``mutate(id:_:)`` in production today; the planned G3a uses all
-/// preserve `EntryID.fromJSONL(toolUseID)` between the synthetic
-/// fallback and the real `tool_use` re-emission). The implementation
-/// correspondingly does NOT walk descendants and does NOT swap index
-/// keys — a DEBUG assert catches any future closure that violates the
-/// contract.
+/// Also: ``mutate(id:_:)`` closures must not change `entry.id`. The
+/// implementation does NOT swap index keys — a DEBUG assert catches
+/// any future closure that violates the contract.
 public struct Transcript: Sendable, Equatable {
 
     /// Live top-level entry array. Reads are cheap. Writes go through
@@ -78,6 +80,32 @@ public struct Transcript: Sendable, Equatable {
     /// divergence point's top-level slot at rewind time.
     internal func path(of id: EntryID) -> [Int]? {
         return index[id]
+    }
+
+    /// Register an alias mapping `lineUuid → path`. Used by the
+    /// streaming dispatcher when a JSONL line doesn't itself produce
+    /// an entry whose id equals `EntryID.fromJSONL(lineUuid)`:
+    ///
+    /// - Chained assistant lines whose blocks fold into an existing
+    ///   AgentEntry (the line uuid is not an entry id; the AgentEntry's
+    ///   id is the *first* assistant line of the turn).
+    /// - `tool_result` user lines that mutate a ToolEntry — the line
+    ///   itself disappears, but children chain off its uuid.
+    /// - `system.subtype: turn_duration` lines that mutate an
+    ///   AgentEntry.
+    /// - Skipped decorator lines (`progress`, `attachment/task_reminder`,
+    ///   etc.) that have to act as transparent forwarders so children
+    ///   chaining off them resolve to the correct ancestor.
+    ///
+    /// `path` is the containing entry's path (typically the parent's
+    /// resolved path). Aliases share the same key space as real
+    /// entries and are dropped or shifted by ``slice``'s post-pass
+    /// uniformly with real-entry rows.
+    ///
+    /// No-op if `lineUuid` is already in `index` (real append wins).
+    internal mutating func registerAlias(lineUuid: EntryID, path: [Int]) {
+        if index[lineUuid] != nil { return }
+        index[lineUuid] = path
     }
 
     /// Read the entry at the given path. Returns nil for an invalid
@@ -187,66 +215,91 @@ public struct Transcript: Sendable, Equatable {
     /// 1. Resolve `id` to its full path via the index. The path is
     ///    `parentPath + [startIdx]` — the slice happens in the array
     ///    addressed by `parentPath`.
-    /// 2. Recursive descent (``doSlice``) consumes the path and at the
-    ///    base case calls `entries.replaceSubrange(startIdx..<startIdx+length, with: …)`.
-    ///    Through the `_modify` chain this writes back to the root.
+    /// 2. Recursive descent (``doSlice``) consumes the path, clamps
+    ///    `length` to the available range, calls
+    ///    `entries.replaceSubrange(startIdx..<endIdx, with: …)` at the
+    ///    base case, and returns the **actual** count removed. Through
+    ///    the `_modify` chain this writes back to the root.
     /// 3. Flat post-pass over the index map applies two rules to every
     ///    entry whose path starts with `parentPath`:
-    ///    - **Drop** ids whose `path[depth] ∈ [startIdx, startIdx+length)` —
-    ///      they were in the sliced range (or descendants of one) and
-    ///      are gone from the array.
-    ///    - **Shift** ids whose `path[depth] ≥ startIdx + length` by
-    ///      `(insertCount - length)` — they survived but their slot
-    ///      moved left.
+    ///    - **Drop** ids whose `path[depth] ∈ [startIdx, startIdx+actualLength)`
+    ///      — they were in the sliced range (or descendants of one)
+    ///      and are gone from the array.
+    ///    - **Shift** ids whose `path[depth] ≥ startIdx + actualLength`
+    ///      by `(insertCount - actualLength)` — they survived but
+    ///      their slot moved left.
     /// 4. If a replacement was inserted, ``registerSubtree(_:at:)``
     ///    walks it once to register its id at `parentPath + [startIdx]`
     ///    and any descendants at the corresponding nested paths.
     ///    For ``branchOff``, this re-paths the abandoned tail's
     ///    entries — which the caller folded into `link.subEntries` —
     ///    from their old top-level paths to nested paths under the link.
+    ///
+    /// Aliases registered via ``registerAlias(lineUuid:path:)`` share
+    /// `index`'s key space and are dropped/shifted identically here.
     public mutating func slice(from id: EntryID, length: Int, replacingWith: Entry?) {
         guard let path = index[id], length > 0 else { return }
 
-        Self.doSlice(&entries, at: path, length: length, replacement: replacingWith)
+        let actualLength = Self.doSlice(&entries, at: path, length: length,
+                                        replacement: replacingWith)
+        guard actualLength > 0 else { return }
 
         // path = parent's path + [startIdx]. Peel for the post-pass.
         let depth = path.count - 1
-        let prefix = Array(path.prefix(depth))
         let startIdx = path.last!
-        let removeRange = startIdx..<(startIdx + length)
-        let shift = (replacingWith == nil ? 0 : 1) - length      // ≤ 0
+        let removeRange = startIdx..<(startIdx + actualLength)
+        let shift = (replacingWith == nil ? 0 : 1) - actualLength    // ≤ 0
 
         // Snapshot keys explicitly — iterating a Dictionary while
         // mutating its values is safe in Swift but reads as if it
-        // shouldn't be.
+        // shouldn't be. Inner prefix comparison is elementwise to
+        // avoid a fresh `Array` allocation per index key. For
+        // top-level slices (`depth == 0`) the inner loop has zero
+        // iterations and `prefixMatches` stays true — fast path
+        // automatic.
         for key in Array(index.keys) {
-            guard let P = index[key], P.count > depth,
-                  Array(P.prefix(depth)) == prefix else { continue }
+            guard let P = index[key], P.count > depth else { continue }
+            var prefixMatches = true
+            for i in 0..<depth where P[i] != path[i] {
+                prefixMatches = false
+                break
+            }
+            guard prefixMatches else { continue }
             let pos = P[depth]
             if removeRange.contains(pos) {
                 index.removeValue(forKey: key)              // dropped — sliced range
-            } else if pos >= startIdx + length {
+            } else if pos >= startIdx + actualLength {
                 var Q = P; Q[depth] = pos + shift            // shifted — past the slice
                 index[key] = Q
             }
             // pos < startIdx → untouched
         }
         if let replacement = replacingWith {
+            let prefix = Array(path.prefix(depth))
             registerSubtree(replacement, at: prefix + [startIdx])
         }
     }
 
+    /// Recursive descent that bottoms out at `path`'s base case and
+    /// `replaceSubrange`s the slice. Returns the **actual** number of
+    /// entries removed (may be less than `length` if `length` exceeded
+    /// the available range — the clamp prevents `replaceSubrange` from
+    /// trapping). Used by ``slice`` to compute the correct shift in
+    /// the post-pass index update.
+    @discardableResult
     private static func doSlice(_ entries: inout [Entry], at path: [Int],
-                                length: Int, replacement: Entry?) {
+                                length: Int, replacement: Entry?) -> Int {
         let head = path[0]
         if path.count == 1 {
             let arr: [Entry] = replacement.map { [$0] } ?? []
             let endIdx = min(head + length, entries.count)
+            guard head < endIdx else { return 0 }
             entries.replaceSubrange(head..<endIdx, with: arr)
+            return endIdx - head
         } else {
-            doSlice(&entries[head].subEntries,
-                    at: Array(path.dropFirst()),
-                    length: length, replacement: replacement)
+            return doSlice(&entries[head].subEntries,
+                           at: Array(path.dropFirst()),
+                           length: length, replacement: replacement)
         }
     }
 

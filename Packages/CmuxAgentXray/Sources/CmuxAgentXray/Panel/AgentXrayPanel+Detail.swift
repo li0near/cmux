@@ -24,7 +24,9 @@ extension AgentXrayPanel {
 
         // Walk the transcript: a sub-entry's id never collides with a
         // top-level entry id (sub-entries use derived ids like
-        // "d:thinking-0:<parent>"), so the first match wins.
+        // "d:text-0:<line-uuid>" / "d:thinking-0:<line-uuid>"; tool
+        // sub-entries use the raw `tool_use_id`), so the first match
+        // wins.
         var matchedEntry: Entry?
         for entry in stream.entries {
             if entry.id.stableString == targetID {

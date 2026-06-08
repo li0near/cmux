@@ -165,22 +165,16 @@ extension DetailContent {
             )
 
         case .synthesized(let s):
-            guard case .branchLink(
-                let rootUuid,
-                let rewindIndex,
-                let totalRewinds,
-                let entryCount,
-                _
-            ) = s.kind else { return nil }
+            guard case .branchLink(let rootUuid) = s.kind else { return nil }
             let transcript = s.subEntries
             return DetailContent(
                 title: localized(
                     "agentXray.detail.title.abandonedBranch",
-                    defaultValue: "Abandoned branch — rewind \(rewindIndex) of \(totalRewinds)"
+                    defaultValue: "Abandoned branch"
                 ),
                 subtitle: localized(
                     "agentXray.detail.subtitle.abandonedBranch",
-                    defaultValue: "\(entryCount) entries · diverged at \(timestamp)"
+                    defaultValue: "diverged at \(timestamp)"
                 ),
                 sourceEntryID: rootUuid,
                 icon: EntryIcon.branchLink,

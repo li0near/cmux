@@ -47,13 +47,7 @@ struct TranscriptTests {
             id: .derived(parent: parentBranchRoot, kind: "branchLink"),
             header: Header(),
             body: Body(sections: []),
-            kind: .branchLink(
-                branchRootUuid: parentBranchRoot,
-                rewindIndex: 0,
-                totalRewinds: 1,
-                entryCount: abandoned.count,
-                firstPromptPreview: nil
-            ),
+            kind: .branchLink(branchRootUuid: parentBranchRoot),
             subEntries: abandoned
         )
     }
@@ -263,13 +257,7 @@ struct TranscriptTests {
             id: .derived(parent: firstOfTailUuid, kind: "branchLink"),
             header: Header(),
             body: Body(sections: []),
-            kind: .branchLink(
-                branchRootUuid: firstOfTailUuid,
-                rewindIndex: 1,
-                totalRewinds: 2,
-                entryCount: abandonedNow.count,
-                firstPromptPreview: nil
-            ),
+            kind: .branchLink(branchRootUuid: firstOfTailUuid),
             subEntries: abandonedNow
         )
         root.branchOff(at: .fromJSONL("p"), link: link2)
@@ -303,13 +291,7 @@ struct TranscriptTests {
             id: .derived(parent: "outer-root", kind: "branchLink"),
             header: Header(),
             body: Body(sections: []),
-            kind: .branchLink(
-                branchRootUuid: "outer-root",
-                rewindIndex: 1,
-                totalRewinds: 2,
-                entryCount: abandonedNow.count,
-                firstPromptPreview: nil
-            ),
+            kind: .branchLink(branchRootUuid: "outer-root"),
             subEntries: abandonedNow
         )
         root.branchOff(at: .fromJSONL("p"), link: link2)

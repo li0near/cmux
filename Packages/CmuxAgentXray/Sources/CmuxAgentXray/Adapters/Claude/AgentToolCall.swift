@@ -2,8 +2,8 @@ import Foundation
 
 /// Internal accumulator for one tool call as the transcript builder
 /// folds in `tool_use` / `tool_result` blocks across multiple JSONL
-/// lines. Converted to a public `ToolEntry` at flush time, with the
-/// `Header` and `Body` constructed from these fields.
+/// lines. Converted to a public `ToolEntry` at append/mutation time,
+/// with the `Header` and `Body` constructed from these fields.
 ///
 /// Kept internal: callers consume the final `AgentEntry.subEntries`
 /// list. The accumulator's "incremental" shape (separate `result` and
@@ -26,7 +26,6 @@ struct AgentToolCall: Equatable {
     let teamName: String?
     let mcpServer: String?
     let durationMs: Int?
-    let sidechainTranscript: [Entry]?
     /// `file_path` from the tool's input JSON (Read / Edit / Write /
     /// MultiEdit). Forwarded to `ToolEntry.inputFilePath` so the
     /// detail-tab resolver can pick a `.code(language:)` ContentType
@@ -53,7 +52,6 @@ struct AgentToolCall: Equatable {
         teamName: String? = nil,
         mcpServer: String? = nil,
         durationMs: Int? = nil,
-        sidechainTranscript: [Entry]? = nil,
         inputFilePath: String? = nil,
         diffSections: [Section]? = nil
     ) {
@@ -68,7 +66,6 @@ struct AgentToolCall: Equatable {
         self.teamName = teamName
         self.mcpServer = mcpServer
         self.durationMs = durationMs
-        self.sidechainTranscript = sidechainTranscript
         self.inputFilePath = inputFilePath
         self.diffSections = diffSections
     }
@@ -94,29 +91,6 @@ struct AgentToolCall: Equatable {
             teamName: teamName,
             mcpServer: mcpServer,
             durationMs: durationMs,
-            sidechainTranscript: sidechainTranscript,
-            inputFilePath: inputFilePath,
-            diffSections: diffSections
-        )
-    }
-
-    /// Attach a sidechain transcript at flush time without rewriting
-    /// the rest of the fields. Used when the parent `Task`/`Agent`
-    /// tool's sub-agent transcript is collated post-hoc.
-    func withSidechain(_ transcript: [Entry]) -> AgentToolCall {
-        AgentToolCall(
-            id: id,
-            name: name,
-            summary: summary,
-            inputDetail: inputDetail,
-            result: result,
-            isError: isError,
-            subagentType: subagentType,
-            teamMemberName: teamMemberName,
-            teamName: teamName,
-            mcpServer: mcpServer,
-            durationMs: durationMs,
-            sidechainTranscript: transcript,
             inputFilePath: inputFilePath,
             diffSections: diffSections
         )

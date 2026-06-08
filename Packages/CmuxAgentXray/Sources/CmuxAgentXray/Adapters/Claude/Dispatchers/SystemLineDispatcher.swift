@@ -7,9 +7,12 @@ import Foundation
 /// subtypes and unknown future subtypes fall through to the catch-all
 /// System entry so they never silently disappear.
 ///
-/// `turn_duration` is a special case: the line is consumed by
-/// `ClaudeTurnDurationResolver` for `AgentEntry` header stamping; no
-/// entry is emitted.
+/// `turn_duration` is a special case: the dispatcher routes it to
+/// `.skip` here, but `ClaudeTranscriptBuilder.dispatch` short-circuits
+/// `system.subtype: turn_duration` lines into ``TurnDurationUpdate``
+/// before consulting the dispatcher — so the line stamps the
+/// containing `AgentEntry`'s scalars rather than emitting a stray
+/// SystemEntry.
 enum SystemLineDispatcher {
     static func parse(_ line: ClaudeJSONLLine) -> ClaudeLineRouting {
         switch line.subtype ?? "" {
