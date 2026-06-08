@@ -120,15 +120,7 @@ struct ClaudeTranscriptBuilder {
             )))
         }
 
-        // G2a safety net: dual-write must mirror legacy `entries`. Every
-        // existing builder test exercises this on debug builds; G2b
-        // promotes `root.subEntries` to source of truth.
-        assert(
-            ctx.entries == ctx.root.subEntries,
-            "Phase G dual-write divergence — entries count=\(ctx.entries.count), root count=\(ctx.root.subEntries.count)"
-        )
-
-        return ctx.entries
+        return ctx.root.subEntries
     }
 
     /// Recursively build entries for an abandoned-branch transcript.
@@ -546,10 +538,11 @@ struct ClaudeTranscriptBuilder {
         /// same logger and don't silently drop the spec-only-not-corpus
         /// warnings emitted by `buildToolResultSections`.
         let logger: any AgentXrayLogger
-        var entries: [Entry] = []
-        /// Phase G dual-write target. Mirrors `entries` while G2a wires
-        /// every append site through ``appendEntry(_:)``. G2b promotes
-        /// `root.subEntries` to source of truth and removes `entries`.
+        /// Phase G transcript model. Source of truth — `transcript()`
+        /// returns `root.subEntries`. The dispatcher mutates this via
+        /// ``appendEntry(_:)`` (top-level) and the methods on
+        /// ``TranscriptRoot`` directly when finer-grained mutation is
+        /// needed.
         var root = TranscriptRoot()
         var pendingTurn: PendingTurn?
         var turnDurations: [String: TurnDurationStamp] = [:]
@@ -558,12 +551,10 @@ struct ClaudeTranscriptBuilder {
         var queuedSlashCommandUuids: Set<String> = []
         var abandonedBranchEntriesByRoot: [String: [Entry]] = [:]
 
-        /// Phase G dual-write helper. Appends to both legacy `entries`
-        /// and the new `root` so a single test fixture can assert
-        /// `entries == root.subEntries` after dispatch — the safety net
-        /// for G2b's source-of-truth flip.
+        /// Append a top-level entry. Wraps ``TranscriptRoot/append(_:)``
+        /// — kept as a method so existing call sites read naturally
+        /// (`ctx.appendEntry(...)`).
         mutating func appendEntry(_ entry: Entry) {
-            entries.append(entry)
             root.append(entry)
         }
 
