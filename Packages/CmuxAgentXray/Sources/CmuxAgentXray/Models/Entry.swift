@@ -85,12 +85,16 @@ public enum Entry: Identifiable, Equatable, Sendable {
     /// Children carried by container variants. Empty for non-container
     /// variants. Replaces the ad-hoc walks of `body.sections` for
     /// `.subentries(...)` that existed pre-G1.5.
+    ///
+    /// `.tool` is NOT a container variant — sub-agent (Task / Agent
+    /// tool) transcripts will be modeled as top-level ``AgentEntry``
+    /// rows in a future commit, not as nested children of the
+    /// originating tool entry.
     public var subEntries: [Entry] {
         switch self {
         case .agent(let e):       return e.subEntries
         case .synthesized(let e): return e.subEntries
-        case .tool(let e):        return e.subEntries
-        case .user, .system, .compact, .text:
+        case .user, .system, .compact, .text, .tool:
             return []
         }
     }

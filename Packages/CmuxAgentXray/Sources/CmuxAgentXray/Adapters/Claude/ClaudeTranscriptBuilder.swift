@@ -605,7 +605,12 @@ struct ClaudeTranscriptBuilder {
                     if let resultSections = call.result {
                         sections.append(contentsOf: resultSections)
                     }
-                    let toolSubEntries: [Entry] = call.sidechainTranscript ?? []
+                    // Sub-agent transcripts (call.sidechainTranscript)
+                    // are intentionally not surfaced here — proper
+                    // shape is top-level AgentEntry rows; that
+                    // implementation is a follow-up. Body sections
+                    // are pure rendering payload (.text / .image /
+                    // .toolReference / .offloadedOutput).
                     let parsed = MCPToolNameParser.parse(call.name)
                     subEntries.append(Entry.tool(ToolEntry(
                         id: .fromJSONL(call.id),
@@ -623,8 +628,7 @@ struct ClaudeTranscriptBuilder {
                         teamMemberName: call.teamMemberName,
                         teamName: call.teamName,
                         mcpServer: call.mcpServer,
-                        inputFilePath: call.inputFilePath,
-                        subEntries: toolSubEntries
+                        inputFilePath: call.inputFilePath
                     )))
                 }
             }

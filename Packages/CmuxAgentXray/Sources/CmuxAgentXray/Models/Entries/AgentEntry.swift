@@ -192,15 +192,6 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     /// highlight.js color the body.
     public let inputFilePath: String?
 
-    /// Sub-agent transcript carried inline on the tool. Populated for
-    /// `Task` / `Agent` tools whose `tool_use_id` keys a sub-agent
-    /// session; empty for non-sidechain tools. Replaces the prior
-    /// `body.sections[.subentries(...)]` convention with a top-level
-    /// field that mirrors ``AgentEntry/subEntries`` and
-    /// ``SynthesizedEntry/subEntries`` — uniform "container variants
-    /// expose subEntries directly" shape.
-    public let subEntries: [Entry]
-
     public init(
         id: EntryID,
         parentEntryID: EntryID,
@@ -212,8 +203,7 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         teamMemberName: String? = nil,
         teamName: String? = nil,
         mcpServer: String? = nil,
-        inputFilePath: String? = nil,
-        subEntries: [Entry] = []
+        inputFilePath: String? = nil
     ) {
         self.id = id
         self.parentEntryID = parentEntryID
@@ -226,7 +216,6 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         self.teamName = teamName
         self.mcpServer = mcpServer
         self.inputFilePath = inputFilePath
-        self.subEntries = subEntries
     }
 
     /// Wall-clock timestamp, projected from `header.timeMarker.clock`.
@@ -250,10 +239,11 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     ///   sections[0]            — `.text([input], .normal)`
     ///   sections[1] (optional) — `.text([result], .normal/.error)`
     ///
-    /// Sub-agent transcripts live on the top-level ``subEntries``
-    /// field, NOT in body sections (post-G1.5). The renderer walks
-    /// `body.sections` directly and applies each section's `TextStyle`
-    /// automatically — no per-section accessors are needed.
+    /// Sub-agent (Task / Agent tool) transcripts are NOT carried on
+    /// the tool entry — the proper data shape surfaces them as
+    /// top-level `AgentEntry` rows in the main transcript. That
+    /// implementation is a follow-up; until it lands, sidechain
+    /// transcripts are not rendered through the detail-tab path.
 }
 
 // (`AssistantTextEntry` and `ThinkingEntry` are gone — use

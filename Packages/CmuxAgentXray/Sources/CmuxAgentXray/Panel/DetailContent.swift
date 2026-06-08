@@ -344,33 +344,11 @@ extension DetailContent {
         sectionIndex: Int,
         timestamp: String
     ) -> DetailContent? {
-        // Sub-agent transcript opens — sidechain entries now live on
-        // `tool.subEntries` directly (post-G1.5; previously they were
-        // a `.subentries(...)` section in `tool.body.sections`).
-        if !tool.subEntries.isEmpty {
-            // Heuristic: a sectionIndex matching the FIRST conceptual
-            // "section after input/result" routes to the sub-agent
-            // transcript. The discriminator is purely "does this tool
-            // carry sub-entries" — a single sub-agent transcript per
-            // tool is the data-shape invariant.
-            return DetailContent(
-                title: localized(
-                    "agentXray.detail.title.subagentTranscript",
-                    defaultValue: "Sub-agent transcript · \(tool.toolName)"
-                ),
-                subtitle: localized(
-                    "agentXray.detail.subtitle.subagentTranscript",
-                    defaultValue: "from \(timestamp) · \(tool.subEntries.count) entries"
-                ),
-                sourceEntryID: tool.id.stableString,
-                icon: EntryIcon.tool(named: "Task"),
-                accent: .primary,
-                source: .transcript(
-                    sourceEntryID: tool.id.stableString,
-                    entries: tool.subEntries
-                )
-            )
-        }
+        // Sub-agent transcripts (Task / Agent tools) are not currently
+        // surfaced through this resolver — proper shape is top-level
+        // AgentEntry rows in the main transcript; that implementation
+        // is a follow-up. Until it lands, sidechain detail-tab opens
+        // are not wired.
 
         guard sectionIndex >= 0,
               sectionIndex < tool.body.sections.count else { return nil }

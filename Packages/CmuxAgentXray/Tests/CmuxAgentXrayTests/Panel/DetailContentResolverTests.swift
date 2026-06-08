@@ -64,8 +64,7 @@ struct DetailContentResolverTests {
         toolName: String,
         body: Body,
         status: ToolEntry.Status = .ok,
-        inputFilePath: String? = nil,
-        subEntries: [Entry] = []
+        inputFilePath: String? = nil
     ) -> Entry {
         .tool(
             ToolEntry(
@@ -74,8 +73,7 @@ struct DetailContentResolverTests {
                 header: Header(name: toolName),
                 body: body,
                 status: status,
-                inputFilePath: inputFilePath,
-                subEntries: subEntries
+                inputFilePath: inputFilePath
             )
         )
     }
@@ -368,24 +366,22 @@ struct DetailContentResolverTests {
         #expect(content?.source == .file(path: "/tmp/cc-offloaded.txt"))
     }
 
-    @Test("Sub-agent transcript → .transcript with tool id as sourceEntryID")
+    @Test("Sub-agent transcript routing — TODO when sidechain-as-AgentEntry lands")
     func subAgentTranscript() {
-        let nested: [Entry] = [
-            userEntry(id: "nested-u", body: .text(["sub prompt"]))
-        ]
+        // Sub-agent transcript opens through the detail-tab are
+        // intentionally not wired yet — proper shape is top-level
+        // AgentEntry rows. Placeholder test just confirms a Task tool
+        // doesn't crash detail resolution.
         let body = Body(sections: [
             .text(["task input"], style: .normal),
             .text(["task result"], style: .normal)
         ])
-        let sub = toolSub(id: "task1", toolName: "Task", body: body, subEntries: nested)
+        let sub = toolSub(id: "task1", toolName: "Task", body: body)
         let entry = agentEntry(subEntries: [sub])
-        let request = DetailRequest.bodySection(targetID: "task1", sectionIndex: 2)
+        let request = DetailRequest.bodySection(targetID: "task1", sectionIndex: 0)
         let content = DetailContent.resolve(request: request, entry: entry)
-        if case .transcript(let sourceEntryID, let entries) = content?.source {
-            #expect(sourceEntryID == "task1")
-            #expect(entries.count == 1)
-        } else {
-            Issue.record("Expected .transcript source; got \(String(describing: content?.source))")
-        }
+        // Section 0 is the input text — the resolver returns a normal
+        // tool input detail, NOT a sidechain transcript.
+        #expect(content != nil)
     }
 }

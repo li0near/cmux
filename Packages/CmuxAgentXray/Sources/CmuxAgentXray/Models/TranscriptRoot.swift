@@ -286,8 +286,9 @@ public struct TranscriptRoot: Equatable, Sendable {
 
 // MARK: - Container reconstruction
 
-/// Rebuild a container `Entry` (`.agent` / `.tool` / `.synthesized`)
-/// with replaced `subEntries`. Other variants pass through unchanged.
+/// Rebuild a container `Entry` (`.agent` / `.synthesized`) with
+/// replaced `subEntries`. Other variants pass through unchanged —
+/// `.tool` is intentionally not a container.
 internal func withSubEntries(_ entry: Entry, _ newSubs: [Entry]) -> Entry {
     switch entry {
     case .agent(let a):
@@ -303,16 +304,7 @@ internal func withSubEntries(_ entry: Entry, _ newSubs: [Entry]) -> Entry {
             id: s.id, header: s.header, body: s.body,
             kind: s.kind, subEntries: newSubs
         ))
-    case .tool(let t):
-        return .tool(ToolEntry(
-            id: t.id, parentEntryID: t.parentEntryID,
-            header: t.header, body: t.body, status: t.status,
-            durationMs: t.durationMs, subagentType: t.subagentType,
-            teamMemberName: t.teamMemberName, teamName: t.teamName,
-            mcpServer: t.mcpServer, inputFilePath: t.inputFilePath,
-            subEntries: newSubs
-        ))
-    case .user, .system, .compact, .text:
+    case .user, .system, .compact, .text, .tool:
         return entry
     }
 }
