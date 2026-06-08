@@ -103,26 +103,26 @@ struct ClaudeTranscriptBuilder {
         /// Lines whose JSONL parent uuid isn't yet in `root.index`.
         /// Keyed on the missing parentUuid; populated when a child
         /// arrives before its parent (parallel-tool-call out-of-order
-        /// — corpus says ~0.04% of lines, single-child per parent
-        /// uuid). Drained whenever a uuid is newly registered (real
-        /// append or alias).
-        var awaitingParent: [String: ClaudeJSONLLine] = [:]
+        /// — corpus survey said ~0.04% of lines, single-child per
+        /// parent uuid, but a 2026-06-09 dogfood session hit a
+        /// real 2+-child case so this is an array now). Drained
+        /// FIFO whenever a uuid is newly registered (real append
+        /// or alias).
+        var awaitingParent: [String: [ClaudeJSONLLine]] = [:]
     }
 
     // MARK: - Top-level dispatch
 
     private func dispatch(_ line: ClaudeJSONLLine, ctx: inout BuildContext) {
         // Out-of-order gate. parent uuid not in index → park in pool
-        // until parent arrives. The drain re-runs `dispatch` on the
-        // popped child, which then resolves cleanly.
+        // until parent arrives. The drain re-runs `dispatch` on every
+        // popped child, which then resolves cleanly. Multi-child
+        // buckets are rare but real (a 2026-06-09 dogfood session
+        // hit one) — pool stores an array so all waiting children
+        // drain in arrival order.
         if let parentUuid = line.parentUuid, !parentUuid.isEmpty,
            ctx.root.path(of: .fromJSONL(parentUuid)) == nil {
-            // Single-child invariant — corpus 0/731 with 2+. DEBUG
-            // assert flags any future Claude Code version that
-            // violates it.
-            assert(ctx.awaitingParent[parentUuid] == nil,
-                   "awaitingParent: 2+ children waiting on parent \(parentUuid) — invariant violated.")
-            ctx.awaitingParent[parentUuid] = line
+            ctx.awaitingParent[parentUuid, default: []].append(line)
             return
         }
 
@@ -217,11 +217,11 @@ struct ClaudeTranscriptBuilder {
         ctx.root.registerAlias(lineUuid: lineId, path: parentPath)
     }
 
-    /// Drain pool by the freshly-registered uuid. Single-child pool
-    /// → at most one popped child per call. Re-dispatching the child
-    /// may register its own uuid, which can unblock further pooled
-    /// children — handled by `dispatch`'s tail-recursion through
-    /// `registerLineAlias` + `drainAwaitingParent`.
+    /// Drain pool by the freshly-registered uuid. All pooled children
+    /// keyed on this uuid are popped in FIFO arrival order and
+    /// re-dispatched. Re-dispatching may register new uuids, which
+    /// cascades through `dispatch`'s tail call to
+    /// `drainAwaitingParent`. Bounded by total file size; terminates.
     private func drainAwaitingParent(
         byNewlyRegisteredUuid uuid: String?,
         ctx: inout BuildContext
@@ -229,7 +229,9 @@ struct ClaudeTranscriptBuilder {
         guard let uuid,
               let pooled = ctx.awaitingParent.removeValue(forKey: uuid)
         else { return }
-        dispatch(pooled, ctx: &ctx)
+        for line in pooled {
+            dispatch(line, ctx: &ctx)
+        }
     }
 
     // MARK: - Rewind detection
