@@ -13,8 +13,7 @@ enum UserLineDispatcher {
     static func parse(
         _ line: ClaudeJSONLLine,
         activeBranch: Set<String>,
-        activeBranchAvailable: Bool,
-        skillCommandUuids: Set<String> = []
+        activeBranchAvailable: Bool
     ) -> ClaudeLineRouting {
         // Compact summary (older flow) → CompactEntry.
         if line.isCompactSummary == true {
@@ -25,9 +24,10 @@ enum UserLineDispatcher {
             )
         }
         // Skill-shaped slash command — render as UserEntry carrying the
-        // typed `/<cmd> [args]`. Build path lives in the transcript
-        // builder.
-        if let uuid = line.uuid, skillCommandUuids.contains(uuid) {
+        // typed `/<cmd> [args]`. Discriminator: skills emit
+        // `<command-message>` first, built-ins emit `<command-name>`
+        // first. Build path lives in the transcript builder.
+        if isSkillShaped(line) {
             return ClaudeLineDispatcher.branchGated(
                 line, kind: .render(.user),
                 activeBranch: activeBranch,
@@ -93,5 +93,21 @@ enum UserLineDispatcher {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.hasPrefix("<command-name>")
             || trimmed.hasPrefix("<command-message>")
+    }
+
+    /// True when `line` is a skill invocation (vs a built-in slash
+    /// command like `/exit` or `/clear`).
+    ///
+    /// Discriminator: skills emit `<command-message>` first (flush-left);
+    /// built-ins emit `<command-name>` first. Single-line check —
+    /// supersedes the prior next-line lookup that required an
+    /// `isMeta:true` `"Base directory for this skill:"` follow-up,
+    /// which missed plugin-shaped skills (e.g. `/simplify`,
+    /// `/claude-hud:configure`) whose metadata doesn't include it.
+    private static func isSkillShaped(_ line: ClaudeJSONLLine) -> Bool {
+        guard line.type == "user" else { return false }
+        let trimmed = (line.message?.content?.firstText() ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("<command-message>")
     }
 }

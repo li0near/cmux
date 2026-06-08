@@ -8,8 +8,7 @@ import Foundation
 ///      `ClaudeBranchResolver` (active-branch + abandoned-branch
 ///      grouping), `ClaudeTurnDurationResolver` (per-turn timing
 ///      stamps), `ClaudeQueuedPromptResolver` (queued slash UUIDs +
-///      pending-prompt descriptors), `ClaudeSkillCommandResolver`
-///      (skill-shaped `<command-message>` UUIDs).
+///      pending-prompt descriptors).
 ///   2. **Dispatch loop** — for every buffered line,
 ///      `ClaudeLineDispatcher.route(...)` decides skip / sidechain /
 ///      abandoned-branch / render. Sidechain lines are pooled by
@@ -69,12 +68,10 @@ struct ClaudeTranscriptBuilder {
         let branchResolution = ClaudeBranchResolver.resolve(lines: rawLines)
         let turnDurations = ClaudeTurnDurationResolver.resolve(lines: rawLines)
         let queued = ClaudeQueuedPromptResolver.resolve(lines: rawLines)
-        let skill = ClaudeSkillCommandResolver.resolve(lines: rawLines)
 
         var ctx = BuildContext(resolution: branchResolution, logger: logger)
         ctx.turnDurations = turnDurations.stamps
         ctx.queuedSlashCommandUuids = queued.wasQueuedSlashUuids
-        ctx.skillCommandUuids = skill.skillCommandUuids
 
         // Pre-pass: build entry transcripts for each abandoned branch.
         var branchEntriesByRoot: [String: [Entry]] = [:]
@@ -147,7 +144,6 @@ struct ClaudeTranscriptBuilder {
             line,
             activeBranch: ctx.resolution.activeUUIDs,
             activeBranchAvailable: ctx.resolution.leafUuid != nil,
-            skillCommandUuids: ctx.skillCommandUuids,
             logger: logger
         )
 
@@ -548,7 +544,6 @@ struct ClaudeTranscriptBuilder {
         var sidechainLinesByParent: [String: [ClaudeJSONLLine]] = [:]
         var emittedDivergencePoints: Set<String> = []
         var queuedSlashCommandUuids: Set<String> = []
-        var skillCommandUuids: Set<String> = []
         var abandonedBranchEntriesByRoot: [String: [Entry]] = [:]
 
         mutating func flushPendingTurn() {

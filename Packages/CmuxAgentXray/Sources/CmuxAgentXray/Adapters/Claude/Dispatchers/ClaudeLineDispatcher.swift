@@ -80,7 +80,6 @@ enum ClaudeLineDispatcher {
         _ line: ClaudeJSONLLine,
         activeBranch: Set<String>,
         activeBranchAvailable: Bool,
-        skillCommandUuids: Set<String> = [],
         logger: any AgentXrayLogger = NoOpAgentXrayLogger()
     ) -> ClaudeLineRouting {
         if let routing = CommonLineDispatcher.parse(line) { return routing }
@@ -94,8 +93,7 @@ enum ClaudeLineDispatcher {
             return UserLineDispatcher.parse(
                 line,
                 activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable,
-                skillCommandUuids: skillCommandUuids
+                activeBranchAvailable: activeBranchAvailable
             )
         case "assistant":
             return AssistantLineDispatcher.parse(
