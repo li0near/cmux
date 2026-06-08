@@ -206,47 +206,59 @@ abandoned-branch link.
 | (any)         | `activeBranchAvailable && uuid ∉ activeBranch` | `.skipBranchAffiliated`              | rolled into `SynthesizedEntry.branchLink` at divergence point | `ClaudeLineDispatcher.swift:116`         |
 | (unknown)     | `type` doesn't match any case                | `.skip` + DEBUG warning                | —                                    | `ClaudeLineDispatcher.swift:110`                          |
 
-## 6. Resolvers
+## 6. Per-line dispatch (post-G6 — no resolvers)
 
-Pre-pass resolvers walk all `rawLines` once and produce pure value
-outputs that the per-line dispatch loop reads. They never mutate state
-and never produce `Entry` values directly.
+`ClaudeTranscriptBuilder` runs **zero pre-pass resolvers**. Every JSONL
+line stands on its own and either creates an entry, mutates one, pushes
+or pops the pending-prompt FIFO, or registers an alias.
 
-- **`ClaudeBranchResolver`** (`Resolvers/ClaudeBranchResolver.swift`).
-  Walks the rewind tree. Inputs: every line's `uuid`/`parentUuid`/
-  `logicalParentUuid` and the latest `last-prompt` marker. Outputs:
-  `activeUUIDs` (the chain of UUIDs from the active leaf to the root,
-  plus tree-descendants appended after the marker, plus tool-result
-  siblings on active tool-use lines), and one `ClaudeAbandonedBranch`
-  per group of UUIDs not on the active chain (with `branchRootUuid`,
-  `divergencePointUuid`, member set, first-prompt preview, rewind
-  ordinal). The dispatcher uses `activeUUIDs` for branch gating; the
-  builder emits `SynthesizedEntry.branchLink` at each branch's
-  divergence point (or pinned to the head for orphan branches).
+`BuildContext` carries 4 fields:
 
-- **`ClaudeTurnDurationResolver`** (`Resolvers/ClaudeTurnDurationResolver.swift`).
-  Collects `system`-subtype `turn_duration` lines into a
-  `[lastMessageUuid: TurnDurationStamp]` map. The builder looks up the
-  stamp by an agent turn's `lastMessageUuid` at flush time and stamps
-  the resulting `AgentEntry` header.
+```swift
+fileprivate struct BuildContext {
+    let logger: any AgentXrayLogger
+    var root = Transcript()
+    var pendingPromptQueue: [(id: EntryID, text: String)] = []
+    var awaitingParent: [String: ClaudeJSONLLine] = [:]
+}
+```
 
-- **`ClaudeQueuedPromptResolver`** (`Resolvers/ClaudeQueuedPromptResolver.swift`).
-  Pairs `queue-operation enqueue` content with consumer attachments
-  (`attachment.queued_command`) and slash-command user lines via FIFO
-  content-equality bag. Outputs `wasQueuedSlashUuids` (slash-command
-  user UUIDs whose text matched a prior enqueue — render with
-  `wasQueued: true`) and `pendingPrompts` (enqueue events whose content
-  was never consumed — synthesized as tail-pinned
-  `UserEntry(isQueuedPending: true)` rows).
+**Universal alias rule.** `Transcript.index` carries every JSONL line
+uuid — either as a real entry id (when the line's own append registers
+it) or as an alias mapping to its parent's resolved path (chained
+assistant lines, `tool_result` mutators, `turn_duration` mutators,
+skipped decorators). Children resolve in O(1) without re-walking the
+JSONL chain.
 
-- **`ClaudeSkillCommandResolver`** (`Resolvers/ClaudeSkillCommandResolver.swift`).
-  Identifies `<command-message>` user lines that are skill invocations
-  (vs built-in slash commands). Discriminator: the immediate
-  next-in-file-order line is an `isMeta:true` user line whose content
-  starts with `Base directory for this skill:`. Output:
-  `skillCommandUuids`. The dispatcher routes these through
-  `render(.user)` (so the user-typed `/cmd args` text appears as a
-  user message) instead of the built-in `slashCmdInput` meta surface.
+**Out-of-order pool.** A line whose `parentUuid` isn't yet in
+`Transcript.index` is parked in `awaitingParent[parentUuid]`. Drain
+fires after every successful uuid registration. Single-child invariant
+(corpus 0/731 with 2+); DEBUG-asserted.
+
+**Per-line work:**
+- **Top-level kinds** (user-typed prompt, system, compact, slashCmdInput,
+  recap, prLink, queuedPrompt, planMode, editedTextFile, systemReminder)
+  append at top-level regardless of `parentUuid`.
+- **Assistant content blocks** (`text` / `thinking` / `tool_use`) fold
+  into the AgentEntry resolved via the parent's top-level slot — fresh
+  AgentEntry created when the parent is non-`.agent`. Sub-entry ids
+  derive from `(line.stableId, blockIndex)`.
+- **Mutation kinds** — `tool_result` blocks invoke `ToolResultUpdate.apply`
+  via `Transcript.mutate(id: tool_use_id)`. `system.subtype: turn_duration`
+  lines short-circuit dispatch and invoke `TurnDurationUpdate.apply`
+  via `Transcript.mutate(id: containingAgentEntry.id)`.
+- **FIFO** — `queue-operation enqueue` appends a `.pending` UserEntry
+  top-level and pushes `(id, text)` onto `pendingPromptQueue`. Both
+  `attachment.queued_command` and slash-cmd input lines pop the
+  matching head text and slice out the `.pending` UserEntry, replacing
+  it with a `.consumed` UserEntry.
+- **Skip kinds** (last-prompt, sidechain wholesale, unknown attachments,
+  session-orphan metadata) register an alias only.
+
+**Rewind detection** is inline at top-level user-typed prompt arrival:
+when the new prompt's `parentUuid` resolves to a top-level slot K with
+trailing entries past K, fold the tail into a synthesized
+`.branchLink` at slot K+1 via `Transcript.branchOff`.
 
 ## 7. Special-case stitching
 
