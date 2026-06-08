@@ -92,7 +92,7 @@ struct ClaudeTranscriptBuilder {
             && !ctx.emittedDivergencePoints.contains(branch.branchRootUuid) {
             ctx.emittedDivergencePoints.insert(branch.branchRootUuid)
             let entries = branchEntriesByRoot[branch.branchRootUuid] ?? []
-            ctx.entries.append(.synthesized(Self.makeBranchLinkEntry(
+            ctx.appendEntry(.synthesized(Self.makeBranchLinkEntry(
                 branch: branch,
                 totalRewinds: ctx.resolution.totalRewinds,
                 branchEntries: entries,
@@ -111,7 +111,7 @@ struct ClaudeTranscriptBuilder {
         // UserEntry and the pending pseudo-entry drops out of the next
         // transcript.
         for pending in queued.pendingPrompts {
-            ctx.entries.append(.user(makeUserEntry(
+            ctx.appendEntry(.user(makeUserEntry(
                 id: pending.id,
                 timestamp: pending.timestamp,
                 promptId: nil,
@@ -119,6 +119,14 @@ struct ClaudeTranscriptBuilder {
                 queuedState: .pending
             )))
         }
+
+        // G2a safety net: dual-write must mirror legacy `entries`. Every
+        // existing builder test exercises this on debug builds; G2b
+        // promotes `root.subEntries` to source of truth.
+        assert(
+            ctx.entries == ctx.root.subEntries,
+            "Phase G dual-write divergence — entries count=\(ctx.entries.count), root count=\(ctx.root.subEntries.count)"
+        )
 
         return ctx.entries
     }
@@ -161,19 +169,19 @@ struct ClaudeTranscriptBuilder {
             switch kind {
             case .compact:
                 ctx.flushPendingTurn()
-                ctx.entries.append(.compact(buildCompactEntry(from: line)))
+                ctx.appendEntry(.compact(buildCompactEntry(from: line)))
             case .user:
                 let cat = classify(line)
                 switch cat {
                 case .user:
                     ctx.flushPendingTurn()
                     if let entry = buildUserEntry(from: line, ctx: ctx) {
-                        ctx.entries.append(.user(entry))
+                        ctx.appendEntry(.user(entry))
                     }
                 case .system:
                     ctx.flushPendingTurn()
                     if let entry = buildSystemEntry(from: line) {
-                        ctx.entries.append(.system(entry))
+                        ctx.appendEntry(.system(entry))
                     }
                 case .agent:
                     mergeIntoPendingTurn(line, ctx: &ctx)
@@ -183,7 +191,7 @@ struct ClaudeTranscriptBuilder {
             case .system:
                 ctx.flushPendingTurn()
                 if let entry = buildSystemEntry(from: line) {
-                    ctx.entries.append(.system(entry))
+                    ctx.appendEntry(.system(entry))
                 }
             case .agent:
                 mergeIntoPendingTurn(line, ctx: &ctx)
@@ -208,7 +216,7 @@ struct ClaudeTranscriptBuilder {
         case .recap:
             let recapBody = (line.content ?? body).trimmingCharacters(in: .whitespacesAndNewlines)
             if recapBody.isEmpty { return }
-            ctx.entries.append(Self.makeSystemEntry(
+            ctx.appendEntry(Self.makeSystemEntry(
                 id: id, ts: ts, icon: .recap,
                 name: Self.loc("agentXray.entry.recap.title", "Recap"),
                 body: .text([recapBody]),
@@ -218,7 +226,7 @@ struct ClaudeTranscriptBuilder {
             guard let prNumber = line.prNumber,
                   let prUrl = line.prUrl,
                   let prRepository = line.prRepository else { return }
-            ctx.entries.append(.synthesized(SynthesizedEntry(
+            ctx.appendEntry(.synthesized(SynthesizedEntry(
                 id: .derived(parent: id, kind: "prLink"),
                 header: Header(
                     icon: .prLink,
@@ -236,7 +244,7 @@ struct ClaudeTranscriptBuilder {
         case .slashCmdInput(let name, let args):
             if ctx.queuedSlashCommandUuids.contains(line.stableId) {
                 let text = ClaudeQueuedPromptResolver.consumedSlashCommandText(line) ?? body
-                ctx.entries.append(.user(makeUserEntry(
+                ctx.appendEntry(.user(makeUserEntry(
                     id: id,
                     timestamp: ts,
                     promptId: line.promptId,
@@ -245,7 +253,7 @@ struct ClaudeTranscriptBuilder {
                 )))
             } else {
                 let title = args.map { "/\(name) \($0)" } ?? "/\(name)"
-                ctx.entries.append(Self.makeSystemEntry(
+                ctx.appendEntry(Self.makeSystemEntry(
                     id: id, ts: ts, icon: .slashCommand,
                     title: title,
                     body: .empty,
@@ -257,7 +265,7 @@ struct ClaudeTranscriptBuilder {
             let label = isStderr
                 ? Self.loc("agentXray.entry.slashCmd.stderr", "Slash command stderr")
                 : Self.loc("agentXray.entry.slashCmd.output", "Slash command output")
-            ctx.entries.append(Self.makeSystemEntry(
+            ctx.appendEntry(Self.makeSystemEntry(
                 id: id, ts: ts, icon: .system, name: label,
                 body: Body(sections: [.text([b], style: isStderr ? .error : .normal)]),
                 subType: .slashCmdOutput(isStderr: isStderr)
@@ -265,14 +273,14 @@ struct ClaudeTranscriptBuilder {
         case .localCommandCaveat:
             return
         case .systemReminder(let b):
-            ctx.entries.append(Self.makeSystemEntry(
+            ctx.appendEntry(Self.makeSystemEntry(
                 id: id, ts: ts, icon: .systemReminder,
                 name: Self.loc("agentXray.entry.systemReminder.title", "System reminder"),
                 body: .text([b]),
                 subType: .systemReminder
             ))
         case .skill(let name, let basePath, let b):
-            ctx.entries.append(Self.makeSystemEntry(
+            ctx.appendEntry(Self.makeSystemEntry(
                 id: id, ts: ts, icon: .skill,
                 name: Self.loc("agentXray.entry.skill.title", "Skill: \(name)"),
                 title: basePath,
@@ -280,7 +288,7 @@ struct ClaudeTranscriptBuilder {
                 subType: .skill(name: name, basePath: basePath)
             ))
         case .contextUsage(let b):
-            ctx.entries.append(Self.makeSystemEntry(
+            ctx.appendEntry(Self.makeSystemEntry(
                 id: id, ts: ts, icon: .contextInfo,
                 name: Self.loc("agentXray.entry.contextUsage.title", "Context usage"),
                 body: .text([b]),
@@ -289,7 +297,7 @@ struct ClaudeTranscriptBuilder {
         case .unknownMeta:
             let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { return }
-            ctx.entries.append(Self.makeSystemEntry(
+            ctx.appendEntry(Self.makeSystemEntry(
                 id: id, ts: ts, icon: .systemReminder,
                 name: Self.loc("agentXray.entry.systemReminder.title", "System reminder"),
                 body: .text([trimmed]),
@@ -299,7 +307,7 @@ struct ClaudeTranscriptBuilder {
             let text = (line.attachment?.prompt?.firstText() ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if text.isEmpty { return }
-            ctx.entries.append(.user(makeUserEntry(
+            ctx.appendEntry(.user(makeUserEntry(
                 id: id,
                 timestamp: ts,
                 promptId: line.promptId,
@@ -312,7 +320,7 @@ struct ClaudeTranscriptBuilder {
                 let last = URL(fileURLWithPath: path).lastPathComponent
                 return last.isEmpty ? nil : last
             }
-            ctx.entries.append(Self.makeSystemEntry(
+            ctx.appendEntry(Self.makeSystemEntry(
                 id: id, ts: ts, icon: .planMode,
                 name: phaseName,
                 title: planBasename,
@@ -327,7 +335,7 @@ struct ClaudeTranscriptBuilder {
             guard let filename = line.attachment?.filename, !filename.isEmpty else { return }
             let basename = URL(fileURLWithPath: filename).lastPathComponent
             let snippet = line.attachment?.snippet
-            ctx.entries.append(Self.makeSystemEntry(
+            ctx.appendEntry(Self.makeSystemEntry(
                 id: id, ts: ts, icon: .editedTextFile,
                 name: Self.loc("agentXray.entry.externalEdit.title", "External edit · \(basename)"),
                 body: snippet.map { Body.text([$0]) } ?? .empty,
@@ -539,12 +547,25 @@ struct ClaudeTranscriptBuilder {
         /// warnings emitted by `buildToolResultSections`.
         let logger: any AgentXrayLogger
         var entries: [Entry] = []
+        /// Phase G dual-write target. Mirrors `entries` while G2a wires
+        /// every append site through ``appendEntry(_:)``. G2b promotes
+        /// `root.subEntries` to source of truth and removes `entries`.
+        var root = TranscriptRoot()
         var pendingTurn: PendingTurn?
         var turnDurations: [String: TurnDurationStamp] = [:]
         var sidechainLinesByParent: [String: [ClaudeJSONLLine]] = [:]
         var emittedDivergencePoints: Set<String> = []
         var queuedSlashCommandUuids: Set<String> = []
         var abandonedBranchEntriesByRoot: [String: [Entry]] = [:]
+
+        /// Phase G dual-write helper. Appends to both legacy `entries`
+        /// and the new `root` so a single test fixture can assert
+        /// `entries == root.subEntries` after dispatch — the safety net
+        /// for G2b's source-of-truth flip.
+        mutating func appendEntry(_ entry: Entry) {
+            entries.append(entry)
+            root.append(entry)
+        }
 
         mutating func flushPendingTurn() {
             guard let pending = pendingTurn else { return }
@@ -632,7 +653,7 @@ struct ClaudeTranscriptBuilder {
                 trailing.append(.tokenPill(pending.usage))
             }
 
-            entries.append(.agent(AgentEntry(
+            appendEntry(.agent(AgentEntry(
                 id: .fromJSONL(pending.id),
                 header: Header(
                     icon: .agent,
@@ -675,7 +696,7 @@ struct ClaudeTranscriptBuilder {
                 emittedDivergencePoints.insert(branch.branchRootUuid)
                 let branchEntries = abandonedBranchEntriesByRoot[branch.branchRootUuid] ?? []
                 let ts = line.timestamp ?? .distantPast
-                entries.append(.synthesized(ClaudeTranscriptBuilder.makeBranchLinkEntry(
+                appendEntry(.synthesized(ClaudeTranscriptBuilder.makeBranchLinkEntry(
                     branch: branch,
                     totalRewinds: resolution.totalRewinds,
                     branchEntries: branchEntries,
