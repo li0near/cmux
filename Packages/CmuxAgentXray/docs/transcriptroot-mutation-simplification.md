@@ -229,16 +229,70 @@ correctly (Swift's `_modify` accessor + COW handle the chain).
 ### Cleanup riders worth taking in the same commit
 
 1. **Drop the redundant `indexNestedChildren(of:parent:parentPath:)`
-   overload.** Its `parent` and `parentPath` parameters are
-   referenced in the body but the value used is always `entry.id`,
-   not the parameter. The single-arg version is sufficient.
+   overload.** Its `parent` and `parentPath` parameters are accepted
+   but the body uses `entry.id` directly, not the parameter values.
+   The two-arg overload is dead weight; collapse into the one-arg
+   version.
 2. **Inline `isSubEntryOnlyCase(_:)`** at its single call site (the
-   DEBUG assert in `append`). It's 3 lines; inlining is cleaner.
-3. **Drop `removeIfNeeded` ceremony.** With direct subscript
-   mutation, several places that today do "lookup then conditionally
-   call helper" become single-line.
+   DEBUG assert in `append`). It's a 3-line helper used once; inlining
+   is cleaner.
 
-After these cuts: function count drops from 17 → ~8.
+After the main simplification + these riders: function count drops
+from 17 → ~8.
+
+---
+
+## Judgement / recommendation
+
+**Do this. Land it as the first commit of the next session.** The
+simplification is mechanically obvious, has no behaviour change, and
+collapses ~half the file. There is no reason to keep the
+reconstruction machinery once the model fields are settable.
+
+**Why this slipped through G1.5 in the first place.** The predecessor
+builder (pre-Phase-G) re-built every `AgentEntry` from scratch on
+every `transcript()` call — incremental mutation didn't exist, so
+`let` fields were correct (the value was constructed once and
+discarded after the rebuild). G1.5 introduced incremental mutation
+without revisiting the field declarations. That's the meta-lesson:
+when changing the runtime mutation pattern, the model's
+field-mutability defaults need to move in lockstep. Carrying `let`
+forward by reflex is what produced the 9 extra functions.
+
+**Why `internal(set) var` over `public var` or `private(set) var`.**
+- `public var` would let the cmux app target write
+  `agentEntry.subEntries.append(...)` from outside the package,
+  bypassing `TranscriptRoot`'s index. Bug magnet.
+- `private(set) var` would lock writes to the type itself, but
+  `TranscriptRoot` is a separate type in the same module that
+  legitimately needs to write. `private(set)` would force an
+  awkward "owner" pattern.
+- `internal(set)` strikes the right balance — package-internal code
+  (TranscriptRoot, the builder) can write; package consumers
+  (cmux app target) get the same read-only contract they have today.
+
+**Risk assessment.**
+- Public API unchanged. No call-site breakage outside the package.
+- Test coverage already exercises append / mutate / remove /
+  branchOff at depth (`TranscriptRootTests` + builder tests). If the
+  refactor introduces a regression, the existing fixtures catch it.
+- The settable computed property on `Entry` has a clear contract
+  ("setter on non-container case is a no-op"); the case-rebuild in
+  the setter is mechanical.
+
+**What NOT to do.**
+- Do NOT make the inner fields `public var`. The internal-write /
+  external-read contract matters for the panel layer.
+- Do NOT remove the index. The simplification keeps the index intact
+  — it's the path-resolution mechanism that lets `mutate(id:)` reach
+  any depth in O(depth). Without the index we'd be O(N).
+- Do NOT bundle this with G3a or any other plan sub-commit. Land it
+  as a stand-alone "G1.6 — TranscriptRoot mutation simplification"
+  commit. Pure refactor; reviewable in isolation.
+
+**Estimated cost.** ~1 hour of work. ~3 file edits (Entry,
+AgentEntry, SynthesizedEntry, TranscriptRoot, +BranchOff). Net LOC
+change: roughly −150 / +40.
 
 ---
 
