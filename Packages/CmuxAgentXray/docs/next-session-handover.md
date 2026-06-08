@@ -1,8 +1,8 @@
 # AgentX-ray — pending work handover (2026-06-08, mid-Phase-G)
 
-## Current state (mid-Phase-G implementation, 4 of 8 sub-commits landed)
+## Current state (mid-Phase-G implementation, G0–G1.6 landed)
 
-Phase G is **partially landed**. Four sub-commits are on `agentxray`,
+Phase G is **partially landed**. Seven sub-commits are on `agentxray`,
 each tagged in the title with its sub-commit number:
 
 | Commit | Sub-commit | Topic | Test count |
@@ -11,23 +11,53 @@ each tagged in the title with its sub-commit number:
 | `c9e734eab` | G1/8 | `TranscriptRoot` infrastructure | 155/20 |
 | `b36effc9c` | G2a/8 | Dual-write `TranscriptRoot` alongside `ctx.entries` | 155/20 |
 | `4bec941d8` | G2b/8 | Switch `transcript()` to `root.subEntries` | 155/20 |
+| `91d9b6da8` | G1.5 | Lift `SubEntry` into `Entry`; collapse `TranscriptRoot` API | 154/20 |
+| `e7d23f387` | G1.5-fix | Drop `ToolEntry.subEntries` | 154/20 |
+| `486681b5e` | G1.6 | `TranscriptRoot` → `Transcript`; collapse mutation API to `slice` | 155/20 |
 
-The plan that produced these is at
+The plan that produced G0/G1/G2a/G2b is at
 `/Users/I505728/.claude/plans/streamed-cuddling-stream.md` and stays
-authoritative for the rest of Phase G. Read it before continuing.
+authoritative for G3a / G3b / G5 / G4 / G6. Read it before continuing.
 
-**G3 attempt was reverted in this session.** Collapsing `PendingTurn`
-(its `subEntries: [PendingSubEntry]` accumulator + `toolIndexByID`
-lookup) requires rewriting `mergeIntoPendingTurn`, `appendTextEvent`,
-`appendToolUse`, `attachToolResult`, and `flushPendingTurn`
-together. Unlike G2a's top-level dual-write, there is no equivalent
-safety net for sub-entries — `TranscriptRoot.index` doesn't track
-sub-entries until the parent `AgentEntry` is appended (currently at
-flush time). Doing the rewrite + verifying behaviour across 155 tests
-in one push without intermediate commits is high-risk for subtle
-regressions in tool-result attachment, duplicate-tool_use idempotence,
-or sidechain attachment ordering. **A safer G3 approach is sketched
-at the bottom of this section.**
+The G1.6 simplification plan is at
+`/Users/I505728/.claude/plans/transient-meandering-russell.md` — pure
+refactor, no behaviour change. Already landed.
+
+**Post-G1.6 model shape that the remaining sub-commits sit on top of:**
+
+- `Transcript` (was `TranscriptRoot`) is the document type. Holds
+  `entries: [Entry]` + a flat `[EntryID: [Int]]` path index. Drops
+  the legacy `Transcript = [Entry]` typealias.
+- `Entry` is one uniform 7-case enum (`.user / .agent / .system /
+  .compact / .synthesized / .text / .tool`). The "sub-entries can't
+  appear at top level" invariant is enforced by the builder + a DEBUG
+  assert in `Transcript.append(parent:entry:)`.
+- `AgentEntry.subEntries` and `SynthesizedEntry.subEntries` are
+  `internal(set) var [Entry]`. `Entry.subEntries` is a settable
+  case-rebuild computed property. `&entries[head].subEntries` is a
+  writeable lvalue → recursion threads through Swift's `_modify`
+  accessor chain without copy-extract-repack.
+- Public mutation API: `append(parent: EntryID?, entry: Entry)`,
+  `mutate(id: EntryID, _ body: (inout Entry) -> Void)`,
+  `slice(from: EntryID, length: Int, replacingWith: Entry?)`.
+  `branchOff(at: divergencePoint, link:)` is a thin wrapper over
+  `slice`. The unified `slice` subsumes `remove(id:)` (length 1,
+  `replacingWith: nil`) and the abandoned-branch fold
+  (`replacingWith: .synthesized(link)`).
+
+**G3 attempt was reverted earlier in this session.** Collapsing
+`PendingTurn` (its `subEntries: [PendingSubEntry]` accumulator +
+`toolIndexByID` lookup) requires rewriting `mergeIntoPendingTurn`,
+`appendTextEvent`, `appendToolUse`, `attachToolResult`, and
+`flushPendingTurn` together. Unlike G2a's top-level dual-write, there
+is no equivalent safety net for sub-entries — `Transcript`'s index
+doesn't track sub-entries until the parent `AgentEntry` is appended
+(currently at flush time). Doing the rewrite + verifying behaviour
+across 155 tests in one push without intermediate commits is high-risk
+for subtle regressions in tool-result attachment, duplicate-tool_use
+idempotence, or sidechain attachment ordering. **The safer G3a/G3b
+approach is encoded in the approved plan; a sketch follows at the
+bottom of this section.**
 
 **Sidechain corpus survey for the future G3** (run during 19v):
 - 710 sessions, 36,113 sidechain lines.
@@ -40,15 +70,33 @@ at the bottom of this section.**
   handle the orphan case gracefully (skip-or-warn, falling through
   to the existing synthetic-tool fallback in `attachToolResult`).
 
+**G1.6 corpus + code verifications worth carrying forward:**
+- Slice operations are **top-level + tail-only** in production — both
+  code-side (zero non-tail call sites in `Sources/`; the unused
+  `remove(id:)` was deleted) and corpus-side (200 sampled Claude
+  sessions, 85/85 rewinds abandon a contiguous tail past the
+  divergence point). The `Transcript.slice` algorithm stays general
+  (mid-array drop + shift correct) for future-proofing.
+- `mutate(id:)` closures **never replace `entry.subEntries`** AND
+  **never change `entry.id`** today (zero call sites of `mutate(id:)`
+  in production at G1.6 landing; the planned G3a uses all preserve
+  `EntryID.fromJSONL(toolUseID)` between the synthetic fallback and
+  the real `tool_use` re-emission). G3a's flush-time bake-in must
+  continue to honour these contracts — the implementation in
+  `Transcript.swift` does NOT walk descendants and does NOT swap
+  index keys; a DEBUG assert catches any future closure that
+  violates either contract.
+
 **Remaining sub-commits** (deferred to a follow-up session):
 
-- **G3** — collapse `PendingTurn` + drop recursive sidechain rebuild.
-- **G4** — inline branch detection at `last-prompt` arrival; delete
-  `ClaudeBranchResolver` (multi-pass + fixpoint loop). Note the
-  resolver also produces the `activeUUIDs` set used for branch-
-  gating in `ClaudeLineDispatcher.branchGated`; replacement must
-  preserve that path.
-- **G5** — inline FIFO queued-prompt; delete `ClaudeQueuedPromptResolver`.
+- **G3a** — sub-entry dual-write infrastructure (skeleton AgentEntry
+  + dual-write under `root.append(parent: skeletonId, entry: ...)`).
+- **G3b** — flip sub-entry source of truth; collapse `PendingTurn`
+  accumulator.
+- **G5** — inline FIFO queued-prompt; delete
+  `ClaudeQueuedPromptResolver`.
+- **G4** — per-line rewind detection + pending pool; delete
+  `ClaudeBranchResolver`.
 - **G6** — cleanup, doc updates, retire this handover doc.
 
 ### Suggested safer-G3 approach for the next session
@@ -57,27 +105,36 @@ Add a sub-entry dual-write phase analogous to G2a/G2b before
 collapsing `PendingTurn`:
 
 1. **G3a (sub-entry dual-write infrastructure)** — `BuildContext`
-   gains a stored `var pendingAgentEntryId: EntryID?` and a helper
-   `appendSubEntry(_:)` that writes to BOTH the legacy
-   `pendingTurn!.subEntries` accumulator AND `root.appendSubEntry`.
-   First requires creating the `AgentEntry` skeleton in `root` at
-   the start of a turn (when the first assistant block arrives) so
-   `root.appendSubEntry(parentAgentId:)` has a valid parent. The
-   skeleton agent's final fields (`usage`, `model`, `endTime`,
-   `perTurnDurationMs`, `messageCount`, `stopReason`) get baked in
-   at flush via `root.mutate(id: pendingAgentEntryId)`. Add a
-   debug-only assert at flush time: `pending.subEntries.count`
-   matches the count of agent's sub-entries via the index, and
-   per-position id equality holds.
-2. **G3b (flip)** — Promote the dual-write target to source of
-   truth: drop `PendingTurn.subEntries` and `toolIndexByID`. Tool
-   result attachment goes through `root.mutateSubEntry`. Sidechain
-   stays as-is (recursive `buildSidechainEntries`).
-3. **G3c (drop recursive sidechain)** — Optional follow-up. Requires
-   extending `TranscriptRoot.EntrySlot` with a third variant for
-   "inside a `ToolEntry.body.sections[i].subentries[j]`" so
-   sidechain entries get index lookups too. With the sidechain
-   corpus survey clear (0 uuid collisions), this is safe.
+   gains a stored `var pendingAgentSkeletonId: EntryID?`. Skeleton
+   creation is **lazy** (in `appendTextEvent` / `appendToolUse`'s
+   first sub-entry-producing call, not in `mergeIntoPendingTurn`
+   itself, which early-returns for content-less heartbeats).
+   Sub-entry writes go to BOTH the legacy `pendingTurn!.subEntries`
+   accumulator AND `root.append(parent: skeletonId, entry: ...)`.
+   For the duplicate-tool_use re-emission case, mirror the
+   overwrite-in-place via `root.mutate(id: .fromJSONL(id))`. The
+   synthetic-fallback path in `attachToolResult` MUST use
+   `EntryID.fromJSONL(id)` (not a derived/synthetic id) so a later
+   real `appendToolUse` for the same id mutates in place rather
+   than creating a duplicate slot. `flushPendingTurn` replaces its
+   `appendEntry(.agent(...))` call with `root.mutate(id: skeletonId)`
+   to bake usage / model / endTime / stopReason / sub-entries into
+   the existing skeleton (NOT changing the entry's id — preserve
+   the contract). Add a debug-only assert: `pending.subEntries.count`
+   matches the skeleton's `subEntries.count` AND per-position id
+   equality holds (read back via `root.entry(id: skeletonId)`).
+2. **G3b (flip)** — Drop `PendingTurn.subEntries` and
+   `toolIndexByID`. Sub-entries flow only through `root`.
+   `flushPendingTurn` becomes "bake final fields via `root.mutate`;
+   attach sidechains; clear pendingTurn." Detect duplicate-tool_use
+   re-emission via `root.entry(id: .fromJSONL(id))`; cross-turn
+   id-reuse safeguard checks the found entry's parent matches the
+   current `skeletonId` before mutating in place.
+3. **G3c (drop recursive sidechain)** — Optional follow-up.
+   Sidechain attachment via `root.append(parent: parentToolId, ...)`
+   directly, eliminating `buildSidechainEntries`. With the
+   sidechain corpus survey clear (0 uuid collisions), this is safe.
+   Out of scope for the next session unless time allows.
 
 The carry-forward sections below remain — original Phase G design
 (§A through §D) and older deferrals — for context.
