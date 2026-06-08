@@ -2,20 +2,11 @@
 /// list means a header-only entry (Variant A — clickable link with no
 /// inline content, e.g. `assistantText`, `prLink`).
 ///
-/// Sections fall into two kinds:
-/// - `.text(...)` — one or more inline text blocks rendered in a gray
-///   background. The `style` discriminator drives per-section visual
-///   treatment (italic for thinking, red for errors, future diff colors).
-/// - `.subentries(...)` — nested children. The renderer policy decides
-///   whether to render them inline (current behavior for `AgentEntry`) or
-///   as a single "open detail" link (current behavior for tool sidechains
-///   and abandoned-branch link). The data shape is the same in both
-///   cases.
-///
-/// `Body` is a recursive type via `Section.subentries([Entry])` — Swift
-/// resolves the cycle within the module, no `indirect` keyword needed
-/// because the recursion goes through `Array<Entry>` (a reference-sized
-/// box).
+/// Sections cover inline rendering payloads only. Nested children
+/// (sub-agent transcripts, abandoned-branch entries, agent turn
+/// sub-entries) live on the entry's top-level `subEntries` field
+/// (post-G1.5 — was `Section.subentries(...)` before; that variant
+/// was deleted to keep `Body` a pure rendering payload).
 public struct Body: Equatable, Sendable {
     public let sections: [Section]
 
@@ -34,12 +25,9 @@ public struct Body: Equatable, Sendable {
 
 /// One section within an entry's body.
 ///
-/// Variants are intentionally a flat enum (5 cases by end of Phase C —
-/// `.text`, `.image`, `.toolReference`, `.subentries`, `.offloadedOutput`)
-/// rather than an indirected typed-payload struct. Every consumer is
-/// already a switch; lifting to a struct would force a rewrite of each
-/// site without buying back type safety. Re-evaluate if a 6th case
-/// becomes necessary.
+/// Pure rendering payloads. Container-shape data (nested children)
+/// lives on the parent ``Entry``'s `subEntries` projection, not in a
+/// section. Re-evaluate if a 5th rendering case becomes necessary.
 public enum Section: Equatable, Sendable {
     /// Inline text block(s) rendered in a gray background. The `style`
     /// drives per-section visual treatment (italic, error red, etc.).
@@ -60,10 +48,6 @@ public enum Section: Equatable, Sendable {
     /// on disk. The renderer surfaces an "↗ Open offloaded result" link;
     /// the detail-tab resolver reads the file lazily on click.
     case offloadedOutput(OffloadedOutput)
-    /// Nested entries. Rendering policy is decided by the variant
-    /// (inline for `AgentEntry`; link-to-detail for tool sidechains and
-    /// abandoned-branch synthesizer rows).
-    case subentries([Entry])
 }
 
 /// Visual treatment applied to a `.text` section.
@@ -92,9 +76,7 @@ public enum TextStyle: Equatable, Sendable {
 
 extension Body {
     /// Concatenated text content from every `.text` section, joined
-    /// by `"\n"`. Sub-entry sections are not traversed (use
-    /// `subentriesContent` for that). Returns "" when the body is
-    /// header-only or contains only sub-entries.
+    /// by `"\n"`. Returns "" when the body is header-only.
     public var textContent: String {
         var parts: [String] = []
         for section in sections {
@@ -104,14 +86,5 @@ extension Body {
         }
         return parts.joined(separator: "\n")
     }
-
-    /// First `.subentries` section's children, or `[]` if none.
-    public var subentriesContent: [Entry] {
-        for section in sections {
-            if case .subentries(let entries) = section {
-                return entries
-            }
-        }
-        return []
-    }
 }
+

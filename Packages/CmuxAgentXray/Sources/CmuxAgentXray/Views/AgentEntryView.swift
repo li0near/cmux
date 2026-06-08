@@ -82,15 +82,19 @@ public struct AgentEntryView: View {
         .id(entryID)
     }
 
-    /// Dispatch on the typed `AgentEntry.SubEntry` so each kind gets
-    /// its bespoke per-kind chrome via the matching extension file.
+    /// Dispatch on the `Entry` sub-entry — only `.text` / `.tool`
+    /// cases ever appear inside an agent turn (post-G1.5; the builder
+    /// + `TranscriptRoot.append`'s DEBUG assert enforce this). Other
+    /// cases fall through to a no-op rather than crashing in release.
     @ViewBuilder
-    private func subEntrySection(sub: AgentEntry.SubEntry) -> some View {
+    private func subEntrySection(sub: Entry) -> some View {
         switch sub {
         case .text(let t):
             textSection(text: t)
         case .tool(let tool):
             toolSection(tool: tool)
+        case .user, .agent, .system, .compact, .synthesized:
+            EmptyView()
         }
     }
 }

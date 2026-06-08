@@ -1,18 +1,19 @@
 import SwiftUI
 
 /// Unified body renderer. Walks `body.sections` and renders each as
-/// either an inline gray-background text block (with `TextStyle`
-/// applied) or a recursive sub-entry list.
+/// an inline gray-background text block (with `TextStyle` applied),
+/// an inline image link, a tool-reference chip, or an offloaded-output
+/// link.
+///
+/// Nested children (sub-agent transcripts, abandoned-branch entries,
+/// agent turn sub-entries) are NO LONGER a body concern post-G1.5 —
+/// they live on the entry's top-level `subEntries` field. Container
+/// variants (`.agent`, `.synthesized`, `.tool`) project them through
+/// `Entry.subEntries`; renderers walk that directly outside this view.
 ///
 /// Caps are pre-applied via `EntryComputedCache.compute(...)` — this
 /// view consumes the cached `[ExpandableContent]` rather than running
 /// truncation per body pass.
-///
-/// Recursion: a `.subentries(...)` section calls back into `EntryView`
-/// for each child, which calls back into `EntryBodyView` for grand-
-/// children. Recursion is bounded by the JSONL data shape (one level
-/// of sub-entries inside AgentEntry; sidechain transcripts add at most
-/// one more level for sub-agent calls).
 @available(macOS 15, *)
 struct EntryBodyView: View {
 
@@ -21,7 +22,6 @@ struct EntryBodyView: View {
     let palette: HudPalette
     let displayMode: DisplayMode
     let onOpenDetail: () -> Void
-    let renderSubEntry: (Entry) -> AnyView
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -43,12 +43,6 @@ struct EntryBodyView: View {
             ToolReferenceChipView(toolName: toolName, palette: palette)
         case .offloadedOutput(let off):
             OffloadedOutputLinkView(offloaded: off, palette: palette, action: onOpenDetail)
-        case .subentries(let children):
-            VStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
-                ForEach(children, id: \.id.stableString) { child in
-                    renderSubEntry(child)
-                }
-            }
         }
     }
 

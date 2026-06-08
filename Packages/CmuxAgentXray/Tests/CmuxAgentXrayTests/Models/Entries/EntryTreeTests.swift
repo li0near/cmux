@@ -43,7 +43,7 @@ struct EntryTreeTests {
                 label: "Sonnet 4.5",
                 timeMarker: .clock(Date(timeIntervalSince1970: 1_001))
             ),
-            body: Body(sections: [.subentries([])]),
+            body: Body(sections: []),
             usage: AgentEntry.TokenUsage(inputTokens: 100, outputTokens: 50),
             stopReason: "end_turn",
             subEntries: [.text(thinking), .tool(tool)]
@@ -76,7 +76,7 @@ struct EntryTreeTests {
 
     // MARK: - AgentEntry sub-entries
 
-    @Test("AgentEntry.SubEntry dispatches id and header")
+    @Test("AgentEntry.subEntries (Entry) dispatches id and header")
     func subEntryDispatch() {
         let turn = makeAgent()
         #expect(turn.subEntries.count == 2)

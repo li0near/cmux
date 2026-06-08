@@ -145,11 +145,11 @@ struct CodexTranscriptBuilder {
         var model: String?
 
         func finalize() -> AgentEntry {
-            var subEntries: [AgentEntry.SubEntry] = []
+            var subEntries: [Entry] = []
             let trimmed = assistantText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 let words = wordCount(trimmed)
-                subEntries.append(.text(TextSubEntry(
+                subEntries.append(Entry.text(TextSubEntry(
                     kind: .assistant,
                     id: .derived(parent: id, kind: "assistantText"),
                     parentEntryID: .fromJSONL(id),

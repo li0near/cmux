@@ -38,10 +38,13 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
     /// `perTurnDurationMs` is absent.
     public let endTime: Date?
 
-    /// Canonical ordered child projection (typed-narrow: only the three
-    /// kinds that ever appear inside an agent turn). Mirrored in
-    /// `body.sections`.
-    public let subEntries: [SubEntry]
+    /// Canonical ordered child projection. Holds `.text` / `.tool`
+    /// `Entry` cases (post-G1.5 the prior dedicated `SubEntry` enum is
+    /// merged into `Entry`). The builder enforces the
+    /// "only `.text` / `.tool` at this depth" convention; runtime
+    /// asserts in ``TranscriptRoot/append(parent:entry:)`` catch any
+    /// regression that places a non-text/tool entry here.
+    public let subEntries: [Entry]
 
     public init(
         id: EntryID,
@@ -53,7 +56,7 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
         messageCount: Int? = nil,
         model: String? = nil,
         endTime: Date? = nil,
-        subEntries: [SubEntry] = []
+        subEntries: [Entry] = []
     ) {
         self.id = id
         self.header = header
@@ -71,44 +74,6 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
     /// `header.timeMarker.clock`. Nil when the header has no clock
     /// marker.
     public var timestamp: Date? { header.timeMarker?.clockDate }
-
-    /// Type-system-narrowed child kinds. `.text` covers both thinking
-    /// and final assistant text (discriminated by `TextSubEntry.kind`);
-    /// `.tool` covers tool invocations. These two variants only ever
-    /// appear inside an `AgentEntry` — they never exist as top-level
-    /// transcript entries.
-    public enum SubEntry: Identifiable, Equatable, Sendable {
-        case text(TextSubEntry)
-        case tool(ToolEntry)
-
-        public var id: EntryID {
-            switch self {
-            case .text(let t):  return t.id
-            case .tool(let t):  return t.id
-            }
-        }
-
-        public var header: Header {
-            switch self {
-            case .text(let t):  return t.header
-            case .tool(let t):  return t.header
-            }
-        }
-
-        public var body: Body {
-            switch self {
-            case .text(let t):  return t.body
-            case .tool(let t):  return t.body
-            }
-        }
-
-        public var timestamp: Date? {
-            switch self {
-            case .text(let t):  return t.timestamp
-            case .tool(let t):  return t.timestamp
-            }
-        }
-    }
 
     /// Aggregated token counts across the turn. All fields can be 0 if
     /// the JSONL didn't include usage info (older entries, or
@@ -227,6 +192,15 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     /// highlight.js color the body.
     public let inputFilePath: String?
 
+    /// Sub-agent transcript carried inline on the tool. Populated for
+    /// `Task` / `Agent` tools whose `tool_use_id` keys a sub-agent
+    /// session; empty for non-sidechain tools. Replaces the prior
+    /// `body.sections[.subentries(...)]` convention with a top-level
+    /// field that mirrors ``AgentEntry/subEntries`` and
+    /// ``SynthesizedEntry/subEntries`` — uniform "container variants
+    /// expose subEntries directly" shape.
+    public let subEntries: [Entry]
+
     public init(
         id: EntryID,
         parentEntryID: EntryID,
@@ -238,7 +212,8 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         teamMemberName: String? = nil,
         teamName: String? = nil,
         mcpServer: String? = nil,
-        inputFilePath: String? = nil
+        inputFilePath: String? = nil,
+        subEntries: [Entry] = []
     ) {
         self.id = id
         self.parentEntryID = parentEntryID
@@ -251,6 +226,7 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
         self.teamName = teamName
         self.mcpServer = mcpServer
         self.inputFilePath = inputFilePath
+        self.subEntries = subEntries
     }
 
     /// Wall-clock timestamp, projected from `header.timeMarker.clock`.
@@ -273,20 +249,11 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     /// transcript builder:
     ///   sections[0]            — `.text([input], .normal)`
     ///   sections[1] (optional) — `.text([result], .normal/.error)`
-    ///   trailing `.subentries` (optional) — sub-agent transcript
     ///
-    /// The renderer walks `body.sections` directly and applies each
-    /// section's `TextStyle` automatically — no per-section accessors
-    /// are needed. The builder owns the convention; consumers iterate.
-
-    /// Sub-agent transcript carried on the tool, if any. Walks
-    /// `body.sections` for the first `.subentries(...)` payload.
-    public var sidechainTranscript: [Entry]? {
-        for section in body.sections {
-            if case .subentries(let entries) = section { return entries }
-        }
-        return nil
-    }
+    /// Sub-agent transcripts live on the top-level ``subEntries``
+    /// field, NOT in body sections (post-G1.5). The renderer walks
+    /// `body.sections` directly and applies each section's `TextStyle`
+    /// automatically — no per-section accessors are needed.
 }
 
 // (`AssistantTextEntry` and `ThinkingEntry` are gone — use

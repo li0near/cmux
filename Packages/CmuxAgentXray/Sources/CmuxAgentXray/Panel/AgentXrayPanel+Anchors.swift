@@ -87,7 +87,7 @@ extension AgentXrayPanel {
                     )
                     lastUnpairedUserID = nil
                 }
-            case .system, .compact, .synthesized:
+            case .system, .compact, .synthesized, .text, .tool:
                 break
             }
         }

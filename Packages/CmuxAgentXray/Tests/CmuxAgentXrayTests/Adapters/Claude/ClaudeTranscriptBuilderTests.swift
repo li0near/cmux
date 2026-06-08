@@ -142,6 +142,8 @@ struct ClaudeTranscriptBuilderTests {
                 return t.kind == .thinking ? "thinking" : "assistantText"
             case .tool:
                 return "tool"
+            case .user, .agent, .system, .compact, .synthesized:
+                return "<unexpected>"
             }
         }
         #expect(kinds == ["assistantText", "tool", "assistantText", "tool", "assistantText"])
@@ -181,6 +183,8 @@ struct ClaudeTranscriptBuilderTests {
                 return t.kind == .thinking ? "thinking" : "assistantText"
             case .tool:
                 return "tool"
+            case .user, .agent, .system, .compact, .synthesized:
+                return "<unexpected>"
             }
         }
         #expect(kinds == ["thinking", "assistantText", "tool", "thinking", "assistantText", "tool"])

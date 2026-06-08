@@ -10,11 +10,11 @@ public import SwiftUI
 /// closures) — never an `@ObservedObject` reference. Callers from
 /// the panel layer are responsible for passing immutable snapshots.
 ///
-/// Recursion: `.subentries` sections (AgentEntry body, branch-link
-/// body, tool sidechains) call back into this view via the
-/// `renderSubEntry` closure provided by the parent panel view. The
-/// closure isolates SwiftUI's view identity tracking so the parent
-/// can decide whether to recurse inline or surface a link.
+/// Post-G1.5: nested children live on the entry's `subEntries` field
+/// directly (not in `body.sections`). Container variants (`.agent` /
+/// `.tool` / `.synthesized.branchLink`) own their own sub-row
+/// rendering — `AgentEntryView` walks `entry.subEntries` directly.
+/// `EntryView` no longer takes a `renderSubEntry` closure.
 @available(macOS 15, *)
 public struct EntryView: View {
 
@@ -29,7 +29,6 @@ public struct EntryView: View {
     public let isStreaming: Bool
     public let onToggleExpansion: () -> Void
     public let onOpenDetail: () -> Void
-    public let renderSubEntry: (Entry) -> AnyView
 
     public init(
         entry: Entry,
@@ -39,8 +38,7 @@ public struct EntryView: View {
         isExpanded: Bool,
         isStreaming: Bool = false,
         onToggleExpansion: @escaping () -> Void,
-        onOpenDetail: @escaping () -> Void,
-        renderSubEntry: @escaping (Entry) -> AnyView
+        onOpenDetail: @escaping () -> Void
     ) {
         self.entry = entry
         self.computed = computed
@@ -50,7 +48,6 @@ public struct EntryView: View {
         self.isStreaming = isStreaming
         self.onToggleExpansion = onToggleExpansion
         self.onOpenDetail = onOpenDetail
-        self.renderSubEntry = renderSubEntry
     }
 
     public var body: some View {
@@ -72,8 +69,7 @@ public struct EntryView: View {
                     computed: computed.sections,
                     palette: palette,
                     displayMode: displayMode,
-                    onOpenDetail: onOpenDetail,
-                    renderSubEntry: renderSubEntry
+                    onOpenDetail: onOpenDetail
                 )
                 .padding(.leading, Theme.Indent.subRow)
             }

@@ -261,8 +261,7 @@ public struct TranscriptView: View {
                 if let detailRequest {
                     panel.openDetail(request: detailRequest)
                 }
-            },
-            renderSubEntry: { _ in AnyView(EmptyView()) }
+            }
         )
         .id(entryID)
     }
@@ -284,7 +283,7 @@ public struct TranscriptView: View {
             case .prLink:
                 return nil
             }
-        case .agent:
+        case .agent, .text, .tool:
             return nil
         }
     }
@@ -502,8 +501,7 @@ public struct TranscriptView: View {
             isExpanded: true,
             isStreaming: false,
             onToggleExpansion: {},
-            onOpenDetail: {},
-            renderSubEntry: { _ in AnyView(EmptyView()) }
+            onOpenDetail: {}
         )
         .id(entryID)
     }

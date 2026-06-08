@@ -29,7 +29,7 @@ struct DetailContentResolverTests {
 
     private func agentEntry(
         id: String = "a1",
-        subEntries: [AgentEntry.SubEntry]
+        subEntries: [Entry]
     ) -> Entry {
         .agent(
             AgentEntry(
@@ -46,7 +46,7 @@ struct DetailContentResolverTests {
         id: String,
         kind: TextSubEntry.Kind,
         body: String
-    ) -> AgentEntry.SubEntry {
+    ) -> Entry {
         .text(
             TextSubEntry(
                 kind: kind,
@@ -64,8 +64,9 @@ struct DetailContentResolverTests {
         toolName: String,
         body: Body,
         status: ToolEntry.Status = .ok,
-        inputFilePath: String? = nil
-    ) -> AgentEntry.SubEntry {
+        inputFilePath: String? = nil,
+        subEntries: [Entry] = []
+    ) -> Entry {
         .tool(
             ToolEntry(
                 id: .fromJSONL(id),
@@ -73,7 +74,8 @@ struct DetailContentResolverTests {
                 header: Header(name: toolName),
                 body: body,
                 status: status,
-                inputFilePath: inputFilePath
+                inputFilePath: inputFilePath,
+                subEntries: subEntries
             )
         )
     }
@@ -126,14 +128,15 @@ struct DetailContentResolverTests {
             SynthesizedEntry(
                 id: .fromJSONL("synth-1"),
                 header: Header(),
-                body: Body(sections: [.subentries(abandoned)]),
+                body: Body(sections: []),
                 kind: .branchLink(
                     branchRootUuid: "branch-root-uuid",
                     rewindIndex: 1,
                     totalRewinds: 2,
                     entryCount: 1,
                     firstPromptPreview: "old prompt"
-                )
+                ),
+                subEntries: abandoned
             )
         )
         let request = DetailRequest.bodySection(targetID: "synth-1", sectionIndex: 0)
@@ -372,10 +375,9 @@ struct DetailContentResolverTests {
         ]
         let body = Body(sections: [
             .text(["task input"], style: .normal),
-            .text(["task result"], style: .normal),
-            .subentries(nested)
+            .text(["task result"], style: .normal)
         ])
-        let sub = toolSub(id: "task1", toolName: "Task", body: body)
+        let sub = toolSub(id: "task1", toolName: "Task", body: body, subEntries: nested)
         let entry = agentEntry(subEntries: [sub])
         let request = DetailRequest.bodySection(targetID: "task1", sectionIndex: 2)
         let content = DetailContent.resolve(request: request, entry: entry)

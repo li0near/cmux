@@ -172,7 +172,7 @@ extension DetailContent {
                 let entryCount,
                 _
             ) = s.kind else { return nil }
-            let transcript = s.body.subentriesContent
+            let transcript = s.subEntries
             return DetailContent(
                 title: localized(
                     "agentXray.detail.title.abandonedBranch",
@@ -189,9 +189,12 @@ extension DetailContent {
             )
 
         case .agent:
-            // AgentEntry's body is `.subentries(...)` only — its
-            // detail is reached via individual sub-entries, not a
-            // top-level open.
+            // AgentEntry — detail is reached via individual sub-entries,
+            // not a top-level open.
+            return nil
+        case .text, .tool:
+            // Sub-entry-only cases — top-level resolver never sees them.
+            // They route through `resolveSubEntry` from the panel layer.
             return nil
         }
     }
@@ -295,12 +298,13 @@ extension DetailContent {
         }
     }
 
-    /// Resolve a `.bodySection` request whose target is one of an
-    /// agent turn's sub-entries (text or tool). The sub-entry kind +
-    /// `sectionIndex` combine to pick the icon, accent, and source
-    /// triple.
+    /// Resolve a `.bodySection` request whose target is a sub-entry —
+    /// post-G1.5 this is an `Entry.text` or `Entry.tool` value living
+    /// in a parent agent's `subEntries`. Other `Entry` cases never
+    /// appear inside an agent turn (DEBUG asserts in
+    /// ``TranscriptRoot/append(parent:entry:)``); fall through to nil.
     private static func resolveSubEntry(
-        _ sub: AgentEntry.SubEntry,
+        _ sub: Entry,
         sectionIndex: Int,
         timestamp: String
     ) -> DetailContent? {
@@ -328,6 +332,10 @@ extension DetailContent {
                 sectionIndex: sectionIndex,
                 timestamp: timestamp
             )
+        case .user, .agent, .system, .compact, .synthesized:
+            // Non-sub-entry cases — `resolveSubEntry` is only called
+            // for `.text` / `.tool` values. Defensive fallthrough.
+            return nil
         }
     }
 
@@ -336,16 +344,15 @@ extension DetailContent {
         sectionIndex: Int,
         timestamp: String
     ) -> DetailContent? {
-        guard sectionIndex >= 0,
-              sectionIndex < tool.body.sections.count else { return nil }
-        let section = tool.body.sections[sectionIndex]
-
-        // Sub-agent transcript opens — discriminate by section shape,
-        // not by index. Tools with a sub-agent transcript carry the
-        // entries in a trailing `.subentries(...)` section regardless
-        // of how many input / result sections precede it.
-        if case .subentries(let nested) = section {
-            guard !nested.isEmpty else { return nil }
+        // Sub-agent transcript opens — sidechain entries now live on
+        // `tool.subEntries` directly (post-G1.5; previously they were
+        // a `.subentries(...)` section in `tool.body.sections`).
+        if !tool.subEntries.isEmpty {
+            // Heuristic: a sectionIndex matching the FIRST conceptual
+            // "section after input/result" routes to the sub-agent
+            // transcript. The discriminator is purely "does this tool
+            // carry sub-entries" — a single sub-agent transcript per
+            // tool is the data-shape invariant.
             return DetailContent(
                 title: localized(
                     "agentXray.detail.title.subagentTranscript",
@@ -353,17 +360,21 @@ extension DetailContent {
                 ),
                 subtitle: localized(
                     "agentXray.detail.subtitle.subagentTranscript",
-                    defaultValue: "from \(timestamp) · \(nested.count) entries"
+                    defaultValue: "from \(timestamp) · \(tool.subEntries.count) entries"
                 ),
                 sourceEntryID: tool.id.stableString,
                 icon: EntryIcon.tool(named: "Task"),
                 accent: .primary,
                 source: .transcript(
                     sourceEntryID: tool.id.stableString,
-                    entries: nested
+                    entries: tool.subEntries
                 )
             )
         }
+
+        guard sectionIndex >= 0,
+              sectionIndex < tool.body.sections.count else { return nil }
+        let section = tool.body.sections[sectionIndex]
 
         // Offloaded `<persisted-output>` — host opens the on-disk
         // file directly via `openFileInPanel`.
@@ -610,7 +621,7 @@ extension DetailContent {
 
 // MARK: - Tool sub-entry lookup
 
-extension Array where Element == AgentEntry.SubEntry {
+extension Array where Element == Entry {
     /// Find the `.tool(...)` sub-entry whose id matches `toolID`.
     public func toolEntry(withID toolID: String) -> ToolEntry? {
         for sub in self {

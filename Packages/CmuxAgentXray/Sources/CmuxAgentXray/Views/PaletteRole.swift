@@ -65,6 +65,10 @@ extension PaletteRole {
             case .branchLink: return .dim
             case .prLink:     return .blue
             }
+        case .text, .tool:
+            // Sub-entry-only cases — never appear at top level. Renderer
+            // falls back to palette.primary.
+            return nil
         }
     }
 }

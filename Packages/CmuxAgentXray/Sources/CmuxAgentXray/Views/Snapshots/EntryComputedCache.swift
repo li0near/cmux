@@ -61,8 +61,6 @@ public final class EntryComputedCache {
                     return sum + toolName.utf8.count
                 case .offloadedOutput(let off):
                     return sum + off.path.utf8.count + off.sizeLabel.utf8.count
-                case .subentries(let children):
-                    return sum + children.count
                 }
             }
             self.displayMode = displayMode
@@ -131,8 +129,6 @@ public final class EntryComputedCache {
                 // prevents the walker from emitting an "open detail" link
                 // for them.
                 sections.append(.empty)
-            case .subentries:
-                sections.append(.empty)
             }
         }
         return Computed(
@@ -172,6 +168,11 @@ public final class EntryComputedCache {
             case .other:               return RenderCaps.caps(for: .systemBody)
             }
         case .synthesized:
+            return RenderCaps.caps(for: .systemBody)
+        case .text, .tool:
+            // Sub-entry-only cases — never reach this top-level cap
+            // resolver. Renderer paths inside AgentEntryView use their
+            // own per-sub-entry caps.
             return RenderCaps.caps(for: .systemBody)
         }
     }

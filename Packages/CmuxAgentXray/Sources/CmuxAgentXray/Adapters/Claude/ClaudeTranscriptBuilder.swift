@@ -518,14 +518,15 @@ struct ClaudeTranscriptBuilder {
                 title: subtitle,
                 timeMarker: .clock(timestamp)
             ),
-            body: Body(sections: [.subentries(branchEntries)]),
+            body: Body(sections: []),
             kind: .branchLink(
                 branchRootUuid: branch.branchRootUuid,
                 rewindIndex: branch.rewindIndex,
                 totalRewinds: totalRewinds,
                 entryCount: branch.entryCount,
                 firstPromptPreview: branch.firstPromptPreview
-            )
+            ),
+            subEntries: branchEntries
         )
     }
 
@@ -551,11 +552,12 @@ struct ClaudeTranscriptBuilder {
         var queuedSlashCommandUuids: Set<String> = []
         var abandonedBranchEntriesByRoot: [String: [Entry]] = [:]
 
-        /// Append a top-level entry. Wraps ``TranscriptRoot/append(_:)``
+        /// Append a top-level entry. Wraps
+        /// ``TranscriptRoot/append(parent:entry:)`` with `parent: nil`
         /// — kept as a method so existing call sites read naturally
         /// (`ctx.appendEntry(...)`).
         mutating func appendEntry(_ entry: Entry) {
-            root.append(entry)
+            root.append(parent: nil, entry: entry)
         }
 
         mutating func flushPendingTurn() {
@@ -569,7 +571,7 @@ struct ClaudeTranscriptBuilder {
             // (Predecessor builder collapsed all narration into one
             // block and forced [thinking?, …tools, assistantText?]
             // order.) Sidechain transcripts attach inline as we go.
-            var subEntries: [AgentEntry.SubEntry] = []
+            var subEntries: [Entry] = []
             let parentEntryID = EntryID.fromJSONL(pending.id)
             for slot in pending.subEntries {
                 switch slot {
@@ -577,7 +579,7 @@ struct ClaudeTranscriptBuilder {
                     let fallbackTs = (kind == .assistant)
                         ? (ts ?? pending.lastTimestamp ?? pending.startTime)
                         : (ts ?? pending.startTime)
-                    subEntries.append(.text(ClaudeTranscriptBuilder.makeTextSubEntry(
+                    subEntries.append(Entry.text(ClaudeTranscriptBuilder.makeTextSubEntry(
                         kind: kind,
                         text: text,
                         timestamp: fallbackTs,
@@ -603,11 +605,9 @@ struct ClaudeTranscriptBuilder {
                     if let resultSections = call.result {
                         sections.append(contentsOf: resultSections)
                     }
-                    if let sidechain = call.sidechainTranscript, !sidechain.isEmpty {
-                        sections.append(.subentries(sidechain))
-                    }
+                    let toolSubEntries: [Entry] = call.sidechainTranscript ?? []
                     let parsed = MCPToolNameParser.parse(call.name)
-                    subEntries.append(.tool(ToolEntry(
+                    subEntries.append(Entry.tool(ToolEntry(
                         id: .fromJSONL(call.id),
                         parentEntryID: parentEntryID,
                         header: Header(
@@ -623,7 +623,8 @@ struct ClaudeTranscriptBuilder {
                         teamMemberName: call.teamMemberName,
                         teamName: call.teamName,
                         mcpServer: call.mcpServer,
-                        inputFilePath: call.inputFilePath
+                        inputFilePath: call.inputFilePath,
+                        subEntries: toolSubEntries
                     )))
                 }
             }

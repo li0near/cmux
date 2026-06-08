@@ -6,38 +6,36 @@ public import Foundation
 /// **incremental in-place mutation** of a single ``TranscriptRoot``
 /// indexed by ``EntryID``. The dispatcher walks each new JSONL line,
 /// then calls the corresponding mutating method on the root:
-/// ``append(_:)`` for top-level entries, ``appendSubEntry(parentAgentId:_:)``
-/// for sub-entries inside an ``AgentEntry``, ``mutate(id:_:)`` /
-/// ``mutateSubEntry(id:_:)`` for in-place updates, ``remove(id:)`` for
-/// the queued-prompt placeholder swap, and ``branchOff(at:link:)`` for
-/// rewind slicing.
+/// ``append(parent:entry:)`` for both top-level (parent = nil) and
+/// nested (parent = container's id) appends, ``mutate(id:_:)`` for
+/// in-place updates at any depth, ``remove(id:)`` for removals, and
+/// ``branchOff(at:link:)`` for rewind slicing.
 ///
-/// **Type asymmetry.** The existing model is two-tiered:
-/// - top-level: `[Entry]` (user / agent / system / compact / synthesized)
-/// - inside an ``AgentEntry``: `[AgentEntry.SubEntry]` (text / tool only)
+/// **Uniform tree (post-G1.5).** Both top-level and nested entries
+/// are `Entry` values. Container variants — `.agent`, `.tool`,
+/// `.synthesized` (specifically `.branchLink`) — expose
+/// ``Entry/subEntries`` directly. The "only `.text` / `.tool` cases
+/// appear inside an agent turn" invariant is enforced by the builder
+/// + a runtime assert in ``append(parent:entry:)`` rather than the
+/// type system.
 ///
-/// ``TranscriptRoot`` preserves this — the index discriminates between
-/// top-level slots and sub-entry slots, and there are matching paired
-/// `append` / `mutate` methods for each. There is no flattening.
-///
-/// **Index.** `[EntryID: EntrySlot]` lets every lookup find an entry in
-/// O(1) regardless of depth. The slot enum is private; callers never
-/// reference it directly.
+/// **Index.** `[EntryID: ParentSlot]` lets every lookup find an entry
+/// in O(depth) — typically 1-3 hops. Top-level entries store
+/// `parent = nil`; nested entries store their immediate container's
+/// id.
 ///
 /// **Reads.** ``subEntries`` is the live top-level array — what
-/// ``ClaudeTranscriptBuilder/transcript()`` returns. ``entry(id:)`` and
-/// ``subEntry(id:)`` return the entry at any depth.
+/// ``ClaudeTranscriptBuilder/transcript()`` returns. ``entry(id:)``
+/// returns an entry at any depth.
 ///
 /// ```swift
 /// var root = TranscriptRoot()
-/// root.append(userPrompt)                              // top-level
-/// root.append(agentTurn)                               // top-level
-/// root.appendSubEntry(parentAgentId: agentTurn.id,
-///                     .tool(toolUse))                   // nested
-/// root.mutateSubEntry(id: toolUse.id) { sub in
-///     if case .tool(var t) = sub {
-///         t = ToolEntry(/* ...with result... */)
-///         sub = .tool(t)
+/// root.append(parent: nil, entry: .user(userPrompt))           // top-level
+/// root.append(parent: nil, entry: .agent(agentTurn))           // top-level
+/// root.append(parent: agentTurn.id, entry: .tool(toolUse))     // nested
+/// root.mutate(id: toolUse.id) { entry in
+///     if case .tool(let t) = entry {
+///         entry = .tool(/* ToolEntry with .ok status + result */)
 ///     }
 /// }
 /// ```
@@ -47,193 +45,163 @@ public struct TranscriptRoot: Equatable, Sendable {
     /// the mutating methods so the index stays in sync.
     public private(set) var subEntries: [Entry] = []
 
-    private var index: [EntryID: EntrySlot] = [:]
+    /// `EntryID → (parent, indexInParent)`. Top-level entries store
+    /// `parent = nil`. Walking the chain bottom-up yields the path
+    /// from top level to the entry.
+    private var index: [EntryID: ParentSlot] = [:]
 
-    /// Where an entry lives in the tree. Top-level entries store their
-    /// position in ``subEntries``; nested entries store their parent
-    /// agent's id and their index inside that agent's subEntries.
-    private enum EntrySlot: Equatable {
-        case topLevel(Int)
-        case agentSub(parentAgentId: EntryID, subIndex: Int)
+    private struct ParentSlot: Equatable {
+        let parent: EntryID?
+        let indexInParent: Int
     }
 
     public init() {}
 
     // MARK: - Reads
 
-    /// Look up a top-level entry by id. Returns nil if `id` is absent
-    /// or refers to a sub-entry (use ``subEntry(id:)`` for nested).
+    /// Look up an entry by id at any depth. Returns nil if absent.
     public func entry(id: EntryID) -> Entry? {
-        guard case .topLevel(let i) = index[id], subEntries.indices.contains(i) else {
-            return nil
-        }
-        return subEntries[i]
+        guard let path = path(to: id) else { return nil }
+        return entryAtPath(path)
     }
 
-    /// Look up a sub-entry by id. Returns nil if `id` is absent or
-    /// refers to a top-level entry.
-    public func subEntry(id: EntryID) -> AgentEntry.SubEntry? {
-        guard case .agentSub(let parentId, let subIdx) = index[id],
-              case .topLevel(let i) = index[parentId],
-              subEntries.indices.contains(i),
-              case .agent(let agent) = subEntries[i],
-              agent.subEntries.indices.contains(subIdx)
-        else { return nil }
-        return agent.subEntries[subIdx]
+    /// Build the full path from top level to `id` as a list of indices.
+    /// `[i]` means top-level slot `i`; `[i, j]` means top-level `i`'s
+    /// subEntries slot `j`; etc. Returns nil if id is not in the index.
+    private func path(to id: EntryID) -> [Int]? {
+        var slots: [Int] = []
+        var cursor: EntryID? = id
+        while let cur = cursor {
+            guard let slot = index[cur] else { return nil }
+            slots.append(slot.indexInParent)
+            cursor = slot.parent
+        }
+        slots.reverse()
+        return slots
+    }
+
+    /// Read the entry at the given path. Returns nil for invalid paths.
+    private func entryAtPath(_ path: [Int]) -> Entry? {
+        guard let first = path.first, subEntries.indices.contains(first) else {
+            return nil
+        }
+        var current = subEntries[first]
+        for idx in path.dropFirst() {
+            let kids = current.subEntries
+            guard kids.indices.contains(idx) else { return nil }
+            current = kids[idx]
+        }
+        return current
     }
 
     // MARK: - Mutations: append
 
-    /// Append a top-level entry. The new entry's id is recorded in the
-    /// index. If it is an ``AgentEntry`` carrying pre-existing
-    /// sub-entries, those are indexed too.
-    public mutating func append(_ entry: Entry) {
-        let i = subEntries.count
-        subEntries.append(entry)
-        index[entry.id] = .topLevel(i)
-        indexAgentSubsIfNeeded(of: entry, parentIndex: i)
-    }
-
-    /// Append a sub-entry under the given parent ``AgentEntry`` (looked
-    /// up by id). If the parent isn't a top-level agent entry, the
-    /// append is a no-op (and a precondition failure in DEBUG builds —
-    /// callers should know what they're appending into).
-    public mutating func appendSubEntry(parentAgentId: EntryID, _ subEntry: AgentEntry.SubEntry) {
-        guard case .topLevel(let i) = index[parentAgentId],
-              subEntries.indices.contains(i),
-              case .agent(let agent) = subEntries[i]
-        else {
-            assertionFailure("appendSubEntry: parent \(parentAgentId.stableString) is not a top-level AgentEntry")
-            return
+    /// Append an entry under the given parent. Pass `parent: nil` to
+    /// append at top level; pass a parent id to append into that
+    /// entry's `subEntries`. The parent must already be in the tree.
+    ///
+    /// Asserts in DEBUG that top-level appends never receive `.text`
+    /// / `.tool` (those cases only appear nested inside a container).
+    public mutating func append(parent: EntryID?, entry: Entry) {
+        if parent == nil {
+            assert(!isSubEntryOnlyCase(entry),
+                   "TranscriptRoot.append: top-level append received \(entry.id.stableString) which is .text/.tool — those cases must appear nested only.")
         }
-        var subs = agent.subEntries
-        let subIdx = subs.count
-        subs.append(subEntry)
-        subEntries[i] = .agent(rebuild(agent, subEntries: subs))
-        index[subEntry.id] = .agentSub(parentAgentId: parentAgentId, subIndex: subIdx)
+        if let parentId = parent {
+            guard let parentPath = path(to: parentId) else {
+                assertionFailure("TranscriptRoot.append: parent \(parentId.stableString) not in tree")
+                return
+            }
+            let parentEntry = entryAtPath(parentPath)
+            let newIdx = parentEntry?.subEntries.count ?? 0
+            mutateAtPath(parentPath) { container in
+                container = withAppendedSubEntry(container, entry)
+            }
+            index[entry.id] = ParentSlot(parent: parentId, indexInParent: newIdx)
+            indexNestedChildren(of: entry)
+        } else {
+            let i = subEntries.count
+            subEntries.append(entry)
+            index[entry.id] = ParentSlot(parent: nil, indexInParent: i)
+            indexNestedChildren(of: entry)
+        }
     }
 
     // MARK: - Mutations: mutate
 
-    /// Mutate a top-level entry in place. The closure replaces the
-    /// entry's value at its slot; the id should not change (if it does,
-    /// the index is rebuilt for that slot).
+    /// Mutate an entry in place at any depth. The closure receives the
+    /// current value; assigning to `entry` replaces it (with full
+    /// ancestor reconstruction since enum cases hold immutable
+    /// associated values).
+    ///
+    /// If the closure changes the entry's id, the index is rebuilt for
+    /// that slot (rare; primarily used by the synthetic-tool fallback
+    /// path during tool_result attachment).
+    ///
+    /// If the closure replaces the entry's `subEntries`, the affected
+    /// children are re-indexed.
     public mutating func mutate(id: EntryID, _ body: (inout Entry) -> Void) {
-        guard case .topLevel(let i) = index[id], subEntries.indices.contains(i) else {
-            return
-        }
-        let oldId = subEntries[i].id
-        body(&subEntries[i])
-        let newId = subEntries[i].id
-        if newId != oldId {
-            index.removeValue(forKey: oldId)
-            index[newId] = .topLevel(i)
-        }
-        // The closure may have replaced the AgentEntry's subEntries
-        // wholesale — rebuild the sub-index for this slot's children.
-        reindexAgentSubs(at: i)
-    }
+        guard let path = path(to: id) else { return }
+        guard let oldEntry = entryAtPath(path) else { return }
+        let oldChildIds = collectAllDescendantIds(oldEntry)
 
-    /// Mutate a sub-entry in place. The closure receives the
-    /// ``AgentEntry/SubEntry`` value; the implementation reconstructs
-    /// the parent ``AgentEntry`` to write the change back (all
-    /// `AgentEntry` stored properties are `let`).
-    public mutating func mutateSubEntry(id: EntryID, _ body: (inout AgentEntry.SubEntry) -> Void) {
-        guard case .agentSub(let parentId, let subIdx) = index[id],
-              case .topLevel(let i) = index[parentId],
-              subEntries.indices.contains(i),
-              case .agent(let agent) = subEntries[i],
-              agent.subEntries.indices.contains(subIdx)
-        else { return }
+        var newEntry = oldEntry
+        body(&newEntry)
+        mutateAtPath(path) { $0 = newEntry }
 
-        var subs = agent.subEntries
-        let oldId = subs[subIdx].id
-        body(&subs[subIdx])
-        let newId = subs[subIdx].id
-        subEntries[i] = .agent(rebuild(agent, subEntries: subs))
-        if newId != oldId {
-            index.removeValue(forKey: oldId)
-            index[newId] = .agentSub(parentAgentId: parentId, subIndex: subIdx)
+        // Rebuild index for affected slots.
+        if newEntry.id != oldEntry.id {
+            let oldSlot = index[oldEntry.id]
+            index.removeValue(forKey: oldEntry.id)
+            if let oldSlot {
+                index[newEntry.id] = oldSlot
+            }
         }
+        // Drop old descendants, re-index new descendants.
+        for childId in oldChildIds where childId != newEntry.id {
+            index.removeValue(forKey: childId)
+        }
+        indexNestedChildren(of: newEntry, parent: index[newEntry.id]?.parent, parentPath: Array(path.dropLast()))
     }
 
     // MARK: - Mutations: remove
 
-    /// Remove a top-level entry by id. No-op if `id` is absent or refers
-    /// to a sub-entry. Indices of trailing top-level entries shift down
-    /// by one; the index is rebuilt for the affected slots.
+    /// Remove an entry by id at any depth. Trailing siblings shift
+    /// down by one; the index is rebuilt for the affected siblings.
     public mutating func remove(id: EntryID) {
-        guard case .topLevel(let i) = index[id], subEntries.indices.contains(i) else {
-            return
-        }
-        let removed = subEntries.remove(at: i)
-        index.removeValue(forKey: removed.id)
-        if case .agent(let agent) = removed {
-            for sub in agent.subEntries {
-                index.removeValue(forKey: sub.id)
+        guard let path = path(to: id) else { return }
+        guard let removed = entryAtPath(path) else { return }
+        let descendantIds = collectAllDescendantIds(removed)
+
+        if path.count == 1 {
+            subEntries.remove(at: path[0])
+        } else {
+            let parentPath = Array(path.dropLast())
+            mutateAtPath(parentPath) { container in
+                container = withRemovedSubEntryAt(container, index: path.last!)
             }
         }
-        // Shift down the index for trailing top-level entries and their
-        // sub-entries.
-        for j in i..<subEntries.count {
-            let entry = subEntries[j]
-            index[entry.id] = .topLevel(j)
-            if case .agent(let agent) = entry {
-                for (subIdx, sub) in agent.subEntries.enumerated() {
-                    index[sub.id] = .agentSub(parentAgentId: entry.id, subIndex: subIdx)
-                }
-            }
+
+        index.removeValue(forKey: id)
+        for d in descendantIds { index.removeValue(forKey: d) }
+
+        // Re-index trailing siblings AT THE SAME LEVEL whose
+        // indexInParent shifted down.
+        let parentId = index[id]?.parent
+        _ = parentId // unused after removal; siblings re-indexed below
+        let siblings: [Entry]
+        if path.count == 1 {
+            siblings = subEntries
+        } else {
+            siblings = entryAtPath(Array(path.dropLast()))?.subEntries ?? []
         }
-    }
-
-    // MARK: - Branch slicing
-
-    // The branchOff implementation lives in TranscriptRoot+BranchOff.swift.
-
-    // MARK: - Internal helpers
-
-    /// If `entry` is an ``AgentEntry``, record its sub-entries in the
-    /// index keyed by `parentIndex`. Otherwise no-op.
-    private mutating func indexAgentSubsIfNeeded(of entry: Entry, parentIndex: Int) {
-        guard case .agent(let agent) = entry else { return }
-        for (subIdx, sub) in agent.subEntries.enumerated() {
-            index[sub.id] = .agentSub(parentAgentId: entry.id, subIndex: subIdx)
+        let parentForSlot: EntryID? = (path.count == 1)
+            ? nil
+            : entryAtPath(Array(path.dropLast()))?.id
+        for (siblingIdx, sibling) in siblings.enumerated() where siblingIdx >= path.last! {
+            index[sibling.id] = ParentSlot(parent: parentForSlot, indexInParent: siblingIdx)
+            indexNestedChildren(of: sibling, parent: parentForSlot, parentPath: Array(path.dropLast()))
         }
-        _ = parentIndex // future: store on slot if needed
-    }
-
-    /// Re-index the sub-entries of the agent at top-level slot `i`. Used
-    /// after a top-level mutation that may have rewritten an
-    /// ``AgentEntry``'s subEntries.
-    private mutating func reindexAgentSubs(at i: Int) {
-        guard case .agent(let agent) = subEntries[i] else { return }
-        // Drop any stale sub-entry slots that pointed at this parent.
-        let parentId = agent.id
-        for (key, slot) in index {
-            if case .agentSub(let pid, _) = slot, pid == parentId {
-                index.removeValue(forKey: key)
-            }
-        }
-        for (subIdx, sub) in agent.subEntries.enumerated() {
-            index[sub.id] = .agentSub(parentAgentId: parentId, subIndex: subIdx)
-        }
-    }
-
-    /// Reconstruct an ``AgentEntry`` with replaced ``AgentEntry/subEntries``.
-    /// All other fields carry over verbatim.
-    private func rebuild(_ agent: AgentEntry, subEntries newSubs: [AgentEntry.SubEntry]) -> AgentEntry {
-        AgentEntry(
-            id: agent.id,
-            header: agent.header,
-            body: agent.body,
-            usage: agent.usage,
-            stopReason: agent.stopReason,
-            perTurnDurationMs: agent.perTurnDurationMs,
-            messageCount: agent.messageCount,
-            model: agent.model,
-            endTime: agent.endTime,
-            subEntries: newSubs
-        )
     }
 
     // MARK: - branchOff support (used by the extension)
@@ -241,34 +209,125 @@ public struct TranscriptRoot: Equatable, Sendable {
     /// Internal: read top-level slot index for an id. Used by
     /// ``branchOff(at:link:)``.
     internal func topLevelIndex(of id: EntryID) -> Int? {
-        if case .topLevel(let i) = index[id] { return i }
-        return nil
+        guard let slot = index[id], slot.parent == nil else { return nil }
+        return slot.indexInParent
     }
 
-    /// Internal: replace a contiguous range of ``subEntries`` with a
+    /// Internal: replace a contiguous range of top-level entries with a
     /// single new entry, dropping the old entries' index slots and
     /// recording the new one. Used by ``branchOff(at:link:)``.
     internal mutating func replaceTopLevelRange(_ range: Range<Int>, with entry: Entry) {
         for j in range {
             let removed = subEntries[j]
+            let descendantIds = collectAllDescendantIds(removed)
             index.removeValue(forKey: removed.id)
-            if case .agent(let agent) = removed {
-                for sub in agent.subEntries {
-                    index.removeValue(forKey: sub.id)
-                }
-            }
+            for d in descendantIds { index.removeValue(forKey: d) }
         }
         subEntries.replaceSubrange(range, with: [entry])
-        // Re-index from the start of the replaced range onward — every
-        // index past `range.lowerBound` may have shifted.
         for j in range.lowerBound..<subEntries.count {
             let e = subEntries[j]
-            index[e.id] = .topLevel(j)
-            if case .agent(let agent) = e {
-                for (subIdx, sub) in agent.subEntries.enumerated() {
-                    index[sub.id] = .agentSub(parentAgentId: e.id, subIndex: subIdx)
-                }
-            }
+            index[e.id] = ParentSlot(parent: nil, indexInParent: j)
+            indexNestedChildren(of: e, parent: nil, parentPath: [])
         }
     }
+
+    // MARK: - Internal helpers
+
+    /// Apply `mutation` to the entry at `path`. Reconstructs every
+    /// ancestor on the path so the change propagates to the top-level
+    /// `subEntries` array.
+    private mutating func mutateAtPath(_ path: [Int], _ mutation: (inout Entry) -> Void) {
+        precondition(!path.isEmpty)
+        TranscriptRoot.mutateInside(&subEntries, path: path, mutation: mutation)
+    }
+
+    private static func mutateInside(_ entries: inout [Entry], path: [Int], mutation: (inout Entry) -> Void) {
+        guard let first = path.first, entries.indices.contains(first) else { return }
+        if path.count == 1 {
+            mutation(&entries[first])
+        } else {
+            var child = entries[first]
+            var childSubs = child.subEntries
+            mutateInside(&childSubs, path: Array(path.dropFirst()), mutation: mutation)
+            child = withSubEntries(child, childSubs)
+            entries[first] = child
+        }
+    }
+
+    /// Index every nested child of `entry`. Recursive: walks
+    /// container variants and registers each descendant's slot.
+    private mutating func indexNestedChildren(of entry: Entry) {
+        indexNestedChildren(of: entry, parent: index[entry.id]?.parent, parentPath: [])
+    }
+
+    private mutating func indexNestedChildren(of entry: Entry, parent: EntryID?, parentPath: [Int]) {
+        for (subIdx, child) in entry.subEntries.enumerated() {
+            index[child.id] = ParentSlot(parent: entry.id, indexInParent: subIdx)
+            indexNestedChildren(of: child, parent: entry.id, parentPath: parentPath)
+        }
+    }
+
+    /// Collect every descendant id under `entry`, recursively.
+    private func collectAllDescendantIds(_ entry: Entry) -> [EntryID] {
+        var ids: [EntryID] = []
+        for child in entry.subEntries {
+            ids.append(child.id)
+            ids.append(contentsOf: collectAllDescendantIds(child))
+        }
+        return ids
+    }
+
+    private func isSubEntryOnlyCase(_ entry: Entry) -> Bool {
+        if case .text = entry { return true }
+        if case .tool = entry { return true }
+        return false
+    }
+}
+
+// MARK: - Container reconstruction
+
+/// Rebuild a container `Entry` (`.agent` / `.tool` / `.synthesized`)
+/// with replaced `subEntries`. Other variants pass through unchanged.
+internal func withSubEntries(_ entry: Entry, _ newSubs: [Entry]) -> Entry {
+    switch entry {
+    case .agent(let a):
+        return .agent(AgentEntry(
+            id: a.id, header: a.header, body: a.body,
+            usage: a.usage, stopReason: a.stopReason,
+            perTurnDurationMs: a.perTurnDurationMs,
+            messageCount: a.messageCount, model: a.model,
+            endTime: a.endTime, subEntries: newSubs
+        ))
+    case .synthesized(let s):
+        return .synthesized(SynthesizedEntry(
+            id: s.id, header: s.header, body: s.body,
+            kind: s.kind, subEntries: newSubs
+        ))
+    case .tool(let t):
+        return .tool(ToolEntry(
+            id: t.id, parentEntryID: t.parentEntryID,
+            header: t.header, body: t.body, status: t.status,
+            durationMs: t.durationMs, subagentType: t.subagentType,
+            teamMemberName: t.teamMemberName, teamName: t.teamName,
+            mcpServer: t.mcpServer, inputFilePath: t.inputFilePath,
+            subEntries: newSubs
+        ))
+    case .user, .system, .compact, .text:
+        return entry
+    }
+}
+
+/// Rebuild `container` with `entry` appended to its subEntries.
+internal func withAppendedSubEntry(_ container: Entry, _ entry: Entry) -> Entry {
+    var subs = container.subEntries
+    subs.append(entry)
+    return withSubEntries(container, subs)
+}
+
+/// Rebuild `container` with the subEntry at `index` removed.
+internal func withRemovedSubEntryAt(_ container: Entry, index: Int) -> Entry {
+    var subs = container.subEntries
+    guard subs.indices.contains(index) else { return container }
+    subs.remove(at: index)
+    return withSubEntries(container, subs)
 }

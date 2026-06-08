@@ -61,12 +61,9 @@ public struct EntryCollection: Equatable, Sendable {
             case .agent(let turn):
                 branches.insert(id)
                 for sub in turn.subEntries {
-                    switch sub {
-                    case .text(let t):  all.insert(t.id.stableString)
-                    case .tool(let t):  all.insert(t.id.stableString)
-                    }
+                    all.insert(sub.id.stableString)
                 }
-            case .user, .system, .compact, .synthesized:
+            case .user, .system, .compact, .synthesized, .text, .tool:
                 break
             }
         }

@@ -47,8 +47,6 @@ extension AgentEntryView {
                     OffloadedOutputLinkView(offloaded: off, palette: palette) {
                         onOpenDetail(idx)
                     }
-                case .subentries:
-                    EmptyView()
                 }
             }
         }
