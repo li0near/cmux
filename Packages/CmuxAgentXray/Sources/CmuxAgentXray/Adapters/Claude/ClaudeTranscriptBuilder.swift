@@ -103,7 +103,7 @@ struct ClaudeTranscriptBuilder {
         for line in rawLines {
             dispatch(line, ctx: &ctx)
         }
-        ctx.flushPendingTurn()
+        ctx.closePendingTurn()
 
         // Tail-append synthetic pending UserEntry instances for unconsumed
         // `queue-operation enqueue` descriptors. Once consumed, the
@@ -160,37 +160,37 @@ struct ClaudeTranscriptBuilder {
 
             switch kind {
             case .compact:
-                ctx.flushPendingTurn()
+                ctx.closePendingTurn()
                 ctx.appendEntry(.compact(buildCompactEntry(from: line)))
             case .user:
                 let cat = classify(line)
                 switch cat {
                 case .user:
-                    ctx.flushPendingTurn()
+                    ctx.closePendingTurn()
                     if let entry = buildUserEntry(from: line, ctx: ctx) {
                         ctx.appendEntry(.user(entry))
                     }
                 case .system:
-                    ctx.flushPendingTurn()
+                    ctx.closePendingTurn()
                     if let entry = buildSystemEntry(from: line) {
                         ctx.appendEntry(.system(entry))
                     }
                 case .agent:
-                    mergeIntoPendingTurn(line, ctx: &ctx)
+                    applyAssistantLine(line, ctx: &ctx)
                 case .hardNoise:
                     return
                 }
             case .system:
-                ctx.flushPendingTurn()
+                ctx.closePendingTurn()
                 if let entry = buildSystemEntry(from: line) {
                     ctx.appendEntry(.system(entry))
                 }
             case .agent:
-                mergeIntoPendingTurn(line, ctx: &ctx)
+                applyAssistantLine(line, ctx: &ctx)
             }
         case .renderSpecial(let kind):
             ctx.maybeEmitBranchLinks(beforeAdjacentTo: line)
-            ctx.flushPendingTurn()
+            ctx.closePendingTurn()
             emitSpecial(line, kind: kind, ctx: &ctx)
         }
     }
@@ -540,148 +540,97 @@ struct ClaudeTranscriptBuilder {
         /// warnings emitted by `buildToolResultSections`.
         let logger: any AgentXrayLogger
         /// Phase G transcript model. Source of truth — `transcript()`
-        /// returns `root.entries`. The dispatcher mutates this via
-        /// ``appendEntry(_:)`` (top-level) and the methods on
-        /// ``Transcript`` directly when finer-grained mutation is
-        /// needed.
+        /// returns `root.entries`.
         var root = Transcript()
-        var pendingTurn: PendingTurn?
+
+        // MARK: - Per-turn skeleton tracking (post-G3)
+        //
+        // The hot path no longer accumulates in a `PendingTurn` that
+        // flushes into a fresh AgentEntry. Instead, the first
+        // content-bearing assistant line of a turn creates a skeleton
+        // AgentEntry directly in `root` (via `ensureSkeleton`), and
+        // subsequent lines incrementally update its scalars via
+        // `transcript.mutate(id: skeletonId)` and append sub-entries
+        // via `transcript.append(parent: skeletonId, ...)`.
+
+        /// Id of the skeleton AgentEntry currently being built, if any.
+        var pendingAgentSkeletonId: EntryID?
+        /// Timestamp of the first contributing line of the current turn
+        /// — used as the skeleton's clock marker and as the start
+        /// reference for tool durationMs computation.
+        var pendingTurnStartTime: Date?
+        /// Latest contributing-line timestamp seen for this turn.
+        /// Becomes the skeleton's `endTime`.
+        var pendingTurnLastTimestamp: Date?
+        /// uuid of the latest contributing line for this turn —
+        /// consumed by `closePendingTurn` to look up the turn-duration
+        /// stamp keyed by lastMessageUuid.
+        var pendingTurnLastMessageUuid: String?
+        /// De-dup set for usage aggregation. Each assistant message id
+        /// (or fallback uuid) is added once; usage from the same id is
+        /// not double-counted.
+        var pendingTurnUsageMessageIds: Set<String> = []
+        /// Per-turn counter for derived `thinking-N` ids.
+        var turnThinkingCounter: Int = 0
+        /// Per-turn counter for derived `assistantText-N` ids.
+        var turnAssistantTextCounter: Int = 0
+        /// `tool_use_id` → start timestamp. Populated when a tool_use
+        /// is appended; consumed by `attachToolResult` to compute
+        /// `durationMs`.
+        var toolStartedAtById: [String: Date] = [:]
+        /// `tool_use_id` → mutable AgentToolCall accumulator. Lets
+        /// `attachToolResult` re-render the tool's body without
+        /// duplicating input sections when a result arrives. Cleared
+        /// at turn close.
+        var toolCallById: [String: AgentToolCall] = [:]
+
+        // MARK: - Pre-G6 carry-forwards (deleted in G6's sweep)
+
         var turnDurations: [String: TurnDurationStamp] = [:]
+        /// Sidechain pipeline scratchpad — collected but never
+        /// surfaced post-G1.5-fix. G6 sweeps the entire pipeline.
         var sidechainLinesByParent: [String: [ClaudeJSONLLine]] = [:]
         var emittedDivergencePoints: Set<String> = []
         var queuedSlashCommandUuids: Set<String> = []
         var abandonedBranchEntriesByRoot: [String: [Entry]] = [:]
 
         /// Append a top-level entry. Wraps
-        /// ``Transcript/append(parent:entry:)`` with `parent: nil`
-        /// — kept as a method so existing call sites read naturally
-        /// (`ctx.appendEntry(...)`).
+        /// ``Transcript/append(parent:entry:)`` with `parent: nil`.
         mutating func appendEntry(_ entry: Entry) {
             root.append(parent: nil, entry: entry)
         }
 
-        mutating func flushPendingTurn() {
-            guard let pending = pendingTurn else { return }
-            let stamp: TurnDurationStamp? = pending.lastMessageUuid.flatMap { turnDurations[$0] }
-
-            // Walk the arrival-order sub-entry log. Text events
-            // (thinking / assistant) interleave with tool calls in
-            // the order Claude emitted them — preserving the
-            // chronological "narrate → tool → narrate → tool" flow.
-            // (Predecessor builder collapsed all narration into one
-            // block and forced [thinking?, …tools, assistantText?]
-            // order.) Sidechain transcripts attach inline as we go.
-            var subEntries: [Entry] = []
-            let parentEntryID = EntryID.fromJSONL(pending.id)
-            for slot in pending.subEntries {
-                switch slot {
-                case .text(let kind, let text, let ts, let id):
-                    let fallbackTs = (kind == .assistant)
-                        ? (ts ?? pending.lastTimestamp ?? pending.startTime)
-                        : (ts ?? pending.startTime)
-                    subEntries.append(Entry.text(ClaudeTranscriptBuilder.makeTextSubEntry(
-                        kind: kind,
-                        text: text,
-                        timestamp: fallbackTs,
-                        id: id,
-                        parentEntryID: parentEntryID
-                    )))
-                case .tool(var call, _):
-                    if (call.name == "Task" || call.name == "Agent"),
-                       let lines = sidechainLinesByParent[call.id] {
-                        call = call.withSidechain(buildSidechainEntries(from: lines))
+        /// Close the in-flight agent turn. The skeleton AgentEntry
+        /// already lives in `root.entries` with all aggregates baked
+        /// in from incremental mutations during the turn — this just
+        /// applies the turn-duration stamp (if known) and clears the
+        /// per-turn tracking state.
+        mutating func closePendingTurn() {
+            guard let skeletonId = pendingAgentSkeletonId else { return }
+            if let lastUuid = pendingTurnLastMessageUuid,
+               let stamp = turnDurations[lastUuid] {
+                root.mutate(id: skeletonId) { entry in
+                    if case .agent(var a) = entry {
+                        a.perTurnDurationMs = stamp.durationMs
+                        a.messageCount = stamp.messageCount
+                        entry = .agent(a)
                     }
-                    let status: ToolEntry.Status = {
-                        if call.isError { return .error }
-                        if call.result == nil { return .pending }
-                        return .ok
-                    }()
-                    var sections: [Section]
-                    if let diffSections = call.diffSections {
-                        sections = diffSections
-                    } else {
-                        sections = [.text([call.inputDetail], style: .normal)]
-                    }
-                    if let resultSections = call.result {
-                        sections.append(contentsOf: resultSections)
-                    }
-                    // Sub-agent transcripts (call.sidechainTranscript)
-                    // are intentionally not surfaced here — proper
-                    // shape is top-level AgentEntry rows; that
-                    // implementation is a follow-up. Body sections
-                    // are pure rendering payload (.text / .image /
-                    // .toolReference / .offloadedOutput).
-                    let parsed = MCPToolNameParser.parse(call.name)
-                    subEntries.append(Entry.tool(ToolEntry(
-                        id: .fromJSONL(call.id),
-                        parentEntryID: parentEntryID,
-                        header: Header(
-                            icon: .tool(named: call.name),
-                            name: parsed.display,
-                            title: call.summary,
-                            timeMarker: call.durationMs.map { .duration($0) }
-                        ),
-                        body: Body(sections: sections),
-                        status: status,
-                        durationMs: call.durationMs,
-                        subagentType: call.subagentType,
-                        teamMemberName: call.teamMemberName,
-                        teamName: call.teamName,
-                        mcpServer: call.mcpServer,
-                        inputFilePath: call.inputFilePath
-                    )))
                 }
             }
-
-            // AgentEntry's body is intentionally empty: the renderer
-            // walks `subEntries` directly via `AgentEntryView` (which
-            // bypasses the generic `EntryBodyView` / `EntryComputedCache`
-            // dispatch entirely). The earlier body.sections mirror via
-            // `subEntryToTopLevel` was dead computation — the cache
-            // signature it contributed to was never read for AgentEntry.
-            let agentLabel = ClaudeTranscriptBuilder.loc("agentXray.entry.agent.label.claude", "Claude")
-            var trailing: [TrailingItem] = []
-            let totalTokens = pending.usage.inputTokens
-                + pending.usage.outputTokens
-                + pending.usage.cacheReadTokens
-                + pending.usage.cacheCreationTokens
-            if totalTokens > 0 {
-                trailing.append(.tokenPill(pending.usage))
-            }
-
-            appendEntry(.agent(AgentEntry(
-                id: .fromJSONL(pending.id),
-                header: Header(
-                    icon: .agent,
-                    name: agentLabel,
-                    label: pending.model.flatMap(ClaudeModelNameMap.friendlyName(for:)),
-                    trailing: trailing,
-                    timeMarker: .clock(pending.startTime)
-                ),
-                body: Body(sections: []),
-                usage: pending.usage,
-                stopReason: pending.stopReason,
-                perTurnDurationMs: stamp?.durationMs,
-                messageCount: stamp?.messageCount,
-                model: pending.model,
-                endTime: pending.lastTimestamp,
-                subEntries: subEntries
-            )))
-            pendingTurn = nil
+            pendingAgentSkeletonId = nil
+            pendingTurnStartTime = nil
+            pendingTurnLastTimestamp = nil
+            pendingTurnLastMessageUuid = nil
+            pendingTurnUsageMessageIds.removeAll()
+            turnThinkingCounter = 0
+            turnAssistantTextCounter = 0
+            toolStartedAtById.removeAll()
+            toolCallById.removeAll()
         }
 
         mutating func collectSidechainLine(_ line: ClaudeJSONLLine) {
             guard let parent = line.parentToolUseID else { return }
             sidechainLinesByParent[parent, default: []].append(line)
-        }
-
-        private func buildSidechainEntries(from lines: [ClaudeJSONLLine]) -> [Entry] {
-            // Forward `logger` so spec-only-not-corpus warnings emitted
-            // during nested `buildToolResultSections` aren't silently
-            // dropped on the sub-agent transcript path.
-            var sub = ClaudeTranscriptBuilder(logger: logger)
-            for line in lines { sub.ingest(line) }
-            return sub.transcript()
         }
 
         mutating func maybeEmitBranchLinks(beforeAdjacentTo line: ClaudeJSONLLine) {
@@ -700,45 +649,6 @@ struct ClaudeTranscriptBuilder {
                 )))
             }
         }
-    }
-
-    fileprivate struct PendingTurn {
-        var id: String
-        var startTime: Date
-        var lastTimestamp: Date?
-        var lastMessageUuid: String?
-        /// Sub-entries as they arrive — text blocks and tool calls
-        /// interleaved in JSONL arrival order. Tool calls mutate in
-        /// place when their `tool_result` lands (located via
-        /// `toolIndexByID`). `flushPendingTurn` walks this once.
-        var subEntries: [PendingSubEntry] = []
-        /// Index into `subEntries` for each in-flight tool, keyed by
-        /// `tool_use_id`. Lets `tool_result` find its target in O(1)
-        /// without a separate ordering list.
-        var toolIndexByID: [String: Int] = [:]
-        var thinkingCounter: Int = 0
-        var assistantTextCounter: Int = 0
-        var model: String?
-        var usage: AgentEntry.TokenUsage = .zero
-        var countedUsageMessageIds: Set<String> = []
-        var stopReason: String?
-
-        mutating func addUsageOnce(_ usage: ClaudeUsage, identity: String) {
-            guard countedUsageMessageIds.insert(identity).inserted else { return }
-            self.usage.inputTokens += usage.inputTokens ?? 0
-            self.usage.outputTokens += usage.outputTokens ?? 0
-            self.usage.cacheReadTokens += usage.cacheReadInputTokens ?? 0
-            self.usage.cacheCreationTokens += usage.cacheCreationInputTokens ?? 0
-        }
-    }
-
-    /// One slot in `PendingTurn.subEntries`. Tool calls carry their
-    /// own mutable `AgentToolCall` accumulator + the start timestamp
-    /// for duration computation; text events are append-only and
-    /// inert after construction.
-    fileprivate enum PendingSubEntry {
-        case text(kind: TextSubEntry.Kind, text: String, timestamp: Date?, id: EntryID)
-        case tool(call: AgentToolCall, startedAt: Date?)
     }
 
     // MARK: - Classification
@@ -805,34 +715,114 @@ struct ClaudeTranscriptBuilder {
         }
     }
 
-    // MARK: - Pending-turn merging
+    // MARK: - Per-line assistant application (post-G3)
 
-    private func mergeIntoPendingTurn(_ line: ClaudeJSONLLine, ctx: inout BuildContext) {
-        if ctx.pendingTurn == nil {
-            ctx.pendingTurn = PendingTurn(
-                id: line.stableId,
-                startTime: line.timestamp ?? .distantPast
-            )
+    /// Lazily create the skeleton AgentEntry for the current turn. The
+    /// caller invokes this on the first content-bearing assistant line
+    /// of the turn. Subsequent lines find the skeleton already in
+    /// place and update its scalars / append sub-entries directly.
+    private func ensureSkeleton(ctx: inout BuildContext, line: ClaudeJSONLLine) {
+        if ctx.pendingAgentSkeletonId != nil { return }
+        let id = EntryID.fromJSONL(line.stableId)
+        let startTime = line.timestamp ?? .distantPast
+        let label = Self.loc("agentXray.entry.agent.label.claude", "Claude")
+        let skeleton = AgentEntry(
+            id: id,
+            header: Header(
+                icon: .agent,
+                name: label,
+                label: nil,
+                trailing: [],
+                timeMarker: .clock(startTime)
+            ),
+            body: Body(sections: []),
+            usage: .zero,
+            stopReason: nil,
+            perTurnDurationMs: nil,
+            messageCount: nil,
+            model: nil,
+            endTime: nil,
+            subEntries: []
+        )
+        ctx.appendEntry(.agent(skeleton))
+        ctx.pendingAgentSkeletonId = id
+        ctx.pendingTurnStartTime = startTime
+    }
+
+    /// Apply one assistant-classified line to the in-flight turn. If
+    /// the line carries content, the skeleton is created (if not yet)
+    /// and its scalars + sub-entries are mutated incrementally.
+    /// Heartbeat / usage-only lines that arrive while a skeleton
+    /// exists update the skeleton's tracking state but do not append
+    /// any sub-entry.
+    ///
+    /// Replaces the pre-G3 `mergeIntoPendingTurn(_:ctx:)` whose
+    /// `PendingTurn.subEntries` accumulator + `flushPendingTurn`
+    /// projection has been collapsed: sub-entries flow directly into
+    /// `transcript`, and the skeleton itself is the source of truth
+    /// from creation onward.
+    private func applyAssistantLine(_ line: ClaudeJSONLLine, ctx: inout BuildContext) {
+        if line.message?.content != nil {
+            ensureSkeleton(ctx: &ctx, line: line)
         }
+        guard let skeletonId = ctx.pendingAgentSkeletonId else { return }
         if let ts = line.timestamp {
-            ctx.pendingTurn?.lastTimestamp = ts
+            ctx.pendingTurnLastTimestamp = ts
         }
         if let uuid = line.uuid {
-            ctx.pendingTurn?.lastMessageUuid = uuid
+            ctx.pendingTurnLastMessageUuid = uuid
+        }
+
+        // Capture incremental update inputs locally — Swift closures
+        // can't capture inout `ctx` for mutation, so we precompute
+        // the usage-dedup decision before entering the mutate closure.
+        let model = line.message?.model
+        let stopReason = line.message?.stopReason
+        let lineTs = line.timestamp
+        let usageDelta: ClaudeUsage?
+        if let usage = line.message?.usage {
+            let identity = line.message?.id ?? line.uuid ?? line.stableId
+            if ctx.pendingTurnUsageMessageIds.insert(identity).inserted {
+                usageDelta = usage
+            } else {
+                usageDelta = nil
+            }
+        } else {
+            usageDelta = nil
+        }
+
+        ctx.root.mutate(id: skeletonId) { entry in
+            if case .agent(var a) = entry {
+                if a.model == nil, let model {
+                    a.model = model
+                    a.header = Self.headerSettingLabel(
+                        a.header,
+                        label: ClaudeModelNameMap.friendlyName(for: model)
+                    )
+                }
+                if let stopReason {
+                    a.stopReason = stopReason
+                }
+                if let usage = usageDelta {
+                    a.usage.inputTokens += usage.inputTokens ?? 0
+                    a.usage.outputTokens += usage.outputTokens ?? 0
+                    a.usage.cacheReadTokens += usage.cacheReadInputTokens ?? 0
+                    a.usage.cacheCreationTokens += usage.cacheCreationInputTokens ?? 0
+                    let total = a.usage.inputTokens + a.usage.outputTokens
+                        + a.usage.cacheReadTokens + a.usage.cacheCreationTokens
+                    a.header = Self.headerSettingTrailing(
+                        a.header,
+                        trailing: total > 0 ? [.tokenPill(a.usage)] : []
+                    )
+                }
+                if let ts = lineTs {
+                    a.endTime = ts
+                }
+                entry = .agent(a)
+            }
         }
 
         guard let content = line.message?.content else { return }
-        if let model = line.message?.model, ctx.pendingTurn?.model == nil {
-            ctx.pendingTurn?.model = model
-        }
-        if let stopReason = line.message?.stopReason {
-            ctx.pendingTurn?.stopReason = stopReason
-        }
-        if let usage = line.message?.usage {
-            let identity = line.message?.id ?? line.uuid ?? line.stableId
-            ctx.pendingTurn?.addUsageOnce(usage, identity: identity)
-        }
-
         switch content {
         case .text(let str):
             let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -875,35 +865,123 @@ struct ClaudeTranscriptBuilder {
         }
     }
 
-    /// Append one text event to the pending turn — used for both
-    /// thinking and final assistant text blocks. The `kind` discriminator
-    /// drives which per-kind counter is bumped (so the derived id
-    /// `"thinking-N"` / `"assistantText-N"` keeps its kind tag) and is
-    /// stored on the event for the flush-time projection.
+    /// Reconstruct a `Header` with a new `label`, preserving every
+    /// other field. Used by `applyAssistantLine` to refresh the
+    /// skeleton's header when the model is first observed.
+    private static func headerSettingLabel(_ existing: Header, label: String?) -> Header {
+        Header(
+            icon: existing.icon,
+            name: existing.name,
+            label: label,
+            title: existing.title,
+            trailing: existing.trailing,
+            timeMarker: existing.timeMarker
+        )
+    }
+
+    /// Reconstruct a `Header` with new `trailing` items, preserving
+    /// every other field. Used to refresh the skeleton's token-pill
+    /// trailing item as usage accumulates.
+    private static func headerSettingTrailing(_ existing: Header, trailing: [TrailingItem]) -> Header {
+        Header(
+            icon: existing.icon,
+            name: existing.name,
+            label: existing.label,
+            title: existing.title,
+            trailing: trailing,
+            timeMarker: existing.timeMarker
+        )
+    }
+
+    /// Render an `AgentToolCall` accumulator into a `ToolEntry` ready
+    /// to drop into the skeleton's `subEntries`. Used by
+    /// `appendToolUse` (initial render with `status: .pending`,
+    /// `durationMs: nil`) and `attachToolResult` (re-render with the
+    /// observed result + duration).
+    private static func makeToolEntryEntry(
+        call: AgentToolCall,
+        parentId: EntryID,
+        durationMs: Int?,
+        status: ToolEntry.Status
+    ) -> ToolEntry {
+        var sections: [Section]
+        if let diffSections = call.diffSections {
+            sections = diffSections
+        } else {
+            sections = [.text([call.inputDetail], style: .normal)]
+        }
+        if let resultSections = call.result {
+            sections.append(contentsOf: resultSections)
+        }
+        let parsed = MCPToolNameParser.parse(call.name)
+        return ToolEntry(
+            id: .fromJSONL(call.id),
+            parentEntryID: parentId,
+            header: Header(
+                icon: .tool(named: call.name),
+                name: parsed.display,
+                title: call.summary,
+                timeMarker: durationMs.map { .duration($0) }
+            ),
+            body: Body(sections: sections),
+            status: status,
+            durationMs: durationMs,
+            subagentType: call.subagentType,
+            teamMemberName: call.teamMemberName,
+            teamName: call.teamName,
+            mcpServer: call.mcpServer,
+            inputFilePath: call.inputFilePath
+        )
+    }
+
+    /// Append one text sub-entry directly under the current skeleton.
+    /// Both thinking and final assistant text blocks route here; the
+    /// `kind` discriminator drives the per-kind counter for derived
+    /// ids and the per-kind icon/style for the rendered TextSubEntry.
     private func appendTextEvent(
         kind: TextSubEntry.Kind,
         _ text: String,
         timestamp: Date?,
         ctx: inout BuildContext
     ) {
-        guard ctx.pendingTurn != nil else { return }
+        guard let skeletonId = ctx.pendingAgentSkeletonId else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let suffix: String
         switch kind {
         case .thinking:
-            let idx = ctx.pendingTurn!.thinkingCounter
-            ctx.pendingTurn!.thinkingCounter += 1
+            let idx = ctx.turnThinkingCounter
+            ctx.turnThinkingCounter += 1
             suffix = "thinking-\(idx)"
         case .assistant:
-            let idx = ctx.pendingTurn!.assistantTextCounter
-            ctx.pendingTurn!.assistantTextCounter += 1
+            let idx = ctx.turnAssistantTextCounter
+            ctx.turnAssistantTextCounter += 1
             suffix = "assistantText-\(idx)"
         }
-        let id = EntryID.derived(parent: ctx.pendingTurn!.id, kind: suffix)
-        ctx.pendingTurn!.subEntries.append(
-            .text(kind: kind, text: trimmed, timestamp: timestamp, id: id)
+        let id = EntryID.derived(parent: skeletonId.stableString, kind: suffix)
+        // Fallback timestamp matches the prior flush-time projection:
+        // assistant text without its own ts uses the latest known turn
+        // timestamp; thinking falls back to the turn's start time.
+        let fallbackTs: Date
+        switch kind {
+        case .assistant:
+            fallbackTs = timestamp
+                ?? ctx.pendingTurnLastTimestamp
+                ?? ctx.pendingTurnStartTime
+                ?? .distantPast
+        case .thinking:
+            fallbackTs = timestamp
+                ?? ctx.pendingTurnStartTime
+                ?? .distantPast
+        }
+        let textEntry = Self.makeTextSubEntry(
+            kind: kind,
+            text: trimmed,
+            timestamp: fallbackTs,
+            id: id,
+            parentEntryID: skeletonId
         )
+        ctx.root.append(parent: skeletonId, entry: .text(textEntry))
     }
 
     private func appendToolUse(
@@ -912,6 +990,7 @@ struct ClaudeTranscriptBuilder {
         ctx: inout BuildContext
     ) {
         guard let id = block.id, let name = block.name else { return }
+        guard let skeletonId = ctx.pendingAgentSkeletonId else { return }
         let teamMemberName = ToolInputParser.teamMemberName(name: name, input: block.input)
         let teamName = ToolInputParser.teamName(name: name, input: block.input)
         let mcpServer = MCPToolNameParser.parse(name).server
@@ -932,20 +1011,25 @@ struct ClaudeTranscriptBuilder {
             inputFilePath: ToolInputParser.filePath(name: name, input: block.input),
             diffSections: diffSections
         )
-        guard ctx.pendingTurn != nil else { return }
-        // Only register a fresh tool slot if this id hasn't been seen
-        // (defensive — duplicate tool_use blocks for one id are
-        // unexpected but ignoring repeats keeps order monotonic).
-        if ctx.pendingTurn!.toolIndexByID[id] == nil {
-            let index = ctx.pendingTurn!.subEntries.count
-            ctx.pendingTurn!.subEntries.append(.tool(call: call, startedAt: timestamp))
-            ctx.pendingTurn!.toolIndexByID[id] = index
+        let toolId = EntryID.fromJSONL(id)
+        let toolEntry = Self.makeToolEntryEntry(
+            call: call, parentId: skeletonId, durationMs: nil, status: .pending
+        )
+        // Cross-turn id-reuse safeguard: only mutate in place if the
+        // existing slot is parented to the *current* skeleton. A tool
+        // id legitimately recurring across turns (the prior turn's
+        // synthetic-fallback id resurfacing in this turn's tool_use)
+        // appends fresh under the current skeleton instead.
+        if case .tool(let existing) = ctx.root.entry(id: toolId),
+           existing.parentEntryID == skeletonId {
+            ctx.root.mutate(id: toolId) { entry in
+                entry = .tool(toolEntry)
+            }
         } else {
-            // Re-emitted tool_use — overwrite the call payload but
-            // keep the original index/order.
-            let index = ctx.pendingTurn!.toolIndexByID[id]!
-            ctx.pendingTurn!.subEntries[index] = .tool(call: call, startedAt: timestamp)
+            ctx.root.append(parent: skeletonId, entry: .tool(toolEntry))
         }
+        ctx.toolStartedAtById[id] = timestamp
+        ctx.toolCallById[id] = call
     }
 
     private func attachToolResult(
@@ -953,41 +1037,63 @@ struct ClaudeTranscriptBuilder {
         timestamp: Date?,
         ctx: inout BuildContext
     ) {
-        guard let id = block.toolUseId, ctx.pendingTurn != nil else { return }
+        guard let id = block.toolUseId,
+              let skeletonId = ctx.pendingAgentSkeletonId else { return }
         let isError = block.isError ?? false
         let resultSections = ToolResultParser.parse(
             block.toolResultContent,
             isError: isError,
             logger: logger
         )
-        if let index = ctx.pendingTurn!.toolIndexByID[id],
-           case .tool(let existing, let startedAt) = ctx.pendingTurn!.subEntries[index] {
+        let toolId = EntryID.fromJSONL(id)
+
+        // Existing-tool path (parent-scoped to the current skeleton).
+        if case .tool(let existing) = ctx.root.entry(id: toolId),
+           existing.parentEntryID == skeletonId,
+           var call = ctx.toolCallById[id] {
+            let startedAt = ctx.toolStartedAtById[id]
             let durationMs = startedAt.flatMap { started -> Int? in
                 guard let timestamp else { return nil }
                 let delta = timestamp.timeIntervalSince(started)
                 return delta >= 0 ? Int(delta * 1000) : nil
             }
-            let updated = existing.withResult(resultSections, isError: isError, durationMs: durationMs)
-            ctx.pendingTurn!.subEntries[index] = .tool(call: updated, startedAt: startedAt)
-        } else {
-            // Synthetic — tool_result arrived without a prior tool_use.
-            let synthetic = AgentToolCall(
-                id: id,
-                name: "(tool result)",
-                summary: "",
-                inputDetail: "",
-                result: resultSections,
-                isError: isError,
-                subagentType: nil,
-                teamMemberName: nil,
-                teamName: nil,
-                durationMs: nil,
-                sidechainTranscript: nil
+            call = call.withResult(resultSections, isError: isError, durationMs: durationMs)
+            ctx.toolCallById[id] = call
+            let status: ToolEntry.Status = isError ? .error : .ok
+            let toolEntry = Self.makeToolEntryEntry(
+                call: call, parentId: skeletonId,
+                durationMs: durationMs, status: status
             )
-            let index = ctx.pendingTurn!.subEntries.count
-            ctx.pendingTurn!.subEntries.append(.tool(call: synthetic, startedAt: nil))
-            ctx.pendingTurn!.toolIndexByID[id] = index
+            ctx.root.mutate(id: toolId) { entry in
+                entry = .tool(toolEntry)
+            }
+            return
         }
+
+        // Synthetic — tool_result arrived without a prior tool_use in
+        // the current turn (or the matching slot is from a prior
+        // turn). Append under the current skeleton with the tool_use
+        // id so a later real tool_use mutates the same slot.
+        let synthetic = AgentToolCall(
+            id: id,
+            name: "(tool result)",
+            summary: "",
+            inputDetail: "",
+            result: resultSections,
+            isError: isError,
+            subagentType: nil,
+            teamMemberName: nil,
+            teamName: nil,
+            durationMs: nil,
+            sidechainTranscript: nil
+        )
+        let status: ToolEntry.Status = isError ? .error : .ok
+        let toolEntry = Self.makeToolEntryEntry(
+            call: synthetic, parentId: skeletonId,
+            durationMs: nil, status: status
+        )
+        ctx.root.append(parent: skeletonId, entry: .tool(toolEntry))
+        ctx.toolCallById[id] = synthetic
     }
 
     // MARK: - Helpers

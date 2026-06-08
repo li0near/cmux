@@ -11,32 +11,41 @@ public import Foundation
 /// walk children uniformly via `body.sections` regardless of variant.
 public struct AgentEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
-    public let header: Header
+    /// Header data (icon, name, label, trailing items, time marker).
+    /// Settable inside the package (post-G3) so the builder can update
+    /// the friendly model label and token-pill trailing item
+    /// incrementally as those values arrive on later assistant lines.
+    public internal(set) var header: Header
     public let body: Body
 
     /// Aggregated token usage across every assistant message folded into
-    /// this turn.
-    public let usage: TokenUsage
+    /// this turn. Settable inside the package (post-G3) — the builder
+    /// updates this incrementally on each usage-bearing line.
+    public internal(set) var usage: TokenUsage
     /// `stop_reason` from the **last** assistant message folded into this
-    /// turn (e.g. "end_turn", "max_tokens", "pause_turn").
-    public let stopReason: String?
+    /// turn (e.g. "end_turn", "max_tokens", "pause_turn"). Settable
+    /// inside the package; updated on each contributing line.
+    public internal(set) var stopReason: String?
     /// Per-turn aggregate duration sourced from Claude's
     /// `system.subtype: turn_duration` JSONL entry, when available.
     /// Authoritative source — preferred over `(endTime − startTime)` when
     /// present. nil for Codex, older Claude versions, or live
-    /// (in-progress) turns.
-    public let perTurnDurationMs: Int?
+    /// (in-progress) turns. Settable inside the package; baked in by
+    /// the per-line turn-duration handler.
+    public internal(set) var perTurnDurationMs: Int?
     /// Per-turn aggregate message count from the same `turn_duration`
-    /// entry.
-    public let messageCount: Int?
+    /// entry. Settable inside the package.
+    public internal(set) var messageCount: Int?
     /// Optional model id reported by the assistant message
     /// (e.g. "claude-sonnet-4-5"). Friendly display form lives in
-    /// `header.label` (e.g. "Sonnet 4.5").
-    public let model: String?
+    /// `header.label` (e.g. "Sonnet 4.5"). Settable inside the package;
+    /// captured on the first model-bearing line and not overwritten.
+    public internal(set) var model: String?
     /// Timestamp of the last message folded into this turn. Combined
     /// with `timestamp` (start) gives a fallback duration when
-    /// `perTurnDurationMs` is absent.
-    public let endTime: Date?
+    /// `perTurnDurationMs` is absent. Settable inside the package;
+    /// updated on each line whose timestamp moves forward.
+    public internal(set) var endTime: Date?
 
     /// Canonical ordered child projection. Holds `.text` / `.tool`
     /// `Entry` cases (post-G1.5 the prior dedicated `SubEntry` enum is

@@ -189,4 +189,196 @@ struct ClaudeTranscriptBuilderTests {
         }
         #expect(kinds == ["thinking", "assistantText", "tool", "thinking", "assistantText", "tool"])
     }
+
+    // MARK: - G3 risk-area fixtures (skeleton-in-Transcript)
+
+    /// Helper: build a tool_use line with a custom input dict
+    /// (so we can verify last-write-wins on duplicate tool_use).
+    private func makeAssistantToolUseLineWithInput(
+        uuid: String,
+        parentUuid: String,
+        toolUseId: String,
+        toolName: String,
+        inputJSON: String,
+        timestamp: String = "2026-06-05T10:00:01.000Z"
+    ) -> String {
+        return #"""
+        {
+          "type": "assistant",
+          "uuid": "\#(uuid)",
+          "parentUuid": "\#(parentUuid)",
+          "timestamp": "\#(timestamp)",
+          "message": {
+            "role": "assistant",
+            "content": [{
+              "type": "tool_use",
+              "id": "\#(toolUseId)",
+              "name": "\#(toolName)",
+              "input": \#(inputJSON)
+            }]
+          }
+        }
+        """#
+    }
+
+    /// Helper: a user line bearing a tool_result block. Routed by the
+    /// builder's `classifyUserLine` to the agent path so it merges
+    /// into the in-flight skeleton.
+    private func makeToolResultLine(
+        uuid: String,
+        parentUuid: String,
+        toolUseId: String,
+        resultText: String,
+        isError: Bool = false,
+        timestamp: String = "2026-06-05T10:00:02.000Z"
+    ) -> String {
+        return #"""
+        {
+          "type": "user",
+          "uuid": "\#(uuid)",
+          "parentUuid": "\#(parentUuid)",
+          "timestamp": "\#(timestamp)",
+          "message": {
+            "role": "user",
+            "content": [{
+              "type": "tool_result",
+              "tool_use_id": "\#(toolUseId)",
+              "content": "\#(resultText)",
+              "is_error": \#(isError)
+            }]
+          }
+        }
+        """#
+    }
+
+    @Test("Synthetic-fallback tool_result followed by real tool_use → single slot under skeleton")
+    func toolResultBeforeToolUseIdempotentSlot() throws {
+        let lines = [
+            // Open the turn with a text line so the skeleton exists.
+            makeAssistantTextLine(uuid: "a1", parentUuid: "u1", text: "Working"),
+            // tool_result arrives first (no prior tool_use) → synthetic.
+            makeToolResultLine(
+                uuid: "u2", parentUuid: "a1", toolUseId: "t1",
+                resultText: "result text"
+            ),
+            // Real tool_use for the same id → mutates same slot.
+            makeAssistantToolUseLine(
+                uuid: "a2", parentUuid: "u2", toolUseId: "t1", toolName: "Read"
+            ),
+        ]
+        let agent = try buildAgentEntry(assistantLines: lines)
+
+        // Exactly one tool sub-entry (no duplicate slot).
+        let toolSubs = agent.subEntries.compactMap { entry -> ToolEntry? in
+            if case .tool(let t) = entry { return t }
+            return nil
+        }
+        #expect(toolSubs.count == 1)
+        #expect(toolSubs.first?.id == .fromJSONL("t1"))
+    }
+
+    @Test("Duplicate tool_use re-emission within same turn overwrites the same slot last-write-wins")
+    func duplicateToolUseOverwritesSameSlot() throws {
+        let lines = [
+            makeAssistantToolUseLineWithInput(
+                uuid: "a1", parentUuid: "u1", toolUseId: "t1",
+                toolName: "Read", inputJSON: #"{"file_path": "/tmp/first.txt"}"#
+            ),
+            // Re-emission with different input — should overwrite, not duplicate.
+            makeAssistantToolUseLineWithInput(
+                uuid: "a2", parentUuid: "a1", toolUseId: "t1",
+                toolName: "Read", inputJSON: #"{"file_path": "/tmp/second.txt"}"#,
+                timestamp: "2026-06-05T10:00:03.000Z"
+            ),
+        ]
+        let agent = try buildAgentEntry(assistantLines: lines)
+
+        let toolSubs = agent.subEntries.compactMap { entry -> ToolEntry? in
+            if case .tool(let t) = entry { return t }
+            return nil
+        }
+        #expect(toolSubs.count == 1)
+        #expect(toolSubs.first?.id == .fromJSONL("t1"))
+        // The second emission's input should be the one preserved (last-write-wins).
+        #expect(toolSubs.first?.inputFilePath == "/tmp/second.txt")
+    }
+
+    @Test("Cross-turn tool_use_id reuse: prior turn's slot is not mutated")
+    func crossTurnIdReuseDoesNotMutatePriorTurn() throws {
+        // First turn: assistant with tool t1 + result.
+        // Second turn: a *new* tool_result for the same id "t1" arriving
+        // without a prior tool_use in this turn. Must fall through to
+        // synthetic in the new turn — NOT mutate the prior turn's slot.
+        let userJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u1",
+          "parentUuid": null,
+          "timestamp": "2026-06-05T10:00:00.000Z",
+          "message": {"role": "user", "content": "go"}
+        }
+        """#
+        let user2JSON = #"""
+        {
+          "type": "user",
+          "uuid": "u2",
+          "parentUuid": "u1",
+          "timestamp": "2026-06-05T10:00:10.000Z",
+          "message": {"role": "user", "content": "again"}
+        }
+        """#
+        let lines = [
+            makeAssistantToolUseLine(uuid: "a1", parentUuid: "u1", toolUseId: "t1", toolName: "Read"),
+            makeToolResultLine(
+                uuid: "ur1", parentUuid: "a1", toolUseId: "t1",
+                resultText: "first turn result",
+                timestamp: "2026-06-05T10:00:02.000Z"
+            ),
+        ]
+        var builder = ClaudeTranscriptBuilder()
+        try builder.ingest(decodeLine(userJSON))
+        for line in lines {
+            try builder.ingest(decodeLine(line))
+        }
+        // Second turn — start a new user prompt + a "synthetic"
+        // tool_result for the same id "t1" but in this new turn.
+        try builder.ingest(decodeLine(user2JSON))
+        // Open turn with a text line so a skeleton exists for the result.
+        try builder.ingest(decodeLine(makeAssistantTextLine(
+            uuid: "a2", parentUuid: "u2", text: "second turn",
+            timestamp: "2026-06-05T10:00:11.000Z"
+        )))
+        try builder.ingest(decodeLine(makeToolResultLine(
+            uuid: "ur2", parentUuid: "a2", toolUseId: "t1",
+            resultText: "second turn synthetic",
+            timestamp: "2026-06-05T10:00:12.000Z"
+        )))
+
+        let entries = builder.transcript()
+        let agents = entries.compactMap { entry -> AgentEntry? in
+            if case .agent(let a) = entry { return a }
+            return nil
+        }
+        #expect(agents.count == 2)
+
+        // First turn has its tool with the original result.
+        let firstTurn = agents[0]
+        let firstTools = firstTurn.subEntries.compactMap { entry -> ToolEntry? in
+            if case .tool(let t) = entry { return t }
+            return nil
+        }
+        #expect(firstTools.count == 1)
+        #expect(firstTools.first?.toolName == "Read")
+
+        // Second turn has a *new* synthetic-from-tool_result slot.
+        // Crucially the first turn's tool was NOT mutated by the
+        // second turn's tool_result.
+        let secondTurn = agents[1]
+        let secondTools = secondTurn.subEntries.compactMap { entry -> ToolEntry? in
+            if case .tool(let t) = entry { return t }
+            return nil
+        }
+        #expect(secondTools.count == 1)
+        #expect(secondTools.first?.toolName == "(tool result)")
+    }
 }
