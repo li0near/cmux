@@ -67,11 +67,9 @@ struct ClaudeTranscriptBuilder {
     func transcript() -> [Entry] {
         let branchResolution = ClaudeBranchResolver.resolve(lines: rawLines)
         let turnDurations = ClaudeTurnDurationResolver.resolve(lines: rawLines)
-        let queued = ClaudeQueuedPromptResolver.resolve(lines: rawLines)
 
         var ctx = BuildContext(resolution: branchResolution, logger: logger)
         ctx.turnDurations = turnDurations.stamps
-        ctx.queuedSlashCommandUuids = queued.wasQueuedSlashUuids
 
         // Pre-pass: build entry transcripts for each abandoned branch.
         var branchEntriesByRoot: [String: [Entry]] = [:]
@@ -105,17 +103,21 @@ struct ClaudeTranscriptBuilder {
         }
         ctx.closePendingTurn()
 
-        // Tail-append synthetic pending UserEntry instances for unconsumed
-        // `queue-operation enqueue` descriptors. Once consumed, the
-        // matching `attachment.queued_command` emits its own non-pending
-        // UserEntry and the pending pseudo-entry drops out of the next
-        // transcript.
-        for pending in queued.pendingPrompts {
+        // Tail-emit any unconsumed `queue-operation enqueue` mirrors as
+        // synthetic `queuedState: .pending` UserEntry rows. Once the
+        // queue drains in a later session refresh, the mirror is
+        // popped (in `observeRawLine`) and the matching real
+        // attachment.queued_command emits its own non-pending UserEntry
+        // — the pending pseudo-entry drops out of the next transcript.
+        // The `queue-pending:<ts>:<hash>` id format matches the legacy
+        // `ClaudeQueuedPromptResolver` output so downstream `EntryID`
+        // equality holds across the migration.
+        for mirror in ctx.pendingPromptMirrors {
             ctx.appendEntry(.user(makeUserEntry(
-                id: pending.id,
-                timestamp: pending.timestamp,
+                id: mirror.id,
+                timestamp: mirror.timestamp,
                 promptId: nil,
-                text: pending.text,
+                text: mirror.text,
                 queuedState: .pending
             )))
         }
@@ -133,9 +135,79 @@ struct ClaudeTranscriptBuilder {
         return sub.transcript()
     }
 
+    // MARK: - G5 inline FIFO queued-prompt
+
+    /// Mirror of one outstanding `queue-operation enqueue` line. Held
+    /// in `BuildContext.pendingPromptMirrors` until paired with a
+    /// consuming user line (slash-command or
+    /// `attachment.queued_command`). Carries a stable id matching the
+    /// pre-G5 `ClaudeQueuedPromptResolver` format
+    /// (`queue-pending:<unix-ts>:<text-hash>`) so downstream
+    /// `EntryID` equality holds across the migration.
+    fileprivate struct PendingPromptMirror: Equatable {
+        let id: String
+        let text: String
+        let timestamp: Date
+    }
+
+    /// Pre-routing hook invoked as the first statement of `dispatch`.
+    /// Three jobs:
+    ///   1. Push every non-task-notification `queue-operation enqueue`
+    ///      onto the FIFO (will be tail-emitted as a pending UserEntry
+    ///      if not consumed by end-of-stream).
+    ///   2. When a user-typed slash-command line arrives whose
+    ///      reconstructed `/cmd args` text matches a pending mirror,
+    ///      pop the matching mirror and mark the line's stableId as
+    ///      consumed (drives `queuedState: .consumed` at emit time).
+    ///   3. When an `attachment.queued_command` arrives whose prompt
+    ///      text matches a pending mirror, pop the mirror (the
+    ///      attachment surfaces its own UserEntry via
+    ///      `emitSpecial(.queuedPrompt)`).
+    /// Replaces the pre-G5 `ClaudeQueuedPromptResolver` two-pass.
+    private func observeRawLine(_ line: ClaudeJSONLLine, ctx: inout BuildContext) {
+        if line.type == "queue-operation", line.operation == "enqueue" {
+            let text = (line.content ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.isEmpty { return }
+            // task-notification entries ride the queue but never
+            // surface as user prompts — drop them at intake.
+            if text.hasPrefix("<task-notification>") { return }
+            let ts = line.timestamp ?? .distantPast
+            let id = "queue-pending:\(ts.timeIntervalSince1970):\(text.hashValue)"
+            ctx.pendingPromptMirrors.append(
+                PendingPromptMirror(id: id, text: text, timestamp: ts)
+            )
+            return
+        }
+        if line.type == "user", let slashText = line.consumedSlashCommandText {
+            if let idx = ctx.pendingPromptMirrors.firstIndex(where: { $0.text == slashText }) {
+                ctx.pendingPromptMirrors.remove(at: idx)
+                ctx.consumedSlashCmdUuids.insert(line.stableId)
+            }
+            return
+        }
+        if line.type == "attachment", line.attachment?.type == "queued_command" {
+            let text = (line.attachment?.prompt?.firstText() ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.isEmpty { return }
+            if let idx = ctx.pendingPromptMirrors.firstIndex(where: { $0.text == text }) {
+                ctx.pendingPromptMirrors.remove(at: idx)
+            }
+            return
+        }
+    }
+
     // MARK: - Top-level dispatch
 
     private func dispatch(_ line: ClaudeJSONLLine, ctx: inout BuildContext) {
+        // G5 inline FIFO queued-prompt hook — must run as the first
+        // statement, before any early-return, to capture
+        // `queue-operation enqueue` lines (which `CommonLineDispatcher`
+        // routes to `.skip` further down) and to consume FIFO entries
+        // when a matching slash-command user line or
+        // `attachment.queued_command` arrives.
+        observeRawLine(line, ctx: &ctx)
+
         if line.type == "system", line.subtype == "turn_duration" {
             return
         }
@@ -234,8 +306,8 @@ struct ClaudeTranscriptBuilder {
         case .continueResume:
             return
         case .slashCmdInput(let name, let args):
-            if ctx.queuedSlashCommandUuids.contains(line.stableId) {
-                let text = ClaudeQueuedPromptResolver.consumedSlashCommandText(line) ?? body
+            if ctx.consumedSlashCmdUuids.contains(line.stableId) {
+                let text = line.consumedSlashCommandText ?? body
                 ctx.appendEntry(.user(makeUserEntry(
                     id: id,
                     timestamp: ts,
@@ -433,8 +505,8 @@ struct ClaudeTranscriptBuilder {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let isSlash = rawText.hasPrefix("<command-message>")
             || rawText.hasPrefix("<command-name>")
-        let wasQueued = ctx.queuedSlashCommandUuids.contains(line.stableId)
-        if isSlash, let slash = ClaudeQueuedPromptResolver.consumedSlashCommandText(line) {
+        let wasQueued = ctx.consumedSlashCmdUuids.contains(line.stableId)
+        if isSlash, let slash = line.consumedSlashCommandText {
             // Slash-command consumed: discard any non-text blocks (none
             // expected) and rebuild as a single text section.
             return makeUserEntry(
@@ -591,8 +663,21 @@ struct ClaudeTranscriptBuilder {
         /// surfaced post-G1.5-fix. G6 sweeps the entire pipeline.
         var sidechainLinesByParent: [String: [ClaudeJSONLLine]] = [:]
         var emittedDivergencePoints: Set<String> = []
-        var queuedSlashCommandUuids: Set<String> = []
         var abandonedBranchEntriesByRoot: [String: [Entry]] = [:]
+
+        // MARK: - Inline FIFO queued-prompt state (post-G5)
+
+        /// File-order queue of `queue-operation enqueue` lines that
+        /// have not yet been paired with a consuming user line
+        /// (slash-command or attachment.queued_command). Populated by
+        /// the per-line `observeRawLine` hook in `dispatch`. After all
+        /// lines are dispatched, any leftover mirror is tail-emitted as
+        /// a synthetic `queuedState: .pending` UserEntry.
+        var pendingPromptMirrors: [PendingPromptMirror] = []
+        /// `stableId` of user-typed slash-command lines whose text
+        /// matched a prior enqueue. Replaces the pre-G5
+        /// `queuedSlashCommandUuids` from `ClaudeQueuedPromptResolver`.
+        var consumedSlashCmdUuids: Set<String> = []
 
         /// Append a top-level entry. Wraps
         /// ``Transcript/append(parent:entry:)`` with `parent: nil`.

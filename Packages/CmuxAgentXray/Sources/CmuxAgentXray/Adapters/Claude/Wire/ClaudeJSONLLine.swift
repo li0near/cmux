@@ -162,6 +162,27 @@ struct ClaudeJSONLLine: Decodable {
     /// order is the current active leaf.
     var isLastPromptMarker: Bool { type == "last-prompt" }
 
+    /// Reconstructed `/cmd args` form of a slash-command user line, or
+    /// nil if this line is not a slash-command-shaped user line. Used
+    /// by the inline FIFO queued-prompt matcher (post-G5) to pair
+    /// consumed slash-commands against earlier `queue-operation
+    /// enqueue` lines.
+    var consumedSlashCommandText: String? {
+        let raw = message?.content?.firstText() ?? ""
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("<command-message>") || trimmed.hasPrefix("<command-name>") else {
+            return nil
+        }
+        guard case let .slashCommandInput(name, args) = ClaudeContentDetector.classify(trimmed) else {
+            return nil
+        }
+        let slashName = name.hasPrefix("/") ? name : "/\(name)"
+        if let args, !args.isEmpty {
+            return "\(slashName) \(args)"
+        }
+        return slashName
+    }
+
     /// True when this line is session-global metadata with no
     /// `parentUuid` and no renderable body.
     var isSessionOrphanMetadata: Bool {

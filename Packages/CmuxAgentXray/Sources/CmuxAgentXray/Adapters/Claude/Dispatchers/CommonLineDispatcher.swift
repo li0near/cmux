@@ -15,7 +15,7 @@ enum CommonLineDispatcher {
         "permission-mode",          // session-orphan: permission state
         "agent-name",               // session-orphan: rename display name
         "custom-title",             // session-orphan: session title
-        "queue-operation",          // consumed by ClaudeQueuedPromptResolver
+        "queue-operation",          // captured by `ClaudeTranscriptBuilder.observeRawLine` (inline FIFO, post-G5)
         "file-history-snapshot",    // session-orphan: file backup index
         "last-prompt",              // consumed by ClaudeBranchResolver
         "progress",                 // sub-agent hook telemetry
