@@ -84,7 +84,7 @@ public struct AgentEntryView: View {
 
     /// Dispatch on the `Entry` sub-entry — only `.text` / `.tool`
     /// cases ever appear inside an agent turn (post-G1.5; the builder
-    /// + `TranscriptRoot.append`'s DEBUG assert enforce this). Other
+    /// + `Transcript.append`'s DEBUG assert enforce this). Other
     /// cases fall through to a no-op rather than crashing in release.
     @ViewBuilder
     private func subEntrySection(sub: Entry) -> some View {

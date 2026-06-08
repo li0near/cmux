@@ -1,7 +1,6 @@
 public import Foundation
 
-/// Umbrella enum for every transcript item — a `Transcript` is a
-/// `[Entry]`. Seven cases:
+/// Umbrella enum for every transcript item. Seven cases:
 ///
 /// - `.user` — user-authored prompt.
 /// - `.agent` — one assistant turn (top-level container variant).
@@ -10,7 +9,7 @@ public import Foundation
 /// - `.synthesized` — cmux-invented row (branch link, PR link).
 /// - `.text` — assistant thinking / text sub-entry. Appears ONLY inside
 ///   ``AgentEntry/subEntries`` (and recursively inside abandoned
-///   branch-link bodies). NEVER at top level — `TranscriptRoot.append`
+///   branch-link bodies). NEVER at top level — `Transcript.append`
 ///   asserts this in DEBUG builds.
 /// - `.tool` — assistant tool invocation sub-entry. Same scoping
 ///   constraint as `.text`.
@@ -20,7 +19,7 @@ public import Foundation
 /// uniform `Entry` enum. The "sub-entries can't appear at top level"
 /// invariant is enforced by the builder + a runtime assert rather
 /// than the type system, in exchange for a single uniform mutating
-/// API on ``TranscriptRoot``.
+/// API on ``Transcript``.
 ///
 /// Every variant carries the same display contract: `header: Header`
 /// + `body: Body`. Variant-specific scalars (token usage, queued flags,
@@ -86,21 +85,42 @@ public enum Entry: Identifiable, Equatable, Sendable {
     /// variants. Replaces the ad-hoc walks of `body.sections` for
     /// `.subentries(...)` that existed pre-G1.5.
     ///
+    /// **Settable (post-G1.6).** The setter case-rebuilds the inner
+    /// container struct with `newValue` for `.agent` / `.synthesized`,
+    /// and silently no-ops for non-container cases (a DEBUG assert
+    /// flags the misuse). This makes `&entries[i].subEntries` a
+    /// writeable lvalue — Swift's `_modify` accessor composes the
+    /// chain through nested arrays so ``Transcript`` can recurse to
+    /// any depth without the copy-extract-repack ceremony the
+    /// pre-G1.6 helpers (`withSubEntries` / `withAppendedSubEntry` /
+    /// `withRemovedSubEntryAt`) needed.
+    ///
     /// `.tool` is NOT a container variant — sub-agent (Task / Agent
     /// tool) transcripts will be modeled as top-level ``AgentEntry``
     /// rows in a future commit, not as nested children of the
     /// originating tool entry.
     public var subEntries: [Entry] {
-        switch self {
-        case .agent(let e):       return e.subEntries
-        case .synthesized(let e): return e.subEntries
-        case .user, .system, .compact, .text, .tool:
-            return []
+        get {
+            switch self {
+            case .agent(let e):       return e.subEntries
+            case .synthesized(let e): return e.subEntries
+            case .user, .system, .compact, .text, .tool:
+                return []
+            }
+        }
+        set {
+            switch self {
+            case .agent(var e):
+                e.subEntries = newValue
+                self = .agent(e)
+            case .synthesized(var e):
+                e.subEntries = newValue
+                self = .synthesized(e)
+            case .user, .system, .compact, .text, .tool:
+                assert(newValue.isEmpty,
+                       "Entry.subEntries setter on non-container case (\(self.id.stableString)) — \(newValue.count) entries dropped.")
+                return
+            }
         }
     }
 }
-
-/// Convenience type alias for `[Entry]` — the document the panel
-/// renders. Used throughout the package as a clear domain term.
-public typealias Transcript = [Entry]
-

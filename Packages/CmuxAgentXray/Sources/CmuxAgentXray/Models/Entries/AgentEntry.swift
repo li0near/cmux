@@ -42,9 +42,16 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
     /// `Entry` cases (post-G1.5 the prior dedicated `SubEntry` enum is
     /// merged into `Entry`). The builder enforces the
     /// "only `.text` / `.tool` at this depth" convention; runtime
-    /// asserts in ``TranscriptRoot/append(parent:entry:)`` catch any
+    /// asserts in ``Transcript/append(parent:entry:)`` catch any
     /// regression that places a non-text/tool entry here.
-    public let subEntries: [Entry]
+    ///
+    /// `internal(set) var` (post-G1.6): the field is read-only to the
+    /// cmux app target and to renderers, but writeable inside the
+    /// `CmuxAgentXray` package so ``Transcript`` can mutate the
+    /// transcript tree in place via the recursive `_modify` accessor
+    /// chain. External code still uses the public `init(... subEntries:)`
+    /// to construct.
+    public internal(set) var subEntries: [Entry]
 
     public init(
         id: EntryID,

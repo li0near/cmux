@@ -14,10 +14,14 @@ public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
     public let body: Body
     public let kind: Kind
     /// Nested children (post-G1.5). Mirrors ``AgentEntry/subEntries``
-    /// and ``ToolEntry/subEntries`` so all container variants expose
-    /// children at the same structural position. Populated for
-    /// `.branchLink` (abandoned-branch entries); empty for `.prLink`.
-    public let subEntries: [Entry]
+    /// so all container variants expose children at the same structural
+    /// position. Populated for `.branchLink` (abandoned-branch entries);
+    /// empty for `.prLink`.
+    ///
+    /// `internal(set) var` (post-G1.6): same read-only-from-outside,
+    /// writeable-inside-the-package contract as
+    /// ``AgentEntry/subEntries`` — see that field's doc.
+    public internal(set) var subEntries: [Entry]
 
     public init(
         id: EntryID,

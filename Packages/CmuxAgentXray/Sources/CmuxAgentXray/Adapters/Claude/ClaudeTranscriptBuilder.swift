@@ -120,7 +120,7 @@ struct ClaudeTranscriptBuilder {
             )))
         }
 
-        return ctx.root.subEntries
+        return ctx.root.entries
     }
 
     /// Recursively build entries for an abandoned-branch transcript.
@@ -540,11 +540,11 @@ struct ClaudeTranscriptBuilder {
         /// warnings emitted by `buildToolResultSections`.
         let logger: any AgentXrayLogger
         /// Phase G transcript model. Source of truth — `transcript()`
-        /// returns `root.subEntries`. The dispatcher mutates this via
+        /// returns `root.entries`. The dispatcher mutates this via
         /// ``appendEntry(_:)`` (top-level) and the methods on
-        /// ``TranscriptRoot`` directly when finer-grained mutation is
+        /// ``Transcript`` directly when finer-grained mutation is
         /// needed.
-        var root = TranscriptRoot()
+        var root = Transcript()
         var pendingTurn: PendingTurn?
         var turnDurations: [String: TurnDurationStamp] = [:]
         var sidechainLinesByParent: [String: [ClaudeJSONLLine]] = [:]
@@ -553,7 +553,7 @@ struct ClaudeTranscriptBuilder {
         var abandonedBranchEntriesByRoot: [String: [Entry]] = [:]
 
         /// Append a top-level entry. Wraps
-        /// ``TranscriptRoot/append(parent:entry:)`` with `parent: nil`
+        /// ``Transcript/append(parent:entry:)`` with `parent: nil`
         /// — kept as a method so existing call sites read naturally
         /// (`ctx.appendEntry(...)`).
         mutating func appendEntry(_ entry: Entry) {

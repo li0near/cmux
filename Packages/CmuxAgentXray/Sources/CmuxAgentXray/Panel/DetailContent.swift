@@ -302,7 +302,7 @@ extension DetailContent {
     /// post-G1.5 this is an `Entry.text` or `Entry.tool` value living
     /// in a parent agent's `subEntries`. Other `Entry` cases never
     /// appear inside an agent turn (DEBUG asserts in
-    /// ``TranscriptRoot/append(parent:entry:)``); fall through to nil.
+    /// ``Transcript/append(parent:entry:)``); fall through to nil.
     private static func resolveSubEntry(
         _ sub: Entry,
         sectionIndex: Int,

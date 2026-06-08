@@ -66,14 +66,6 @@ struct EntryTreeTests {
         #expect(agent.timestamp == Date(timeIntervalSince1970: 1_001))
     }
 
-    @Test("Transcript is [Entry]")
-    func transcriptAlias() {
-        let transcript: Transcript = [.user(makeUser()), .agent(makeAgent())]
-        #expect(transcript.count == 2)
-        #expect(transcript[0].id.stableString == "u1")
-        #expect(transcript[1].id.stableString == "a1")
-    }
-
     // MARK: - AgentEntry sub-entries
 
     @Test("AgentEntry.subEntries (Entry) dispatches id and header")
