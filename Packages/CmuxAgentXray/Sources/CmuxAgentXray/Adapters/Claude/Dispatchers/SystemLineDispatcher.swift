@@ -11,26 +11,14 @@ import Foundation
 /// `ClaudeTurnDurationResolver` for `AgentEntry` header stamping; no
 /// entry is emitted.
 enum SystemLineDispatcher {
-    static func parse(
-        _ line: ClaudeJSONLLine,
-        activeBranch: Set<String>,
-        activeBranchAvailable: Bool
-    ) -> ClaudeLineRouting {
+    static func parse(_ line: ClaudeJSONLLine) -> ClaudeLineRouting {
         switch line.subtype ?? "" {
         case "turn_duration":
             return .skip
         case "away_summary":
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .renderSpecial(.recap),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .renderSpecial(.recap)
         case "compact_boundary":
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .render(.compact),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .render(.compact)
         case "local_command":
             // Built-in slash commands written via the system-line
             // envelope (`/rename`, `/status`, `/branch`, `/agents`,
@@ -44,34 +32,18 @@ enum SystemLineDispatcher {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             switch ClaudeContentDetector.classify(body) {
             case .slashCommandInput(let name, let args):
-                return ClaudeLineDispatcher.branchGated(
-                    line, kind: .renderSpecial(.slashCmdInput(name: name, args: args)),
-                    activeBranch: activeBranch,
-                    activeBranchAvailable: activeBranchAvailable
-                )
+                return .renderSpecial(.slashCmdInput(name: name, args: args))
             case .slashCommandOutput(let body, let isStderr):
-                return ClaudeLineDispatcher.branchGated(
-                    line, kind: .renderSpecial(.slashCmdOutput(body: body, isStderr: isStderr)),
-                    activeBranch: activeBranch,
-                    activeBranchAvailable: activeBranchAvailable
-                )
+                return .renderSpecial(.slashCmdOutput(body: body, isStderr: isStderr))
             default:
-                return ClaudeLineDispatcher.branchGated(
-                    line, kind: .render(.system),
-                    activeBranch: activeBranch,
-                    activeBranchAvailable: activeBranchAvailable
-                )
+                return .render(.system)
             }
         // Generic system body — known subtypes (`api_error`,
         // `stop_hook_summary`, `informational`) and any future
         // subtype fall through here so the entry never silently
         // disappears.
         default:
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .render(.system),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .render(.system)
         }
     }
 }

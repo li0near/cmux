@@ -73,6 +73,13 @@ public struct Transcript: Sendable, Equatable {
         return entryAt(path)
     }
 
+    /// Look up the full path of an entry by id. Returns nil if absent.
+    /// Internal — used by the Phase G dispatcher to find the
+    /// divergence point's top-level slot at rewind time.
+    internal func path(of id: EntryID) -> [Int]? {
+        return index[id]
+    }
+
     /// Read the entry at the given path. Returns nil for an invalid
     /// path. Internal — callers use ``entry(id:)``.
     private func entryAt(_ path: [Int]) -> Entry? {

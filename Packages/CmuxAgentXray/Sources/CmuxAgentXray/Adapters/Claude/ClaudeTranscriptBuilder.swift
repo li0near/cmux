@@ -3,22 +3,22 @@ import Foundation
 /// Builds an `[Entry]` transcript from a stream of raw Claude JSONL
 /// lines.
 ///
-/// Two-pass design:
-///   1. **Pre-pass resolvers** — pure value functions over `rawLines`:
-///      `ClaudeBranchResolver` (active-branch + abandoned-branch
-///      grouping), `ClaudeTurnDurationResolver` (per-turn timing
-///      stamps), `ClaudeQueuedPromptResolver` (queued slash UUIDs +
-///      pending-prompt descriptors).
-///   2. **Dispatch loop** — for every buffered line,
-///      `ClaudeLineDispatcher.route(...)` decides skip / sidechain /
-///      abandoned-branch / render. Sidechain lines are pooled by
-///      `parentToolUseID`; abandoned branches surface as
-///      `SynthesizedEntry.branchLink` entries at their divergence
-///      points.
+/// Single-pass per-line dispatch (post-Phase-G). Each line routes
+/// through `ClaudeLineDispatcher.route(...)` which decides
+/// skip / sidechain / render. The builder mutates a `Transcript`
+/// document incrementally — sub-entries flow into a skeleton
+/// `AgentEntry` created lazily on the first content-bearing assistant
+/// line, scalar fields update via `transcript.mutate(id:)` per
+/// contributing line, queued-prompt FIFO is maintained inline,
+/// rewinds slice the abandoned tail into a synthesized `branchLink`
+/// at the divergence point, and a small pending pool absorbs lines
+/// whose JSONL parent hasn't yet been ingested (parallel-tool-call
+/// out-of-order).
 ///
-/// Each `transcript()` call rebuilds from scratch — cheap for typical
-/// sessions and ensures rewinds landing mid-session collapse the
-/// transcript immediately.
+/// The remaining `ClaudeTurnDurationResolver` pre-pass (read once at
+/// `transcript()` start) produces a small uuid → duration stamp map
+/// applied at turn close; G6 inlines this into the per-line dispatch
+/// path.
 struct ClaudeTranscriptBuilder {
 
     // MARK: - Tag constants
@@ -65,38 +65,10 @@ struct ClaudeTranscriptBuilder {
     /// Rebuild the full transcript from the buffered lines. Pure value
     /// transformation; safe to call on any actor.
     func transcript() -> [Entry] {
-        let branchResolution = ClaudeBranchResolver.resolve(lines: rawLines)
         let turnDurations = ClaudeTurnDurationResolver.resolve(lines: rawLines)
 
-        var ctx = BuildContext(resolution: branchResolution, logger: logger)
+        var ctx = BuildContext(logger: logger)
         ctx.turnDurations = turnDurations.stamps
-
-        // Pre-pass: build entry transcripts for each abandoned branch.
-        var branchEntriesByRoot: [String: [Entry]] = [:]
-        for branch in ctx.resolution.abandonedBranches {
-            let lines = rawLines.filter { line in
-                guard let uuid = line.uuid else { return false }
-                return branch.memberUUIDs.contains(uuid)
-            }
-            branchEntriesByRoot[branch.branchRootUuid] = buildAbandonedBranchEntries(from: lines)
-        }
-        ctx.abandonedBranchEntriesByRoot = branchEntriesByRoot
-
-        // Emit orphan-abandoned branch links at the very start of the
-        // output stream — they have no divergence point, so no later
-        // active line will trigger their emission.
-        for branch in ctx.resolution.abandonedBranches
-        where branch.divergencePointUuid == nil
-            && !ctx.emittedDivergencePoints.contains(branch.branchRootUuid) {
-            ctx.emittedDivergencePoints.insert(branch.branchRootUuid)
-            let entries = branchEntriesByRoot[branch.branchRootUuid] ?? []
-            ctx.appendEntry(.synthesized(Self.makeBranchLinkEntry(
-                branch: branch,
-                totalRewinds: ctx.resolution.totalRewinds,
-                branchEntries: entries,
-                timestamp: rawLines.first?.timestamp ?? .distantPast
-            )))
-        }
 
         for line in rawLines {
             dispatch(line, ctx: &ctx)
@@ -123,16 +95,6 @@ struct ClaudeTranscriptBuilder {
         }
 
         return ctx.root.entries
-    }
-
-    /// Recursively build entries for an abandoned-branch transcript.
-    /// Forwards `self.logger` so spec-only-not-corpus warnings emitted
-    /// during `buildToolResultSections` aren't silently dropped on the
-    /// nested transcript path.
-    private func buildAbandonedBranchEntries(from lines: [ClaudeJSONLLine]) -> [Entry] {
-        var sub = ClaudeTranscriptBuilder(logger: logger)
-        for line in lines { sub.ingest(line) }
-        return sub.transcript()
     }
 
     // MARK: - G5 inline FIFO queued-prompt
@@ -200,6 +162,15 @@ struct ClaudeTranscriptBuilder {
     // MARK: - Top-level dispatch
 
     private func dispatch(_ line: ClaudeJSONLLine, ctx: inout BuildContext) {
+        dispatchOneLine(line, ctx: &ctx)
+        drainPool(ctx: &ctx)
+    }
+
+    /// One line's dispatch work, NOT including pool drain. Pool drain
+    /// is invoked once after the wrapping `dispatch(_:ctx:)` because
+    /// any successful append registers new ids that may unblock
+    /// previously-pooled lines.
+    private func dispatchOneLine(_ line: ClaudeJSONLLine, ctx: inout BuildContext) {
         // G5 inline FIFO queued-prompt hook — must run as the first
         // statement, before any early-return, to capture
         // `queue-operation enqueue` lines (which `CommonLineDispatcher`
@@ -208,39 +179,65 @@ struct ClaudeTranscriptBuilder {
         // `attachment.queued_command` arrives.
         observeRawLine(line, ctx: &ctx)
 
+        // last-prompt markers: 97% of them are session-resume /
+        // permission-checkpoint hints (Audit 2 from the streamed-
+        // cuddling-stream plan, 5,849 markers / 156 actually rewind-
+        // adjacent). Drop entirely — rewind detection is structural
+        // (parentUuid → earlier user-prompt child) and doesn't
+        // consult markers.
+        if line.isLastPromptMarker { return }
+
         if line.type == "system", line.subtype == "turn_duration" {
             return
         }
 
-        let routing = ClaudeLineDispatcher.route(
-            line,
-            activeBranch: ctx.resolution.activeUUIDs,
-            activeBranchAvailable: ctx.resolution.leafUuid != nil,
-            logger: logger
-        )
+        // Parent-availability check. Lines whose JSONL parent isn't
+        // yet reachable — typically parallel-tool-call `tool_result`
+        // user lines arriving in write-order rather than topological
+        // order — pool until the parent arrives. drainPool retries on
+        // every successful append. Reachable = parent is in the
+        // transcript OR has already been dispatched (chained
+        // assistant lines reference their predecessor by uuid, but
+        // only the first assistant line's uuid lands in the
+        // transcript as the skeleton's id).
+        if let parentJSONL = line.parentUuid,
+           !parentJSONL.isEmpty,
+           ctx.root.entry(id: .fromJSONL(parentJSONL)) == nil,
+           !ctx.dispatchedUuids.contains(parentJSONL) {
+            ctx.pendingPool.append(line)
+            return
+        }
+
+        let routing = ClaudeLineDispatcher.route(line, logger: logger)
+
+        // Mark the line as dispatched BEFORE routing so any cascading
+        // append/mutate paths see it as reachable for downstream
+        // children's parent checks.
+        if let uuid = line.uuid {
+            ctx.dispatchedUuids.insert(uuid)
+        }
 
         switch routing {
         case .skip:
-            return
-        case .skipBranchAffiliated:
             return
         case .sidechainMain:
             ctx.collectSidechainLine(line)
             return
         case .render(let kind):
-            ctx.maybeEmitBranchLinks(beforeAdjacentTo: line)
-
             switch kind {
             case .compact:
                 ctx.closePendingTurn()
                 ctx.appendEntry(.compact(buildCompactEntry(from: line)))
+                recordUserPromptChild(line: line, entryId: .fromJSONL(line.stableId), ctx: &ctx)
             case .user:
                 let cat = classify(line)
                 switch cat {
                 case .user:
+                    detectAndApplyRewindIfTopLevelUser(line, ctx: &ctx)
                     ctx.closePendingTurn()
                     if let entry = buildUserEntry(from: line, ctx: ctx) {
                         ctx.appendEntry(.user(entry))
+                        recordUserPromptChild(line: line, entryId: entry.id, ctx: &ctx)
                     }
                 case .system:
                     ctx.closePendingTurn()
@@ -261,10 +258,124 @@ struct ClaudeTranscriptBuilder {
                 applyAssistantLine(line, ctx: &ctx)
             }
         case .renderSpecial(let kind):
-            ctx.maybeEmitBranchLinks(beforeAdjacentTo: line)
             ctx.closePendingTurn()
             emitSpecial(line, kind: kind, ctx: &ctx)
         }
+    }
+
+    /// Drain pooled lines whose JSONL parent has become reachable.
+    /// Each iteration removes all currently-unblockable entries and
+    /// dispatches them; the loop continues until no further progress
+    /// is possible (terminating bound = pool size).
+    private func drainPool(ctx: inout BuildContext) {
+        var changed = true
+        while changed {
+            changed = false
+            var stillPending: [ClaudeJSONLLine] = []
+            var unblocked: [ClaudeJSONLLine] = []
+            for pooled in ctx.pendingPool {
+                if let parentJSONL = pooled.parentUuid,
+                   !parentJSONL.isEmpty,
+                   ctx.root.entry(id: .fromJSONL(parentJSONL)) == nil,
+                   !ctx.dispatchedUuids.contains(parentJSONL) {
+                    stillPending.append(pooled)
+                } else {
+                    unblocked.append(pooled)
+                }
+            }
+            if !unblocked.isEmpty {
+                ctx.pendingPool = stillPending
+                for pooled in unblocked {
+                    dispatchOneLine(pooled, ctx: &ctx)
+                }
+                changed = true
+            }
+        }
+    }
+
+    /// Record `entryId` as a user-prompt child of `line.parentUuid`
+    /// (resolved to its EntryID) so a future rewind whose `parentUuid`
+    /// matches the same parent can detect that an earlier user prompt
+    /// already chains off this point.
+    private func recordUserPromptChild(line: ClaudeJSONLLine, entryId: EntryID, ctx: inout BuildContext) {
+        guard let parentJSONL = line.parentUuid, !parentJSONL.isEmpty else { return }
+        let parentId = EntryID.fromJSONL(parentJSONL)
+        ctx.userPromptChildrenByParent[parentId, default: []].append(entryId)
+    }
+
+    /// Inline rewind detector. Fires only on top-level user-typed
+    /// prompts. Detection: the new prompt's `parentUuid` resolves to
+    /// an EntryID `parentId`; if `userPromptChildrenByParent[parentId]`
+    /// already contains an earlier user-prompt child whose id ≠ this
+    /// line's id, the user has rewound — slice the abandoned tail
+    /// past `parentId` into a synthesized `branchLink`.
+    private func detectAndApplyRewindIfTopLevelUser(_ line: ClaudeJSONLLine, ctx: inout BuildContext) {
+        guard let parentJSONL = line.parentUuid, !parentJSONL.isEmpty else { return }
+        let parentId = EntryID.fromJSONL(parentJSONL)
+        // Top-level rewind only — corpus 85/85 + zero non-tail call
+        // sites confirms this. Defensive: if the parent isn't at
+        // top level, skip rewind detection.
+        guard let parentPath = ctx.root.path(of: parentId), parentPath.count == 1 else { return }
+        let earlier = ctx.userPromptChildrenByParent[parentId, default: []]
+        let thisId = EntryID.fromJSONL(line.stableId)
+        guard !earlier.isEmpty, !earlier.contains(thisId) else { return }
+        // Slice the abandoned tail past parentId's slot into a
+        // branchLink. The first abandoned entry's id keys the link
+        // (post-G1.5 / G1.6 contract). Use it for both the
+        // branchRootUuid and the link's derived id so multi-rewind
+        // produces distinct ids.
+        let parentSlot = parentPath[0]
+        let start = parentSlot + 1
+        guard start < ctx.root.entries.count else { return }
+        let abandoned = Array(ctx.root.entries[start...])
+        guard let firstAbandoned = abandoned.first else { return }
+        ctx.rewindIndex += 1
+        let preview = firstAbandonedPromptPreview(in: abandoned)
+        let totalRewinds = ctx.rewindIndex
+        let title = Self.loc(
+            "agentXray.entry.branchLink.title",
+            "Rewind \(ctx.rewindIndex) of \(totalRewinds)"
+        )
+        let subtitle = Self.loc(
+            "agentXray.entry.branchLink.subtitle",
+            "\(abandoned.count) entries · \(preview ?? Self.loc("agentXray.entry.branchLink.noPrompt", "(no prompt)"))"
+        )
+        let firstUuid = firstAbandoned.id.stableString
+        let link = SynthesizedEntry(
+            id: .derived(parent: firstUuid, kind: "branchLink"),
+            header: Header(
+                icon: .branchLink,
+                name: title,
+                title: subtitle,
+                timeMarker: .clock(line.timestamp ?? .distantPast)
+            ),
+            body: Body(sections: []),
+            kind: .branchLink(
+                branchRootUuid: firstUuid,
+                rewindIndex: ctx.rewindIndex,
+                totalRewinds: totalRewinds,
+                entryCount: abandoned.count,
+                firstPromptPreview: preview
+            ),
+            subEntries: abandoned
+        )
+        ctx.root.branchOff(at: parentId, link: link)
+    }
+
+    /// First non-empty user-prompt preview text inside an abandoned
+    /// subtree.
+    private func firstAbandonedPromptPreview(in entries: [Entry]) -> String? {
+        for entry in entries {
+            if case .user(let u) = entry, let title = u.header.title, !title.isEmpty {
+                return title
+            }
+            if case .synthesized(let s) = entry, !s.subEntries.isEmpty {
+                if let preview = firstAbandonedPromptPreview(in: s.subEntries) {
+                    return preview
+                }
+            }
+        }
+        return nil
     }
 
     private func emitSpecial(
@@ -561,51 +672,9 @@ struct ClaudeTranscriptBuilder {
         )
     }
 
-    /// Build a `SynthesizedEntry.branchLink` for one abandoned branch.
-    /// Used by both the pre-pass orphan-branch emit (in `transcript()`)
-    /// and per-line per-divergence emit (in
-    /// `BuildContext.maybeEmitBranchLinks`).
-    static func makeBranchLinkEntry(
-        branch: ClaudeAbandonedBranch,
-        totalRewinds: Int,
-        branchEntries: [Entry],
-        timestamp: Date
-    ) -> SynthesizedEntry {
-        let preview = branch.firstPromptPreview ?? loc(
-            "agentXray.entry.branchLink.noPrompt", "(no prompt)"
-        )
-        let title = loc(
-            "agentXray.entry.branchLink.title",
-            "Rewind \(branch.rewindIndex) of \(totalRewinds)"
-        )
-        let subtitle = loc(
-            "agentXray.entry.branchLink.subtitle",
-            "\(branch.entryCount) entries · \(preview)"
-        )
-        return SynthesizedEntry(
-            id: .derived(parent: branch.branchRootUuid, kind: "branchLink"),
-            header: Header(
-                icon: .branchLink,
-                name: title,
-                title: subtitle,
-                timeMarker: .clock(timestamp)
-            ),
-            body: Body(sections: []),
-            kind: .branchLink(
-                branchRootUuid: branch.branchRootUuid,
-                rewindIndex: branch.rewindIndex,
-                totalRewinds: totalRewinds,
-                entryCount: branch.entryCount,
-                firstPromptPreview: branch.firstPromptPreview
-            ),
-            subEntries: branchEntries
-        )
-    }
-
     // MARK: - Build context (per-snapshot mutable state)
 
     fileprivate struct BuildContext {
-        let resolution: ClaudeBranchResolution
         /// Forwarded from the parent `ClaudeTranscriptBuilder` so
         /// recursive sub-builders (sidechain transcripts) carry the
         /// same logger and don't silently drop the spec-only-not-corpus
@@ -662,22 +731,45 @@ struct ClaudeTranscriptBuilder {
         /// Sidechain pipeline scratchpad — collected but never
         /// surfaced post-G1.5-fix. G6 sweeps the entire pipeline.
         var sidechainLinesByParent: [String: [ClaudeJSONLLine]] = [:]
-        var emittedDivergencePoints: Set<String> = []
-        var abandonedBranchEntriesByRoot: [String: [Entry]] = [:]
 
         // MARK: - Inline FIFO queued-prompt state (post-G5)
 
         /// File-order queue of `queue-operation enqueue` lines that
         /// have not yet been paired with a consuming user line
-        /// (slash-command or attachment.queued_command). Populated by
-        /// the per-line `observeRawLine` hook in `dispatch`. After all
-        /// lines are dispatched, any leftover mirror is tail-emitted as
-        /// a synthetic `queuedState: .pending` UserEntry.
+        /// (slash-command or attachment.queued_command).
         var pendingPromptMirrors: [PendingPromptMirror] = []
         /// `stableId` of user-typed slash-command lines whose text
         /// matched a prior enqueue. Replaces the pre-G5
         /// `queuedSlashCommandUuids` from `ClaudeQueuedPromptResolver`.
         var consumedSlashCmdUuids: Set<String> = []
+
+        // MARK: - G4 per-line rewind detection state
+
+        /// JSONL-parent → ordered list of user-prompt entry ids whose
+        /// `parentUuid` resolves to that node. Populated by `dispatch`
+        /// every time it routes a user-typed prompt. Read by the
+        /// inline rewind detector: a new user prompt whose
+        /// `parentUuid` already has an earlier entry in this map is
+        /// reusing a node — i.e., the user has rewound and re-spoken.
+        var userPromptChildrenByParent: [EntryID: [EntryID]] = [:]
+        /// Lines whose `parentUuid` isn't yet reachable at dispatch
+        /// time. Reachable means either (a) the parent's EntryID is
+        /// in `root` already, or (b) we've at least *seen* that uuid
+        /// in `dispatchedUuids` — covering assistant lines whose own
+        /// uuid never lands in the transcript directly (only their
+        /// content-block ids do, e.g. tool_use ids). Drained
+        /// recursively after every successful append.
+        var pendingPool: [ClaudeJSONLLine] = []
+        /// Every JSONL line uuid we've successfully dispatched so far,
+        /// regardless of whether it became an addressable entry. Used
+        /// to gate the pending-pool parent-availability check —
+        /// chained assistant lines reference their predecessor by
+        /// uuid, but only the first line's uuid is registered in the
+        /// transcript (as the skeleton's id).
+        var dispatchedUuids: Set<String> = []
+        /// 1-based per-session counter for branch-link "Rewind N"
+        /// labels. Increments each time `detectAndApplyRewind` fires.
+        var rewindIndex: Int = 0
 
         /// Append a top-level entry. Wraps
         /// ``Transcript/append(parent:entry:)`` with `parent: nil`.
@@ -716,23 +808,6 @@ struct ClaudeTranscriptBuilder {
         mutating func collectSidechainLine(_ line: ClaudeJSONLLine) {
             guard let parent = line.parentToolUseID else { return }
             sidechainLinesByParent[parent, default: []].append(line)
-        }
-
-        mutating func maybeEmitBranchLinks(beforeAdjacentTo line: ClaudeJSONLLine) {
-            guard let parent = line.parentUuid else { return }
-            for branch in resolution.abandonedBranches
-            where branch.divergencePointUuid == parent
-                && !emittedDivergencePoints.contains(branch.branchRootUuid) {
-                emittedDivergencePoints.insert(branch.branchRootUuid)
-                let branchEntries = abandonedBranchEntriesByRoot[branch.branchRootUuid] ?? []
-                let ts = line.timestamp ?? .distantPast
-                appendEntry(.synthesized(ClaudeTranscriptBuilder.makeBranchLinkEntry(
-                    branch: branch,
-                    totalRewinds: resolution.totalRewinds,
-                    branchEntries: branchEntries,
-                    timestamp: ts
-                )))
-            }
         }
     }
 

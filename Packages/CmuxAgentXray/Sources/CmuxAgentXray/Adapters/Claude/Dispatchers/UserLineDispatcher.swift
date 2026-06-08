@@ -10,46 +10,26 @@ import Foundation
 /// `isMeta=null` user line whose content opens with `<command-message>`
 /// / `<command-name>` and routes through the same meta classifier.
 enum UserLineDispatcher {
-    static func parse(
-        _ line: ClaudeJSONLLine,
-        activeBranch: Set<String>,
-        activeBranchAvailable: Bool
-    ) -> ClaudeLineRouting {
+    static func parse(_ line: ClaudeJSONLLine) -> ClaudeLineRouting {
         // Compact summary (older flow) → CompactEntry.
         if line.isCompactSummary == true {
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .render(.compact),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .render(.compact)
         }
         // Skill-shaped slash command — render as UserEntry carrying the
         // typed `/<cmd> [args]`. Discriminator: skills emit
         // `<command-message>` first, built-ins emit `<command-name>`
         // first. Build path lives in the transcript builder.
         if isSkillShaped(line) {
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .render(.user),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .render(.user)
         }
         // isMeta=true user lines route by content classification. Newer
         // Claude Code emits slash-command-input user lines with
         // `isMeta: null` — peek at the content prefix and route those
         // through the same meta classifier.
         if line.isMeta == true || isSlashCommandUserLine(line) {
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: routingForMetaUser(line),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return routingForMetaUser(line)
         }
-        return ClaudeLineDispatcher.branchGated(
-            line, kind: .render(.user),
-            activeBranch: activeBranch,
-            activeBranchAvailable: activeBranchAvailable
-        )
+        return .render(.user)
     }
 
     /// Decide the routing for an `isMeta=true` user line based on the

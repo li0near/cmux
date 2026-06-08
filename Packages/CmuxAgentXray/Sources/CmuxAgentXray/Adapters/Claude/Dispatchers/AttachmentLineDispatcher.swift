@@ -13,11 +13,7 @@ import Foundation
 /// alternation invariant. The plan-mode family + `edited_text_file`
 /// are also user-visible session events.
 enum AttachmentLineDispatcher {
-    static func parse(
-        _ line: ClaudeJSONLLine,
-        activeBranch: Set<String>,
-        activeBranchAvailable: Bool
-    ) -> ClaudeLineRouting {
+    static func parse(_ line: ClaudeJSONLLine) -> ClaudeLineRouting {
         switch line.attachment?.type {
         case "queued_command":
             // Skip harness-emitted background-task completion echoes;
@@ -26,35 +22,15 @@ enum AttachmentLineDispatcher {
             if line.attachment?.commandMode == "task-notification" {
                 return .skip
             }
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .renderSpecial(.queuedPrompt),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .renderSpecial(.queuedPrompt)
         case "plan_mode":
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .renderSpecial(.planModeEntered),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .renderSpecial(.planModeEntered)
         case "plan_mode_exit":
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .renderSpecial(.planModeExited),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .renderSpecial(.planModeExited)
         case "plan_mode_reentry":
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .renderSpecial(.planModeReentered),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .renderSpecial(.planModeReentered)
         case "edited_text_file":
-            return ClaudeLineDispatcher.branchGated(
-                line, kind: .renderSpecial(.editedTextFile),
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return .renderSpecial(.editedTextFile)
         default:
             return .skip
         }

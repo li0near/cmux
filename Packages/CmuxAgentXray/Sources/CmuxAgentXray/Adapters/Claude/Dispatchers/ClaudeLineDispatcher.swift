@@ -8,12 +8,6 @@ enum ClaudeLineRouting: Equatable {
     /// per-turn duration stamping but never rendered as its own entry).
     case skip
 
-    /// Tree-affiliated line whose UUID is **not** on the active branch.
-    /// Builder collects these by parent chain to emit branch-link
-    /// entries at divergence points; individual lines do not render in
-    /// the main list.
-    case skipBranchAffiliated
-
     /// Sidechain (sub-agent) message. Builder collects these into a
     /// `[parentToolUseID: [Entry]]` map keyed by their `Task` tool's
     /// `tool_use_id`; the parent Task's sidechain transcript surfaces
@@ -68,18 +62,22 @@ enum ClaudeSpecialKind: Equatable {
 
 /// Top-level dispatcher. Per-type branching lives in
 /// `Adapters/Claude/Parsers/<Type>LineParser.swift`; this file is just
-/// the entry-point switch + the shared `branchGated` helper.
+/// the entry-point switch.
 ///
 /// Dispatch order:
 ///   1. `CommonLineDispatcher` claims session-orphan metadata + `pr-link`.
 ///   2. Sidechain check — `isSidechain: true` → sub-agent pool.
 ///   3. Per-`type` parser.
 ///   4. Unknown `type` — log in DEBUG, route to `.skip`.
+///
+/// Post-G4 the active-branch filter is gone — `ClaudeTranscriptBuilder`
+/// detects rewinds inline at user-prompt arrival and slices the
+/// abandoned tail into a synthesized branch link via
+/// `Transcript.branchOff`. Pre-G4 routes that returned
+/// `.skipBranchAffiliated` no longer have a routing case.
 enum ClaudeLineDispatcher {
     static func route(
         _ line: ClaudeJSONLLine,
-        activeBranch: Set<String>,
-        activeBranchAvailable: Bool,
         logger: any AgentXrayLogger = NoOpAgentXrayLogger()
     ) -> ClaudeLineRouting {
         if let routing = CommonLineDispatcher.parse(line) { return routing }
@@ -90,44 +88,16 @@ enum ClaudeLineDispatcher {
 
         switch line.type {
         case "user":
-            return UserLineDispatcher.parse(
-                line,
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return UserLineDispatcher.parse(line)
         case "assistant":
-            return AssistantLineDispatcher.parse(
-                line,
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return AssistantLineDispatcher.parse(line)
         case "system":
-            return SystemLineDispatcher.parse(
-                line,
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return SystemLineDispatcher.parse(line)
         case "attachment":
-            return AttachmentLineDispatcher.parse(
-                line,
-                activeBranch: activeBranch,
-                activeBranchAvailable: activeBranchAvailable
-            )
+            return AttachmentLineDispatcher.parse(line)
         default:
             logger.warning("Claude JSONL: unknown line type '\(line.type)'")
             return .skip
         }
-    }
-
-    /// Apply the active-branch filter when applicable.
-    static func branchGated(
-        _ line: ClaudeJSONLLine,
-        kind: ClaudeLineRouting,
-        activeBranch: Set<String>,
-        activeBranchAvailable: Bool
-    ) -> ClaudeLineRouting {
-        if !activeBranchAvailable { return kind }
-        guard let uuid = line.uuid else { return kind }
-        return activeBranch.contains(uuid) ? kind : .skipBranchAffiliated
     }
 }

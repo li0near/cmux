@@ -38,11 +38,7 @@ struct AttachmentLineDispatcherTests {
           }
         }
         """#)
-        let routing = AttachmentLineDispatcher.parse(
-            line,
-            activeBranch: [],
-            activeBranchAvailable: false
-        )
+        let routing = AttachmentLineDispatcher.parse(line)
         #expect(routing == .renderSpecial(.queuedPrompt))
     }
 
@@ -58,11 +54,7 @@ struct AttachmentLineDispatcherTests {
           }
         }
         """#)
-        let routing = AttachmentLineDispatcher.parse(
-            line,
-            activeBranch: [],
-            activeBranchAvailable: false
-        )
+        let routing = AttachmentLineDispatcher.parse(line)
         #expect(routing == .renderSpecial(.queuedPrompt))
     }
 
@@ -79,11 +71,7 @@ struct AttachmentLineDispatcherTests {
           }
         }
         """#)
-        let routing = AttachmentLineDispatcher.parse(
-            line,
-            activeBranch: [],
-            activeBranchAvailable: false
-        )
+        let routing = AttachmentLineDispatcher.parse(line)
         #expect(routing == .skip)
     }
 }

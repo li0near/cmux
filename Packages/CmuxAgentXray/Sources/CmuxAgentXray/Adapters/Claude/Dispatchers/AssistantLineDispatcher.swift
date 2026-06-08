@@ -7,23 +7,17 @@ import Foundation
 /// requested."`), API-error envelopes, and partial-response cutoffs;
 /// they are noise and should not produce an `AgentEntry`.
 ///
-/// All non-synthetic assistant lines on the active branch fold into
-/// the pending `AgentEntry`. Sidechain handling sits in
+/// All non-synthetic assistant lines fold into the pending agent
+/// turn (post-G4 the active-branch filter is gone — the builder
+/// detects rewinds inline at user-prompt arrival and slices the
+/// abandoned tail). Sidechain handling sits in
 /// `ClaudeLineDispatcher.route` upstream so this parser only sees
 /// main-branch assistant lines.
 enum AssistantLineDispatcher {
-    static func parse(
-        _ line: ClaudeJSONLLine,
-        activeBranch: Set<String>,
-        activeBranchAvailable: Bool
-    ) -> ClaudeLineRouting {
+    static func parse(_ line: ClaudeJSONLLine) -> ClaudeLineRouting {
         if line.message?.model == "<synthetic>" {
             return .skip
         }
-        return ClaudeLineDispatcher.branchGated(
-            line, kind: .render(.agent),
-            activeBranch: activeBranch,
-            activeBranchAvailable: activeBranchAvailable
-        )
+        return .render(.agent)
     }
 }
