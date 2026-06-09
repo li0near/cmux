@@ -83,6 +83,17 @@ struct ClaudeJSONLLine: Decodable {
     /// lines for consumed-state tracking.
     let operation: String?
 
+    /// Claude-Code-specific side-channel envelope on `tool_result` lines.
+    /// Polymorphic across tools — object for Edit / MultiEdit / Write
+    /// (carrying ``ClaudeToolUseResult``-shape fields including
+    /// `structuredPatch`), bare string for Bash errors, JSON array for
+    /// Playwright-style text-block results, distinct object shape for
+    /// Task / sub-agent metadata. Decoded as the loose
+    /// ``ClaudeJSONValue`` to avoid `typeMismatch` failing the whole
+    /// line on the non-object cases; consumers that want the typed
+    /// envelope project via ``ClaudeToolUseResult/from(_:)``.
+    let toolUseResult: ClaudeJSONValue?
+
     enum CodingKeys: String, CodingKey {
         case type, timestamp, uuid, parentUuid, promptId
         case isSidechain, isMeta, message, isCompactSummary, summary
@@ -93,6 +104,7 @@ struct ClaudeJSONLLine: Decodable {
         case parentToolUseID
         case compactMetadata, logicalParentUuid
         case attachment, operation
+        case toolUseResult
     }
 
     /// Stable id even when `uuid` is absent. Deterministic across
@@ -150,7 +162,8 @@ struct ClaudeJSONLLine: Decodable {
         compactMetadata: ClaudeCompactMetadata? = nil,
         logicalParentUuid: String? = nil,
         attachment: ClaudeAttachment? = nil,
-        operation: String? = nil
+        operation: String? = nil,
+        toolUseResult: ClaudeJSONValue? = nil
     ) {
         self.type = type
         self.timestamp = timestamp
@@ -178,6 +191,7 @@ struct ClaudeJSONLLine: Decodable {
         self.logicalParentUuid = logicalParentUuid
         self.attachment = attachment
         self.operation = operation
+        self.toolUseResult = toolUseResult
     }
 
     /// True when this line is the active-leaf marker emitted on prompt
