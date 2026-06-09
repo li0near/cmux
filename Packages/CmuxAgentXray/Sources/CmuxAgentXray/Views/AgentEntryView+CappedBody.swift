@@ -48,38 +48,13 @@ extension AgentEntryView {
                         onOpenDetail(idx)
                     }
                 case .code(let content):
-                    codeSection(
+                    CodeBlockView(
                         content: content,
+                        palette: palette,
                         onOpenDetail: { onOpenDetail(idx) }
                     )
                 }
             }
-        }
-    }
-
-    /// Commit-1 shim: routes `.code(.diff)` through the legacy
-    /// `DiffHunkView` and renders `.code(.plain)` as fenced markdown
-    /// text via `cappedTextSection`. Both arms collapse onto the new
-    /// `CodeBlockView` in commit 3.
-    @ViewBuilder
-    private func codeSection(
-        content: CodeContent,
-        onOpenDetail: @escaping () -> Void
-    ) -> some View {
-        switch content {
-        case .plain(let text, _):
-            cappedTextSection(
-                text: text,
-                style: .normal,
-                onOpenDetail: onOpenDetail
-            )
-        case .diff(let hunks, let language):
-            DiffHunkView(
-                hunks: hunks,
-                palette: palette,
-                language: language,
-                onOpenDetail: onOpenDetail
-            )
         }
     }
 

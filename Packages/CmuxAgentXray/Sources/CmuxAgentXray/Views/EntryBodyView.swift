@@ -44,25 +44,11 @@ struct EntryBodyView: View {
         case .offloadedOutput(let off):
             OffloadedOutputLinkView(offloaded: off, palette: palette, action: onOpenDetail)
         case .code(let content):
-            // Commit-1 shim: routes `.code(.diff)` through DiffHunkView
-            // and `.code(.plain)` through plain `textSection`. Collapsed
-            // onto `CodeBlockView` in commit 3.
-            switch content {
-            case .plain(let text, _):
-                let plainContent = ExpandableContent.make(
-                    from: [text],
-                    caps: .standard,
-                    displayMode: displayMode
-                )
-                textSection(content: plainContent, style: .normal)
-            case .diff(let hunks, let language):
-                DiffHunkView(
-                    hunks: hunks,
-                    palette: palette,
-                    language: language,
-                    onOpenDetail: onOpenDetail
-                )
-            }
+            CodeBlockView(
+                content: content,
+                palette: palette,
+                onOpenDetail: onOpenDetail
+            )
         }
     }
 

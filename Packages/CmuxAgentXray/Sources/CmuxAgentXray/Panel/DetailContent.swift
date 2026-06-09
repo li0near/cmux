@@ -390,47 +390,29 @@ extension DetailContent {
         // for `.diff`, Read for `.plain` once the H-rev/4 builder swap
         // lands). The `.diff` arm serializes hunks back to a fenced
         // unified-diff markdown body so cmux's MarkdownPanel +
-        // highlight.js paints diff coloring; `.plain` rejoins this arm
-        // with the existing inputFilePath-basename routing below by
-        // surfacing the text to the standard `.text` flow.
+        // highlight.js paints diff coloring; `.plain` reuses the
+        // existing inputFilePath-basename rule.
         if case .code(let content) = section {
+            let body: String
+            let filename: String
             switch content {
             case .diff(let hunks, _):
-                let diffBody = serializeUnifiedDiff(
+                body = FenceWrap.diff.apply(to: serializeUnifiedDiff(
                     hunks: hunks,
                     filePath: tool.inputFilePath ?? tool.toolName
-                )
-                let wrapped = FenceWrap.diff.apply(to: diffBody)
-                return DetailContent(
-                    title: localized(
-                        "agentXray.detail.title.toolResult",
-                        defaultValue: "Tool result · \(tool.toolName)"
-                    ),
-                    subtitle: subtitleFromTimestamp(timestamp),
-                    sourceEntryID: tool.id.stableString,
-                    icon: EntryIcon.tool(named: tool.toolName),
-                    accent: tool.status == .error ? .red : .primary,
-                    source: .text(body: wrapped, suggestedFilename: "tool-result.diff.md")
-                )
+                ))
+                filename = "tool-result.diff.md"
             case .plain(let text, _):
-                let basename: String
-                if let path = tool.inputFilePath {
-                    basename = (path as NSString).lastPathComponent
-                } else {
-                    basename = "tool-result.txt"
-                }
-                return DetailContent(
-                    title: localized(
-                        "agentXray.detail.title.toolResult",
-                        defaultValue: "Tool result · \(tool.toolName)"
-                    ),
-                    subtitle: subtitleFromTimestamp(timestamp),
-                    sourceEntryID: tool.id.stableString,
-                    icon: EntryIcon.tool(named: tool.toolName),
-                    accent: tool.status == .error ? .red : .primary,
-                    source: .text(body: text, suggestedFilename: basename)
-                )
+                body = text
+                filename = (tool.inputFilePath as NSString?)?.lastPathComponent
+                    ?? "tool-result.txt"
             }
+            return makeToolResultContent(
+                tool: tool,
+                timestamp: timestamp,
+                body: body,
+                suggestedFilename: filename
+            )
         }
 
         // Plain-text section.
@@ -460,36 +442,46 @@ extension DetailContent {
         // filename; plain text gets wrapped in a fenced code block
         // and surfaced as `.md` so cmux's markdown renderer paints
         // it with monospace + copy/edit chrome.
-        let icon = EntryIcon.tool(named: tool.toolName)
-        let accent: PaletteRole = tool.status == .error ? .red : .primary
-        let title = localized(
-            "agentXray.detail.title.toolResult",
-            defaultValue: "Tool result · \(tool.toolName)"
-        )
-        let subtitle = subtitleFromTimestamp(timestamp)
         if let path = tool.inputFilePath {
-            let basename = (path as NSString).lastPathComponent
-            return DetailContent(
-                title: title,
-                subtitle: subtitle,
-                sourceEntryID: tool.id.stableString,
-                icon: icon,
-                accent: accent,
-                source: .text(body: text, suggestedFilename: basename)
+            return makeToolResultContent(
+                tool: tool,
+                timestamp: timestamp,
+                body: text,
+                suggestedFilename: (path as NSString).lastPathComponent
             )
         }
         let filename = suggestedFilenameForToolResult(
             text: text,
             mcpServer: tool.mcpServer
         )
-        let suggestedBody = filename.wrap.apply(to: text)
-        return DetailContent(
-            title: title,
-            subtitle: subtitle,
+        return makeToolResultContent(
+            tool: tool,
+            timestamp: timestamp,
+            body: filename.wrap.apply(to: text),
+            suggestedFilename: filename.name
+        )
+    }
+
+    /// Build a `Tool result · <toolName>` `DetailContent` with the
+    /// shared title/subtitle/icon/accent shape so each branch above
+    /// only specifies what's actually different (the body string and
+    /// the suggested filename driving cmux's panel dispatch).
+    private static func makeToolResultContent(
+        tool: ToolEntry,
+        timestamp: String,
+        body: String,
+        suggestedFilename: String
+    ) -> DetailContent {
+        DetailContent(
+            title: localized(
+                "agentXray.detail.title.toolResult",
+                defaultValue: "Tool result · \(tool.toolName)"
+            ),
+            subtitle: subtitleFromTimestamp(timestamp),
             sourceEntryID: tool.id.stableString,
-            icon: icon,
-            accent: accent,
-            source: .text(body: suggestedBody, suggestedFilename: filename.name)
+            icon: EntryIcon.tool(named: tool.toolName),
+            accent: tool.status == .error ? .red : .primary,
+            source: .text(body: body, suggestedFilename: suggestedFilename)
         )
     }
 
