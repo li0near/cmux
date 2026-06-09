@@ -528,11 +528,13 @@ private struct EntryAnchorsKey: PreferenceKey {
 /// (predecessor parity per PARITY §3.15 / dogfood feedback). Layout
 /// mirrors the spike's `tangentLeading` chrome:
 ///
-///     [↳] [branch] Rewind X of Y · N entries · <preview>
+///     [↳] [branch] Rewind
 ///       └─ glyph in the gap between parent's icon column and name column
 ///          └─ branch icon aligns with the parent's NAME column (= where
 ///             other sub-row icons would land if this were a true sub-row)
 ///
+/// Post-G6 the row is a flat "Rewind" label — `rewindIndex` /
+/// `totalRewinds` / `entryCount` / `firstPromptPreview` are gone.
 /// Click → `onOpenDetail(.abandonedBranch(...))` — the abandoned-branch
 /// transcript opens in a sibling detail tab.
 @available(macOS 15, *)

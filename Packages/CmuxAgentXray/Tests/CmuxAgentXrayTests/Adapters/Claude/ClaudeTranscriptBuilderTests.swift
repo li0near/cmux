@@ -190,11 +190,11 @@ struct ClaudeTranscriptBuilderTests {
         #expect(kinds == ["thinking", "assistantText", "tool", "thinking", "assistantText", "tool"])
     }
 
-    // MARK: - G3 risk-area fixtures (skeleton-in-Transcript)
+    // MARK: - Tool-result + queued-prompt + rewind fixtures
 
     /// Helper: a user line bearing a tool_result block. Routed by the
-    /// builder's `classifyUserLine` to the agent path so it merges
-    /// into the in-flight skeleton.
+    /// builder's `classifyUserLine` to the agent path so it folds
+    /// into the resolved AgentEntry as a tool_result mutation.
     private func makeToolResultLine(
         uuid: String,
         parentUuid: String,
@@ -222,17 +222,16 @@ struct ClaudeTranscriptBuilderTests {
         """#
     }
 
-    @Test("Synthetic-fallback tool_result followed by real tool_use → single slot under skeleton")
+    @Test("Tool result for tool_use_id with no matching tool_use is silently dropped; later real tool_use creates pending slot")
     func toolResultBeforeToolUseIdempotentSlot() throws {
-        // Post-G6: this scenario (tool_result line whose `tool_use_id`
-        // has no prior tool_use in the same turn) silently drops the
-        // result and the subsequent real `tool_use` creates the slot
-        // fresh. The test verifies the resulting transcript has one
-        // tool sub-entry with the expected id (no duplication, no
-        // dangling synthetic). The pool path covers genuine
-        // parallel-tool-call out-of-order in real corpus; this
-        // fixture tests the defensive shape where the synthetic
-        // fallback is no longer needed.
+        // Post-G6: the orphan `tool_result` line whose `tool_use_id`
+        // has no prior `tool_use` in the same turn is silently dropped
+        // (logger.warning). The subsequent real `tool_use` creates a
+        // fresh `.pending` slot. Verifies: one tool entry with the
+        // expected id AND status == .pending — proving the orphan
+        // result body was NOT applied. (Pool path covers genuine
+        // parallel-tool-call out-of-order; this fixture tests the
+        // defensive-orphan shape.)
         let lines = [
             makeAssistantTextLine(uuid: "a1", parentUuid: "u1", text: "Working"),
             makeToolResultLine(
@@ -249,8 +248,11 @@ struct ClaudeTranscriptBuilderTests {
             if case .tool(let t) = entry { return t }
             return nil
         }
+        let tool = try #require(toolSubs.first)
         #expect(toolSubs.count == 1)
-        #expect(toolSubs.first?.id == .fromJSONL("t1"))
+        #expect(tool.id == .fromJSONL("t1"))
+        // The orphan tool_result was dropped, NOT applied — slot is pending.
+        #expect(tool.status == .pending)
     }
 
     // MARK: - G6 coverage
@@ -280,18 +282,17 @@ struct ClaudeTranscriptBuilderTests {
             if case .tool(let t) = entry { return t }
             return nil
         }
+        let tool = try #require(toolSubs.first)
         #expect(toolSubs.count == 1)
-        #expect(toolSubs.first?.status == .ok)
-        // Result body should contain the expected text.
-        let bodyText = toolSubs.first.map { tool in
-            tool.body.sections.compactMap { section -> String? in
-                if case .text(let blocks, _) = section {
-                    return blocks.joined(separator: "\n")
-                }
-                return nil
-            }.joined(separator: "\n")
-        } ?? ""
-        #expect(bodyText.contains("expected result text"))
+        #expect(tool.status == .ok)
+        // Body has [input section, result section] — the result
+        // section's text is exactly the parsed result body.
+        let resultSection = tool.body.sections.last
+        guard case .text(let blocks, _) = resultSection else {
+            Issue.record("expected .text result section, got \(String(describing: resultSection))")
+            return
+        }
+        #expect(blocks.joined(separator: "\n") == "expected result text")
     }
 
     @Test("Rewind: user prompt re-parenting to mid-tree node folds abandoned tail into branchLink")
@@ -335,17 +336,17 @@ struct ClaudeTranscriptBuilderTests {
         }
         // The abandoned AgentEntry@a1 should be inside the link.
         #expect(link.subEntries.count == 1)
-        if case .agent(let abandoned) = link.subEntries[0] {
-            #expect(abandoned.id == .fromJSONL("a1"))
-        } else {
-            Issue.record("expected abandoned .agent inside branchLink")
+        guard case .agent(let abandoned) = link.subEntries[0] else {
+            Issue.record("expected abandoned .agent inside branchLink; got \(link.subEntries[0])")
+            return
         }
+        #expect(abandoned.id == .fromJSONL("a1"))
         // The new prompt is at slot 2.
-        if case .user(let userEntry) = entries[2] {
-            #expect(userEntry.id == .fromJSONL("u-rewind"))
-        } else {
-            Issue.record("expected new UserEntry at slot 2")
+        guard case .user(let userEntry) = entries[2] else {
+            Issue.record("expected new UserEntry at slot 2; got \(entries[2])")
+            return
         }
+        #expect(userEntry.id == .fromJSONL("u-rewind"))
     }
 
     @Test("Queued slash-cmd: enqueue followed by matching slash-cmd input pops FIFO and emits .consumed UserEntry")
@@ -434,7 +435,9 @@ struct ClaudeTranscriptBuilderTests {
             if case .user(let u) = entry, u.queuedState == .pending { return u }
             return nil
         }
+        let pending = try #require(pendings.first)
         #expect(pendings.count == 1)
+        #expect(pending.body.textContent == "stay pending")
     }
 
     @Test("turn_duration line stamps perTurnDurationMs and messageCount on the AgentEntry")

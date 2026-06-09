@@ -95,8 +95,31 @@ struct ClaudeJSONLLine: Decodable {
         case attachment, operation
     }
 
-    /// Stable id even when `uuid` is absent.
-    var stableId: String { uuid ?? UUID().uuidString }
+    /// Stable id even when `uuid` is absent. Deterministic across
+    /// repeated accesses for the same line — for uuid-less lines
+    /// (`queue-operation`, `last-prompt`, session-orphan metadata)
+    /// the id is synthesized from `type` + `timestamp` + `parentUuid` +
+    /// the leading bytes of `content`. Without this determinism, two
+    /// accesses on the same nil-uuid line yield two different fresh
+    /// UUIDs, causing the index alias key to disagree with the
+    /// appended entry's id.
+    var stableId: String {
+        if let uuid { return uuid }
+        var key = "synthetic:\(type)"
+        if let ts = timestamp {
+            key += ":\(ts.timeIntervalSince1970)"
+        }
+        if let pu = parentUuid, !pu.isEmpty {
+            key += ":\(pu)"
+        }
+        if let c = content, !c.isEmpty {
+            // First 64 chars suffice to disambiguate `queue-operation`
+            // enqueue lines that share `(type, timestamp, parent)`;
+            // longer content adds bytes to the key for no benefit.
+            key += ":\(c.prefix(64))"
+        }
+        return key
+    }
 
     /// Memberwise init with sensible defaults — synthetic test fixtures
     /// can construct lines without naming every new field. Decodable

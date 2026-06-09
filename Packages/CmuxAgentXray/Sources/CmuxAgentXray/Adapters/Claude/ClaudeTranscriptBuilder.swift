@@ -292,12 +292,6 @@ struct ClaudeTranscriptBuilder {
     /// `queue-operation enqueue` arm. Filters task-notification
     /// payloads, appends a `.pending` UserEntry top-level, and pushes
     /// its id+text onto the FIFO for later consumption.
-    ///
-    /// Real `queue-operation` lines carry **no** `uuid` field —
-    /// `line.stableId` is a fresh UUID per access for those, so we
-    /// cache it once here to keep the appended UserEntry's id, the
-    /// transcript index, and the FIFO entry all pointing at the same
-    /// EntryID.
     private func handleQueueEnqueue(
         text: String,
         line: ClaudeJSONLLine,
@@ -305,10 +299,9 @@ struct ClaudeTranscriptBuilder {
     ) {
         if text.isEmpty { return }
         if text.hasPrefix("<task-notification>") { return }
-        let stableId = line.stableId
-        let id = EntryID.fromJSONL(stableId)
+        let id = EntryID.fromJSONL(line.stableId)
         let pending = makeUserEntry(
-            id: stableId,
+            id: line.stableId,
             timestamp: line.timestamp,
             promptId: nil,
             text: text,
@@ -480,6 +473,9 @@ struct ClaudeTranscriptBuilder {
 
     /// Phase + localized phaseName for the three plan-mode special kinds.
     /// Pulled out of `emitSpecial` so the per-kind switch isn't duplicated.
+    /// Caller is gated by the `.planModeEntered` / `.planModeExited` /
+    /// `.planModeReentered` arms in `emitSpecial`'s switch — passing any
+    /// other case is a programmer error.
     private static func planModeMetadata(
         _ kind: ClaudeSpecialKind
     ) -> (SystemEntry.PlanModePhase, String) {
@@ -491,6 +487,7 @@ struct ClaudeTranscriptBuilder {
         case .planModeReentered:
             return (.reentered, loc("agentXray.entry.planMode.reentered", "Plan mode resumed"))
         default:
+            assertionFailure("planModeMetadata: non-plan-mode kind \(kind)")
             return (.entered, loc("agentXray.entry.planMode.entered", "Plan mode entered"))
         }
     }
@@ -969,21 +966,16 @@ struct ClaudeTranscriptBuilder {
             name: name,
             summary: ToolInputParser.summarize(name: name, input: block.input),
             inputDetail: ToolInputParser.format(block.input),
-            result: nil,
-            isError: false,
             subagentType: ToolInputParser.subagentType(name: name, input: block.input),
             teamMemberName: teamMemberName,
             teamName: teamName,
             mcpServer: mcpServer,
-            durationMs: nil,
             inputFilePath: ToolInputParser.filePath(name: name, input: block.input),
             diffSections: diffSections
         )
         let toolEntry = Self.makeToolEntry(
             call: call,
             parentId: agentId,
-            durationMs: nil,
-            status: .pending,
             startTime: line.timestamp
         )
         ctx.root.append(parent: agentId, entry: .tool(toolEntry))
@@ -1040,36 +1032,24 @@ struct ClaudeTranscriptBuilder {
         return delta >= 0 ? Int(delta * 1000) : nil
     }
 
-    /// Construct a `ToolEntry` from an `AgentToolCall` accumulator.
-    /// The body is `[input section(s)] + [result section(s)?]`. At
-    /// `tool_use` append time `result == nil`, so only input sections
-    /// land; at `tool_result` mutation time the result sections are
-    /// appended in place by ``ToolResultUpdate``.
+    /// Construct a pending `ToolEntry` from a fresh `AgentToolCall`
+    /// (parser outputs from `ToolInputParser`). Body is just the input
+    /// section(s) — `tool_result` mutation later appends result
+    /// sections via ``ToolResultUpdate``. Status is `.pending`;
+    /// `header.timeMarker` is `.clock(startTime)` so the matching
+    /// `tool_result` mutation can replace it with `.duration(ms)`.
     private static func makeToolEntry(
         call: AgentToolCall,
         parentId: EntryID,
-        durationMs: Int?,
-        status: ToolEntry.Status,
         startTime: Date?
     ) -> ToolEntry {
-        var sections: [Section]
+        let sections: [Section]
         if let diffSections = call.diffSections {
             sections = diffSections
         } else {
             sections = [.text([call.inputDetail], style: .normal)]
         }
-        if let resultSections = call.result {
-            sections.append(contentsOf: resultSections)
-        }
         let parsed = MCPToolNameParser.parse(call.name)
-        let timeMarker: TimeMarker?
-        if let durationMs {
-            timeMarker = .duration(durationMs)
-        } else if let startTime {
-            timeMarker = .clock(startTime)
-        } else {
-            timeMarker = nil
-        }
         return ToolEntry(
             id: .fromJSONL(call.id),
             parentEntryID: parentId,
@@ -1077,11 +1057,11 @@ struct ClaudeTranscriptBuilder {
                 icon: .tool(named: call.name),
                 name: parsed.display,
                 title: call.summary,
-                timeMarker: timeMarker
+                timeMarker: startTime.map { .clock($0) }
             ),
             body: Body(sections: sections),
-            status: status,
-            durationMs: durationMs,
+            status: .pending,
+            durationMs: nil,
             subagentType: call.subagentType,
             teamMemberName: call.teamMemberName,
             teamName: call.teamName,

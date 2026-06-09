@@ -1,17 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "agentXray.detail.body.noPromptPreview" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(no prompt preview)"
-          }
-        }
-      }
-    },
     "agentXray.detail.openedExternally" : {
       "extractionState" : "manual",
       "localizations" : {
