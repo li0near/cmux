@@ -1034,28 +1034,21 @@ struct ClaudeTranscriptBuilder {
             // `OffloadedOutputParser.promote(_:)` has already swapped
             // any `<persisted-output>` wrapper into `.offloadedOutput`.
             // Each remaining `.text` carries Claude Code's
-            // `<padded-line-num>\t<text>` shape; lift the embedded
-            // numbers into the section's `lineNumberStart` so the row
+            // `<padded-line-num>\t<text>` shape (corpus 99.86%) — lift
+            // the embedded numbers into `lineNumberStart` so the row
             // gutter shows real file line numbers (with `offset:` /
-            // `limit:` honored) and strip them from the rendered text
-            // so we don't double-display. Status envelopes (e.g.
-            // "File does not exist") fall through with `lineNumberStart:
-            // nil` so the gutter is suppressed.
+            // `limit:` honored) and strip them from the rendered text.
+            // Status envelopes (e.g. "File does not exist") fall
+            // through with `lineNumberStart: nil` — gutter suppressed.
             let language = LanguagePicker.language(forFilePath: path)
             update.resultSections = update.resultSections.map { section in
                 if case .text(let blocks, _) = section {
                     let raw = blocks.joined(separator: "\n")
-                    if let stripped = ReadLineNumberParser.strip(raw) {
-                        return .code(.plain(
-                            text: stripped.text,
-                            language: language,
-                            lineNumberStart: stripped.lineNumberStart
-                        ))
-                    }
+                    let (text, lineNumberStart) = Self.parseReadLineNumbers(raw)
                     return .code(.plain(
-                        text: raw,
+                        text: text,
                         language: language,
-                        lineNumberStart: nil
+                        lineNumberStart: lineNumberStart
                     ))
                 }
                 return section
@@ -1083,6 +1076,34 @@ struct ClaudeTranscriptBuilder {
     /// a single fenced code block; revisit after a corpus probe.
     private static func isReadShape(_ name: String) -> Bool {
         name == "Read"
+    }
+
+    /// Parse Claude Code's Read tool result format
+    /// (`<padded-num>\t<text>` per line) into stripped content + the
+    /// first line's number. Status envelopes (no numbered output) fall
+    /// through with `lineNumberStart = nil` — the renderer suppresses
+    /// the gutter for those. Corpus probe 2026-06-10 (9,872 results /
+    /// 776 sessions): 99.86% of non-empty lines match `^\s*\d+\t`; the
+    /// 0.14% remainder are whole-result envelopes (errors, dedup
+    /// markers) that never interleave numbered output.
+    private static func parseReadLineNumbers(_ raw: String) -> (text: String, lineNumberStart: Int?) {
+        let lines = raw.split(separator: "\n", omittingEmptySubsequences: false)
+        var stripped: [String] = []
+        stripped.reserveCapacity(lines.count)
+        var firstNumber: Int?
+        for line in lines {
+            if line.isEmpty {
+                stripped.append("")
+                continue
+            }
+            guard let m = line.firstMatch(of: #/\A\s*(\d+)\t(.*)\z/#),
+                  let n = Int(m.output.1) else {
+                return (raw, nil)
+            }
+            if firstNumber == nil { firstNumber = n }
+            stripped.append(String(m.output.2))
+        }
+        return (stripped.joined(separator: "\n"), firstNumber)
     }
 
     /// Compute the duration in milliseconds between a tool's start
