@@ -31,11 +31,12 @@ struct ToolResultUpdate {
     /// after the existing body sections.
     ///
     /// `var` (not `let`) so the builder can swap the parser-produced
-    /// sections after construction. Phase H4 uses this to replace the
-    /// plain-text result of an Edit / MultiEdit / Write-update with
-    /// `[.diffHunks(hunks)]` once `toolUseResult.structuredPatch` is
-    /// projected — cleaner than threading the swap through the
-    /// constructor and matches how `apply(_:)` is the only consumer.
+    /// sections after construction. The Edit / MultiEdit / Write-update
+    /// path uses this to replace the plain-text result with
+    /// `[.code(.diff(hunks: ..., language: ...))]` once
+    /// `toolUseResult.structuredPatch` is projected — cleaner than
+    /// threading the swap through the constructor and matches how
+    /// `apply(_:)` is the only consumer.
     var resultSections: [Section]
     /// Whether the result was an error. Drives `status: .error` vs
     /// `.ok` and the renderer's per-section style for any text-style

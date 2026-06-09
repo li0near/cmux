@@ -276,7 +276,7 @@ struct DetailContentResolverTests {
         )
         let body = Body(sections: [
             .text(["{...}"], style: .normal),
-            .diffHunks([hunk])
+            .code(.diff(hunks: [hunk], language: "swift"))
         ])
         let sub = toolSub(
             id: "edit1",

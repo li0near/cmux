@@ -2,6 +2,40 @@ import AppKit
 import Highlighter
 import SwiftUI
 
+/// Pure file-extension → highlight.js language alias map. Kept
+/// outside the `@available(macOS 15, *)` `SyntaxHighlight` enum so
+/// builders (Adapters/Claude) running before that availability
+/// requirement can still pick a language hint at parse time.
+enum LanguagePicker {
+    /// Map a file path's extension to the highlight.js language alias.
+    /// Returns nil when unknown — highlight.js then auto-detects.
+    static func language(forFilePath path: String?) -> String? {
+        guard let path else { return nil }
+        let ext = (path as NSString).pathExtension.lowercased()
+        switch ext {
+        case "swift":              return "swift"
+        case "rs":                 return "rust"
+        case "ts", "tsx":          return "typescript"
+        case "js", "jsx", "mjs":   return "javascript"
+        case "py":                 return "python"
+        case "go":                 return "go"
+        case "sh", "bash", "zsh":  return "bash"
+        case "md", "markdown":     return "markdown"
+        case "yml", "yaml":        return "yaml"
+        case "json":               return "json"
+        case "toml":               return "toml"
+        case "html":               return "html"
+        case "css":                return "css"
+        case "c", "h":             return "c"
+        case "cpp", "cc", "hpp":   return "cpp"
+        case "java":               return "java"
+        case "rb":                 return "ruby"
+        case "kt", "kts":          return "kotlin"
+        default:                   return nil
+        }
+    }
+}
+
 /// Minimal lazy/memoized wrapper around `Highlighter` (highlight.js via
 /// JavaScriptCore). Phase H spike — validates inline syntax-highlighted
 /// diff rows + Read-tool bodies without committing to a Coordinator
@@ -66,34 +100,6 @@ enum SyntaxHighlight {
             attr[range].foregroundColor = Color(nsColor: nsColor)
         }
         return attr
-    }
-
-    /// Map a file path's extension to the highlight.js language alias.
-    /// Returns nil when unknown — highlight.js then auto-detects.
-    static func language(forFilePath path: String?) -> String? {
-        guard let path else { return nil }
-        let ext = (path as NSString).pathExtension.lowercased()
-        switch ext {
-        case "swift":              return "swift"
-        case "rs":                 return "rust"
-        case "ts", "tsx":          return "typescript"
-        case "js", "jsx", "mjs":   return "javascript"
-        case "py":                 return "python"
-        case "go":                 return "go"
-        case "sh", "bash", "zsh":  return "bash"
-        case "md", "markdown":     return "markdown"
-        case "yml", "yaml":        return "yaml"
-        case "json":               return "json"
-        case "toml":               return "toml"
-        case "html":               return "html"
-        case "css":                return "css"
-        case "c", "h":             return "c"
-        case "cpp", "cc", "hpp":   return "cpp"
-        case "java":               return "java"
-        case "rb":                 return "ruby"
-        case "kt", "kts":          return "kotlin"
-        default:                   return nil
-        }
     }
 
     private static let highlighter: Highlighter? = {

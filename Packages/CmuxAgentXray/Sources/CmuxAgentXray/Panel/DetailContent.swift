@@ -386,29 +386,51 @@ extension DetailContent {
             )
         }
 
-        // Structured-patch result (Edit / MultiEdit / Write-update).
-        // Serialize the hunks back into a real unified-diff string —
-        // `--- a/<filePath>` + `+++ b/<filePath>` + per-hunk
-        // `@@ -X,Y +A,B @@` headers + the prefix-embedded lines —
-        // wrap in a fenced ` ```diff ` block, route as `.md` so cmux's
-        // MarkdownPanel + highlight.js diff mode paints it.
-        if case .diffHunks(let hunks) = section {
-            let diffBody = serializeUnifiedDiff(
-                hunks: hunks,
-                filePath: tool.inputFilePath ?? tool.toolName
-            )
-            let wrapped = FenceWrap.diff.apply(to: diffBody)
-            return DetailContent(
-                title: localized(
-                    "agentXray.detail.title.toolResult",
-                    defaultValue: "Tool result · \(tool.toolName)"
-                ),
-                subtitle: subtitleFromTimestamp(timestamp),
-                sourceEntryID: tool.id.stableString,
-                icon: EntryIcon.tool(named: tool.toolName),
-                accent: tool.status == .error ? .red : .primary,
-                source: .text(body: wrapped, suggestedFilename: "tool-result.diff.md")
-            )
+        // Code-shaped result section (Edit / MultiEdit / Write-update
+        // for `.diff`, Read for `.plain` once the H-rev/4 builder swap
+        // lands). The `.diff` arm serializes hunks back to a fenced
+        // unified-diff markdown body so cmux's MarkdownPanel +
+        // highlight.js paints diff coloring; `.plain` rejoins this arm
+        // with the existing inputFilePath-basename routing below by
+        // surfacing the text to the standard `.text` flow.
+        if case .code(let content) = section {
+            switch content {
+            case .diff(let hunks, _):
+                let diffBody = serializeUnifiedDiff(
+                    hunks: hunks,
+                    filePath: tool.inputFilePath ?? tool.toolName
+                )
+                let wrapped = FenceWrap.diff.apply(to: diffBody)
+                return DetailContent(
+                    title: localized(
+                        "agentXray.detail.title.toolResult",
+                        defaultValue: "Tool result · \(tool.toolName)"
+                    ),
+                    subtitle: subtitleFromTimestamp(timestamp),
+                    sourceEntryID: tool.id.stableString,
+                    icon: EntryIcon.tool(named: tool.toolName),
+                    accent: tool.status == .error ? .red : .primary,
+                    source: .text(body: wrapped, suggestedFilename: "tool-result.diff.md")
+                )
+            case .plain(let text, _):
+                let basename: String
+                if let path = tool.inputFilePath {
+                    basename = (path as NSString).lastPathComponent
+                } else {
+                    basename = "tool-result.txt"
+                }
+                return DetailContent(
+                    title: localized(
+                        "agentXray.detail.title.toolResult",
+                        defaultValue: "Tool result · \(tool.toolName)"
+                    ),
+                    subtitle: subtitleFromTimestamp(timestamp),
+                    sourceEntryID: tool.id.stableString,
+                    icon: EntryIcon.tool(named: tool.toolName),
+                    accent: tool.status == .error ? .red : .primary,
+                    source: .text(body: text, suggestedFilename: basename)
+                )
+            }
         }
 
         // Plain-text section.

@@ -28,14 +28,14 @@ public struct Body: Equatable, Sendable {
 /// lives on the parent ``Entry``'s `subEntries` projection, not in a
 /// section.
 ///
-/// `Section` defines a custom `==` so the `.diffHunks` case compares
-/// hunks by their structural signature only (count + per-hunk header
-/// tuple + per-hunk line count) — synthesizing equality would
-/// deep-walk every line of every hunk, and `DetailContent: Equatable`
-/// runs that comparison on every reactive update. Hunks are immutable
-/// per builder pass, so a structural-signature collision across
-/// distinct edits is vanishingly unlikely. Other cases compare their
-/// associated values normally.
+/// `Section` defines a custom `==` so the `.code` case compares its
+/// inner content by a structural signature only — synthesizing
+/// equality would deep-walk every line of every hunk (or every byte of
+/// a Read tool's file content), and `DetailContent: Equatable` runs
+/// that comparison on every reactive update. Section content is
+/// immutable per builder pass, so structural-signature collisions
+/// across distinct contents are vanishingly unlikely. Other cases
+/// compare their associated values normally.
 public enum Section: Sendable {
     /// Inline text block(s) rendered in a gray background. The `style`
     /// drives per-section visual treatment (italic, error red, etc.).
@@ -56,13 +56,33 @@ public enum Section: Sendable {
     /// on disk. The renderer surfaces an "↗ Open offloaded result" link;
     /// the detail-tab resolver reads the file lazily on click.
     case offloadedOutput(OffloadedOutput)
-    /// Pre-computed git-diff hunks from Claude Code's
-    /// `toolUseResult.structuredPatch[]`. Used for Edit / MultiEdit /
-    /// Write-update result sections; the renderer paints each line
-    /// (context / removed / added) with its own background color +
-    /// line-number gutters. Detail-tab routing serializes back to a
-    /// unified-diff string wrapped in a ```diff fence.
-    case diffHunks([DiffHunk])
+    /// Code-shaped content rendered with a line-number gutter and
+    /// per-language syntax highlighting. The inner ``CodeContent``
+    /// discriminator picks between plain code (Read tool result, file
+    /// content) and structured diff (Edit / MultiEdit / Write-update
+    /// `toolUseResult.structuredPatch`). The renderer
+    /// (``CodeBlockView``) projects either case into a flat
+    /// ``CodeRow`` stream; the detail-tab resolver branches on the
+    /// inner case to either reuse the file's basename (plain) or
+    /// serialize the hunks back to a fenced ``` ```diff ``` markdown
+    /// body (diff).
+    case code(CodeContent)
+}
+
+/// Discriminated payload for ``Section/code(_:)``. Plain code carries
+/// raw text + an optional language hint; diff code carries the
+/// structured `[DiffHunk]` from the JSONL wire shape so the detail-tab
+/// serializer can rebuild the unified-diff text losslessly.
+public enum CodeContent: Sendable {
+    /// File-content-shaped code (e.g. Read tool result body). Renders
+    /// as line-numbered rows, syntax-highlighted by `language`.
+    case plain(text: String, language: String?)
+    /// Structured git-diff hunks. Renders as line-numbered rows with
+    /// per-line classification (context / added / removed) and full-row
+    /// red/green tints. The hunks survive the model layer untouched so
+    /// the detail-tab path (`serializeUnifiedDiff`) can reconstruct the
+    /// `--- a/X / +++ b/X / @@ ...` shape.
+    case diff(hunks: [DiffHunk], language: String?)
 }
 
 extension Section: Equatable {
@@ -76,23 +96,30 @@ extension Section: Equatable {
             return l == r
         case (.offloadedOutput(let l), .offloadedOutput(let r)):
             return l == r
-        case (.diffHunks(let l), .diffHunks(let r)):
+        case (.code(let l), .code(let r)):
             // Cheap structural-signature comparison — see the type's
             // doc comment for the rationale. Avoids deep walks on every
             // reactive `DetailContent: Equatable` comparison.
-            guard l.count == r.count else { return false }
-            for (lhsHunk, rhsHunk) in zip(l, r) {
-                if lhsHunk.oldStart != rhsHunk.oldStart
-                    || lhsHunk.oldLines != rhsHunk.oldLines
-                    || lhsHunk.newStart != rhsHunk.newStart
-                    || lhsHunk.newLines != rhsHunk.newLines
-                    || lhsHunk.lines.count != rhsHunk.lines.count {
-                    return false
+            switch (l, r) {
+            case (.plain(let lt, let ll), .plain(let rt, let rl)):
+                return lt.utf8.count == rt.utf8.count && ll == rl
+            case (.diff(let lh, let ll), .diff(let rh, let rl)):
+                guard ll == rl, lh.count == rh.count else { return false }
+                for (lhsHunk, rhsHunk) in zip(lh, rh) {
+                    if lhsHunk.oldStart != rhsHunk.oldStart
+                        || lhsHunk.oldLines != rhsHunk.oldLines
+                        || lhsHunk.newStart != rhsHunk.newStart
+                        || lhsHunk.newLines != rhsHunk.newLines
+                        || lhsHunk.lines.count != rhsHunk.lines.count {
+                        return false
+                    }
                 }
+                return true
+            case (.plain, _), (.diff, _):
+                return false
             }
-            return true
         case (.text, _), (.image, _), (.toolReference, _),
-             (.offloadedOutput, _), (.diffHunks, _):
+             (.offloadedOutput, _), (.code, _):
             return false
         }
     }
@@ -255,16 +282,26 @@ public struct DiffHunk: Decodable, Equatable, Sendable {
 // MARK: - Convenience accessors
 
 extension Body {
-    /// Concatenated text content from every `.text` section, joined
-    /// by `"\n"`. Returns "" when the body is header-only.
-    /// `.diffHunks` sections are not walked — diff bodies are surfaced
-    /// through dedicated `.diffHunks`-aware paths (renderer + detail
-    /// resolver), not via plain text concatenation.
+    /// Concatenated text content from `.text` and `.code(.plain)`
+    /// sections, joined by `"\n"`. Returns "" when the body is
+    /// header-only.
+    ///
+    /// `.code(.diff(...))` sections are NOT walked — diff bodies surface
+    /// through dedicated `.diff`-aware paths (renderer + detail
+    /// resolver's `serializeUnifiedDiff`), not via plain text
+    /// concatenation. Walking them here would emit prefix-embedded
+    /// hunk lines into a stream that callers (anchor pairing,
+    /// detail-tab text routing) treat as plain code.
     public var textContent: String {
         var parts: [String] = []
         for section in sections {
-            if case .text(let blocks, _) = section {
+            switch section {
+            case .text(let blocks, _):
                 parts.append(contentsOf: blocks)
+            case .code(.plain(let text, _)):
+                parts.append(text)
+            case .code(.diff), .image, .toolReference, .offloadedOutput:
+                continue
             }
         }
         return parts.joined(separator: "\n")

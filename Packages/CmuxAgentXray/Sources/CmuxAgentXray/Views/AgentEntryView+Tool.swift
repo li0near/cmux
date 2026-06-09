@@ -61,7 +61,7 @@ extension AgentEntryView {
             .hoverHighlight(palette: palette)
 
             if isExpanded {
-                cappedBody(tool.body, filePath: tool.inputFilePath) { sectionIndex in
+                cappedBody(tool.body) { sectionIndex in
                     onOpenDetail(.bodySection(
                         targetID: tool.id.stableString,
                         sectionIndex: sectionIndex

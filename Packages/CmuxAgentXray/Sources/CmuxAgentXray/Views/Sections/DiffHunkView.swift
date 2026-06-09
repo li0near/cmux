@@ -25,7 +25,7 @@ struct DiffHunkView: View {
 
     let hunks: [DiffHunk]
     let palette: HudPalette
-    let filePath: String?
+    let language: String?
     let onOpenDetail: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -145,13 +145,12 @@ struct DiffHunkView: View {
         return text.map(String.init).joined(separator: "\u{200B}")
     }
 
-    /// Try to syntax-highlight the line text against the file's
-    /// language (derived from `filePath`'s extension). Falls back to
-    /// the plain char-wrappable string when the language is unknown
-    /// or the highlighter rejects the input. ZWSP injection is layered
-    /// on top to keep char-level wrap regardless of which path won.
+    /// Try to syntax-highlight the line text against the section's
+    /// `language` hint (carried on the `Section.code(.diff(...))`
+    /// payload by the builder). Falls back to plain text when language
+    /// is unknown or highlighter rejects the input. ZWSP injection is
+    /// layered on top to keep char-level wrap.
     private func highlightedText(_ text: String) -> AttributedString {
-        let language = SyntaxHighlight.language(forFilePath: filePath)
         let font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
         if let attr = SyntaxHighlight.attributed(
             text,

@@ -1018,24 +1018,25 @@ struct ClaudeTranscriptBuilder {
         // Edit / MultiEdit / Write-update tool results carry a
         // pre-computed unified-diff in `toolUseResult.structuredPatch`.
         // When it's present and non-empty, swap the parser-produced
-        // plain-text result section for a single `.diffHunks` section
-        // so the row renders the diff with line numbers + per-line
-        // backgrounds. Write-create has empty structuredPatch (no
-        // pre-edit file to diff against) and falls through.
+        // plain-text result section for a single `.code(.diff(...))`
+        // section so the row renders the diff with line numbers +
+        // per-line backgrounds. Write-create has empty structuredPatch
+        // (no pre-edit file to diff against) and falls through.
         if Self.isEditShape(existing.toolName),
            let payload = ClaudeToolUseResult.from(line.toolUseResult),
            let hunks = payload.structuredPatch,
            !hunks.isEmpty {
-            update.resultSections = [.diffHunks(hunks)]
+            let language = LanguagePicker.language(forFilePath: existing.inputFilePath)
+            update.resultSections = [.code(.diff(hunks: hunks, language: language))]
         }
         ctx.root.mutate(id: toolId) { entry in
             update.apply(&entry)
         }
     }
 
-    /// Tools whose input is rendered via `.diffHunks` from the result
-    /// side rather than a plain-text input section. Centralized so
-    /// `appendToolUse` (which suppresses the input section) and
+    /// Tools whose input is rendered via `.code(.diff(...))` from the
+    /// result side rather than a plain-text input section. Centralized
+    /// so `appendToolUse` (which suppresses the input section) and
     /// `attachToolResult` (which substitutes the diff for the parser
     /// output) agree on the set.
     private static func isEditShape(_ name: String) -> Bool {
@@ -1064,12 +1065,12 @@ struct ClaudeTranscriptBuilder {
         startTime: Date?
     ) -> ToolEntry {
         // Edit / MultiEdit / Write tools have their input rendered via
-        // a `.diffHunks` result section once the structuredPatch lands;
-        // an additional input `.text` section above would be redundant
-        // (file_path already shows in `Header.title` via the summary
-        // step, and old/new strings are about to be re-rendered as the
-        // colored diff). Body starts empty for these tools and gains
-        // `.diffHunks(...)` when the result mutates via
+        // a `.code(.diff(...))` result section once the structuredPatch
+        // lands; an additional input `.text` section above would be
+        // redundant (file_path already shows in `Header.title` via the
+        // summary step, and old/new strings are about to be re-rendered
+        // as the colored diff). Body starts empty for these tools and
+        // gains `.code(.diff(...))` when the result mutates via
         // `ToolResultUpdate`.
         let sections: [Section]
         if Self.isEditShape(call.name) {
