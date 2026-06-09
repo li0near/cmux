@@ -126,90 +126,76 @@ struct CodeBlockView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
         case .line(let text, let lineNumber, let classification):
-            let codeBg = codeBackground(for: classification)
-            let gutterBg = gutterBackground(for: classification)
-            let gutterFg = gutterForeground(for: classification)
-            let glyph = prefixGlyph(for: classification)
+            let style = lineStyle(for: classification)
             HStack(alignment: .top, spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text(formatLineNumber(lineNumber, width: maxDigits))
                         .font(Theme.SubRow.title)
-                        .foregroundStyle(gutterFg)
+                        .foregroundStyle(style.gutterFg)
                         .fixedSize(horizontal: true, vertical: false)
                         .padding(.trailing, 6)
-                    Text(glyph)
+                    Text(style.glyph)
                         .font(Theme.SubRow.title)
-                        .foregroundStyle(gutterFg)
+                        .foregroundStyle(style.gutterFg)
                         .frame(width: 12, alignment: .center)
                 }
                 .padding(.leading, 6)
                 .frame(maxHeight: .infinity, alignment: .top)
-                .background(Rectangle().fill(gutterBg))
+                .background(Rectangle().fill(style.gutterBg))
                 Text(highlightedText(text))
                     .font(Theme.SubRow.title)
                     .textSelection(.enabled)
                     .padding(.leading, 6)
                     .padding(.trailing, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Rectangle().fill(codeBg))
+                    .background(Rectangle().fill(style.codeBg))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    // MARK: - Per-classification color picks
+    // MARK: - Per-classification styling
 
-    /// Background painted across the row's code area. `.plain` and
-    /// `.context` are transparent so the surrounding panel bg shows
-    /// through; `.added` / `.removed` paint the GitHub-Primer green /
-    /// red tints.
-    private func codeBackground(for classification: CodeRow.Classification) -> Color {
-        switch classification {
-        case .plain, .context:
-            return .clear
-        case .removed:
-            return palette.diffRemovedBackground(colorScheme: colorScheme)
-        case .added:
-            return palette.diffAddedBackground(colorScheme: colorScheme)
-        }
+    /// All four per-row visual fields for one classification, picked
+    /// in a single switch so the renderer doesn't dispatch four times
+    /// per row. `.plain` (Read content) and `.context` (diff context
+    /// rows) share the same styling — neutral row, gray gutter — and
+    /// their distinction is preserved only because the projection
+    /// layer cares about it (e.g. for future per-classification
+    /// behavior tweaks).
+    private struct LineStyle {
+        let codeBg: Color
+        let gutterBg: Color
+        let gutterFg: Color
+        let glyph: String
     }
 
-    /// Background painted behind the gutter (line number + glyph).
-    /// `.plain` and `.context` get the standard expanded-body gray
-    /// (matches the gray-text-section pattern); `.added` / `.removed`
-    /// match the row tint so the gutter blends into the change strip.
-    private func gutterBackground(for classification: CodeRow.Classification) -> Color {
+    private func lineStyle(for classification: CodeRow.Classification) -> LineStyle {
         switch classification {
         case .plain, .context:
-            return palette.expandedBackground
-        case .removed:
-            return palette.diffRemovedBackground(colorScheme: colorScheme)
+            return LineStyle(
+                codeBg: .clear,
+                gutterBg: palette.expandedBackground,
+                gutterFg: palette.dim,
+                glyph: " "
+            )
         case .added:
-            return palette.diffAddedBackground(colorScheme: colorScheme)
-        }
-    }
-
-    /// Gutter foreground (line number + prefix glyph). Removed rows
-    /// tint red, added rows green; plain + context stay dim — matches
-    /// Claude TUI's gutter coloring.
-    private func gutterForeground(for classification: CodeRow.Classification) -> Color {
-        switch classification {
-        case .plain, .context:
-            return palette.dim
+            let bg = palette.diffAddedBackground(colorScheme: colorScheme)
+            return LineStyle(
+                codeBg: bg,
+                gutterBg: bg,
+                gutterFg: palette.green,
+                glyph: "+"
+            )
         case .removed:
-            return palette.red
-        case .added:
-            return palette.green
-        }
-    }
-
-    private func prefixGlyph(for classification: CodeRow.Classification) -> String {
-        switch classification {
-        case .plain:    return " "
-        case .context:  return " "
-        case .removed:  return "-"
-        case .added:    return "+"
+            let bg = palette.diffRemovedBackground(colorScheme: colorScheme)
+            return LineStyle(
+                codeBg: bg,
+                gutterBg: bg,
+                gutterFg: palette.red,
+                glyph: "-"
+            )
         }
     }
 
