@@ -386,6 +386,31 @@ extension DetailContent {
             )
         }
 
+        // Structured-patch result (Edit / MultiEdit / Write-update).
+        // Serialize the hunks back into a real unified-diff string —
+        // `--- a/<filePath>` + `+++ b/<filePath>` + per-hunk
+        // `@@ -X,Y +A,B @@` headers + the prefix-embedded lines —
+        // wrap in a fenced ` ```diff ` block, route as `.md` so cmux's
+        // MarkdownPanel + highlight.js diff mode paints it.
+        if case .diffHunks(let hunks) = section {
+            let diffBody = serializeUnifiedDiff(
+                hunks: hunks,
+                filePath: tool.inputFilePath ?? tool.toolName
+            )
+            let wrapped = FenceWrap.diff.apply(to: diffBody)
+            return DetailContent(
+                title: localized(
+                    "agentXray.detail.title.toolResult",
+                    defaultValue: "Tool result · \(tool.toolName)"
+                ),
+                subtitle: subtitleFromTimestamp(timestamp),
+                sourceEntryID: tool.id.stableString,
+                icon: EntryIcon.tool(named: tool.toolName),
+                accent: tool.status == .error ? .red : .primary,
+                source: .text(body: wrapped, suggestedFilename: "tool-result.diff.md")
+            )
+        }
+
         // Plain-text section.
         guard case .text(let blocks, _) = section else { return nil }
         let text = blocks.joined(separator: "\n")
@@ -435,9 +460,7 @@ extension DetailContent {
             text: text,
             mcpServer: tool.mcpServer
         )
-        let suggestedBody = filename.wrapAsFencedMarkdown
-            ? wrapAsFencedMarkdown(text)
-            : text
+        let suggestedBody = filename.wrap.apply(to: text)
         return DetailContent(
             title: title,
             subtitle: subtitle,
@@ -516,33 +539,69 @@ extension DetailContent {
         return "\(prefix).\(ext)"
     }
 
+    /// Wrap-mode for a sniffer-driven tool result body before it's
+    /// written to the suggested filename.
+    fileprivate enum FenceWrap {
+        /// Emit body verbatim (sniffer detected markdown / json shape).
+        case none
+        /// Wrap in a triple-backtick block (plain text → markdown
+        /// monospace via cmux's `MarkdownPanel`).
+        case markdown
+        /// Wrap in a ``` ```diff ``` block (sniffer detected diff
+        /// shape — highlight.js paints it).
+        case diff
+
+        /// Apply the wrap to `body` and return the result.
+        func apply(to body: String) -> String {
+            switch self {
+            case .none:     return body
+            case .markdown: return "```\n\(body)\n```"
+            case .diff:     return "```diff\n\(body)\n```"
+            }
+        }
+    }
+
     /// Sniff the result text's shape (markdown / json / diff /
-    /// plaintext) and return the basename to use plus whether the
-    /// body should be wrapped in a fenced code block before being
-    /// written as markdown.
+    /// plaintext) and return the basename to use plus how the body
+    /// should be wrapped before being written as the file.
     private static func suggestedFilenameForToolResult(
         text: String,
         mcpServer: String?
-    ) -> (name: String, wrapAsFencedMarkdown: Bool) {
+    ) -> (name: String, wrap: FenceWrap) {
         let shape = DetailContentShapeSniffer.sniff(text: text, mcpServer: mcpServer)
         switch shape {
-        case .markdown:  return ("tool-result.md", false)
-        case .json:      return ("tool-result.json", false)
-        case .diff:      return ("tool-result.diff", false)
-        case .plainText: return ("tool-result.md", true)
+        case .markdown:  return ("tool-result.md", .none)
+        case .json:      return ("tool-result.json", .none)
+        case .diff:      return ("tool-result.diff.md", .diff)
+        case .plainText: return ("tool-result.md", .markdown)
         case .transcript, .code:
             // Sniffer doesn't currently return these; defensive
             // fallback keeps the panel pipeline picking a known
             // extension.
-            return ("tool-result.md", true)
+            return ("tool-result.md", .markdown)
         }
     }
 
-    /// Wrap a plain-text body in a triple-backtick fenced code block
-    /// so the markdown renderer paints it as a monospace block with
-    /// copy/edit chrome.
-    private static func wrapAsFencedMarkdown(_ body: String) -> String {
-        "```\n\(body)\n```"
+    /// Serialize `[DiffHunk]` back into a unified-diff string with
+    /// `--- a/<path>` / `+++ b/<path>` headers and one `@@ -X,Y +A,B @@`
+    /// header per hunk. The hunks' `lines` are already prefix-embedded
+    /// (` ` / `-` / `+`), so we emit them verbatim.
+    private static func serializeUnifiedDiff(
+        hunks: [DiffHunk],
+        filePath: String
+    ) -> String {
+        var out: [String] = []
+        out.append("--- a/\(filePath)")
+        out.append("+++ b/\(filePath)")
+        for hunk in hunks {
+            out.append(
+                "@@ -\(hunk.oldStart),\(hunk.oldLines) +\(hunk.newStart),\(hunk.newLines) @@"
+            )
+            for line in hunk.lines {
+                out.append(line)
+            }
+        }
+        return out.joined(separator: "\n")
     }
 }
 

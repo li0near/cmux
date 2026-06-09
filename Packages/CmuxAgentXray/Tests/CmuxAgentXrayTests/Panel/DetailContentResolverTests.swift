@@ -238,7 +238,7 @@ struct DetailContentResolverTests {
         #expect(content?.source == .text(body: json, suggestedFilename: "tool-result.json"))
     }
 
-    @Test("Tool result without inputFilePath, diff-shaped → tool-result.diff")
+    @Test("Tool result without inputFilePath, diff-shaped → tool-result.diff.md (diff-fenced)")
     func toolResultDiffShaped() {
         let diff = """
         diff --git a/foo.swift b/foo.swift
@@ -256,7 +256,49 @@ struct DetailContentResolverTests {
         let entry = agentEntry(subEntries: [sub])
         let request = DetailRequest.bodySection(targetID: "d1", sectionIndex: 1)
         let content = DetailContent.resolve(request: request, entry: entry)
-        #expect(content?.source == .text(body: diff, suggestedFilename: "tool-result.diff"))
+        let expected = "```diff\n\(diff)\n```"
+        #expect(content?.source == .text(body: expected, suggestedFilename: "tool-result.diff.md"))
+    }
+
+    @Test("Tool result .diffHunks → tool-result.diff.md (serialized + diff-fenced)")
+    func toolResultDiffHunks() {
+        let hunk = DiffHunk(
+            oldStart: 10,
+            oldLines: 3,
+            newStart: 10,
+            newLines: 3,
+            lines: [
+                " context line",
+                "-let x = 1",
+                "+let x = 2",
+                " trailing"
+            ]
+        )
+        let body = Body(sections: [
+            .text(["{...}"], style: .normal),
+            .diffHunks([hunk])
+        ])
+        let sub = toolSub(
+            id: "edit1",
+            toolName: "Edit",
+            body: body,
+            inputFilePath: "/abs/foo.swift"
+        )
+        let entry = agentEntry(subEntries: [sub])
+        let request = DetailRequest.bodySection(targetID: "edit1", sectionIndex: 1)
+        let content = DetailContent.resolve(request: request, entry: entry)
+        let expected = """
+        ```diff
+        --- a/\("/abs/foo.swift")
+        +++ b/\("/abs/foo.swift")
+        @@ -10,3 +10,3 @@
+         context line
+        -let x = 1
+        +let x = 2
+         trailing
+        ```
+        """
+        #expect(content?.source == .text(body: expected, suggestedFilename: "tool-result.diff.md"))
     }
 
     @Test("Tool result with markdown ≥2 H3 → tool-result.md (no wrap)")
