@@ -29,7 +29,14 @@ struct ToolResultUpdate {
     /// One or more `.text` (or `.image` / `.offloadedOutput` / etc.)
     /// sections — the parsed `tool_result.content[]` blocks. Appended
     /// after the existing body sections.
-    let resultSections: [Section]
+    ///
+    /// `var` (not `let`) so the builder can swap the parser-produced
+    /// sections after construction. Phase H4 uses this to replace the
+    /// plain-text result of an Edit / MultiEdit / Write-update with
+    /// `[.diffHunks(hunks)]` once `toolUseResult.structuredPatch` is
+    /// projected — cleaner than threading the swap through the
+    /// constructor and matches how `apply(_:)` is the only consumer.
+    var resultSections: [Section]
     /// Whether the result was an error. Drives `status: .error` vs
     /// `.ok` and the renderer's per-section style for any text-style
     /// result sections caller passes in.

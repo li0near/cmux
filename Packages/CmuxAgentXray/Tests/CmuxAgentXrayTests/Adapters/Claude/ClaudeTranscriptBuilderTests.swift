@@ -398,8 +398,7 @@ struct ClaudeTranscriptBuilderTests {
     }
 
     @Test("Skipped attachment with null parentUuid still aliases — children chaining off it don't pool forever")
-    func skippedOrphanAttachmentDoesNotBlockDescendants() throws {
-        // Real-corpus shape (verified 2026-06-09 in this very session):
+    func skippedOrphanAttachmentDoesNotBlockDescendants() throws {        // Real-corpus shape (verified 2026-06-09 in this very session):
         // line 0 is an `attachment/hook_success` with parentUuid=null.
         // hook_success is not in AttachmentLineDispatcher's render set,
         // so it routes to .skip. Without aliasing the orphan to []
@@ -426,5 +425,198 @@ struct ClaudeTranscriptBuilderTests {
         #expect(userEntries.count == 1)
         #expect(agentEntries.count == 1)
         #expect(agentEntries.first?.subEntries.count == 1)
+    }
+
+    // MARK: - Phase H: structuredPatch → Section.diffHunks
+
+    @Test("Edit tool with structuredPatch result emits a single .diffHunks section; input section is suppressed")
+    func editStructuredPatchEmitsDiffHunksSection() throws {
+        // Edit tool_use (input untouched) followed by a tool_result
+        // line carrying `toolUseResult.structuredPatch`. Builder must
+        // produce a ToolEntry whose body is exactly [.diffHunks([Hunk])]
+        // (no leading input section — Edit's input is rendered via
+        // the diff hunks themselves) and whose status is .ok.
+        let toolUseJSON = #"""
+        {
+          "type": "assistant",
+          "uuid": "a1",
+          "parentUuid": "u1",
+          "timestamp": "2026-06-05T10:00:01.000Z",
+          "message": {
+            "role": "assistant",
+            "content": [{
+              "type": "tool_use",
+              "id": "tool-edit-1",
+              "name": "Edit",
+              "input": {
+                "file_path": "/tmp/foo.swift",
+                "old_string": "let x = 1",
+                "new_string": "let x = 2"
+              }
+            }]
+          }
+        }
+        """#
+        let toolResultJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u2",
+          "parentUuid": "a1",
+          "timestamp": "2026-06-05T10:00:02.000Z",
+          "message": {
+            "role": "user",
+            "content": [{
+              "type": "tool_result",
+              "tool_use_id": "tool-edit-1",
+              "content": "The file /tmp/foo.swift has been updated successfully."
+            }]
+          },
+          "toolUseResult": {
+            "filePath": "/tmp/foo.swift",
+            "oldString": "let x = 1",
+            "newString": "let x = 2",
+            "structuredPatch": [{
+              "oldStart": 1,
+              "oldLines": 1,
+              "newStart": 1,
+              "newLines": 1,
+              "lines": ["-let x = 1", "+let x = 2"]
+            }]
+          }
+        }
+        """#
+        let agent = try buildAgentEntry(assistantLines: [toolUseJSON, toolResultJSON])
+        let toolSubs = agent.subEntries.compactMap { entry -> ToolEntry? in
+            if case .tool(let t) = entry { return t }
+            return nil
+        }
+        let tool = try #require(toolSubs.first)
+        #expect(tool.status == .ok)
+        // Body has exactly one section: the diff hunks.
+        #expect(tool.body.sections.count == 1)
+        guard case .diffHunks(let hunks) = tool.body.sections.first else {
+            Issue.record("Expected .diffHunks section; got \(tool.body.sections)")
+            return
+        }
+        #expect(hunks.count == 1)
+        let hunk = try #require(hunks.first)
+        #expect(hunk.oldStart == 1)
+        #expect(hunk.oldLines == 1)
+        #expect(hunk.newStart == 1)
+        #expect(hunk.newLines == 1)
+        #expect(hunk.lines == ["-let x = 1", "+let x = 2"])
+    }
+
+    @Test("Write tool with type=create (empty structuredPatch) keeps the parser-produced result section")
+    func writeCreateKeepsParserOutput() throws {
+        let toolUseJSON = #"""
+        {
+          "type": "assistant",
+          "uuid": "a1",
+          "parentUuid": "u1",
+          "timestamp": "2026-06-05T10:00:01.000Z",
+          "message": {
+            "role": "assistant",
+            "content": [{
+              "type": "tool_use",
+              "id": "tool-write-1",
+              "name": "Write",
+              "input": {
+                "file_path": "/tmp/new.txt",
+                "content": "hello world"
+              }
+            }]
+          }
+        }
+        """#
+        let toolResultJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u2",
+          "parentUuid": "a1",
+          "timestamp": "2026-06-05T10:00:02.000Z",
+          "message": {
+            "role": "user",
+            "content": [{
+              "type": "tool_result",
+              "tool_use_id": "tool-write-1",
+              "content": "File created successfully at: /tmp/new.txt"
+            }]
+          },
+          "toolUseResult": {
+            "type": "create",
+            "filePath": "/tmp/new.txt",
+            "content": "hello world",
+            "structuredPatch": []
+          }
+        }
+        """#
+        let agent = try buildAgentEntry(assistantLines: [toolUseJSON, toolResultJSON])
+        let toolSubs = agent.subEntries.compactMap { entry -> ToolEntry? in
+            if case .tool(let t) = entry { return t }
+            return nil
+        }
+        let tool = try #require(toolSubs.first)
+        #expect(tool.status == .ok)
+        // Empty structuredPatch → falls through to parser-produced
+        // result section. No input section for Write either (Write
+        // is Edit-shape per `isEditShape`); body has only the parser
+        // result. Real Write-create result is "File created
+        // successfully" plain text → one .text section.
+        #expect(tool.body.sections.count == 1)
+        guard case .text = tool.body.sections.first else {
+            Issue.record("Expected .text result section for Write-create; got \(tool.body.sections)")
+            return
+        }
+    }
+
+    @Test("Non-Edit tool keeps input section and parser result section")
+    func nonEditToolKeepsBothSections() throws {
+        let toolUseJSON = #"""
+        {
+          "type": "assistant",
+          "uuid": "a1",
+          "parentUuid": "u1",
+          "timestamp": "2026-06-05T10:00:01.000Z",
+          "message": {
+            "role": "assistant",
+            "content": [{
+              "type": "tool_use",
+              "id": "tool-bash-1",
+              "name": "Bash",
+              "input": {"command": "echo hi"}
+            }]
+          }
+        }
+        """#
+        let toolResultJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u2",
+          "parentUuid": "a1",
+          "timestamp": "2026-06-05T10:00:02.000Z",
+          "message": {
+            "role": "user",
+            "content": [{
+              "type": "tool_result",
+              "tool_use_id": "tool-bash-1",
+              "content": "hi"
+            }]
+          }
+        }
+        """#
+        let agent = try buildAgentEntry(assistantLines: [toolUseJSON, toolResultJSON])
+        let toolSubs = agent.subEntries.compactMap { entry -> ToolEntry? in
+            if case .tool(let t) = entry { return t }
+            return nil
+        }
+        let tool = try #require(toolSubs.first)
+        // Body: [input .text, result .text].
+        #expect(tool.body.sections.count == 2)
+        guard case .text = tool.body.sections[0],
+              case .text = tool.body.sections[1] else {
+            Issue.record("Expected [.text, .text] for non-Edit tool; got \(tool.body.sections)")
+            return
+        }
     }
 }

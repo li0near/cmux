@@ -26,13 +26,6 @@ struct AgentToolCall: Equatable {
     /// from the extension (cmux's `FilePreviewPanel` then materializes
     /// the temp file with the right ext + highlight.js coloring).
     let inputFilePath: String?
-    /// Precomputed diff-styled body sections for `Edit` / `MultiEdit`
-    /// tools — one `.diffRemoved` + `.diffAdded` pair per edit, in
-    /// arrival order. Populated by `ToolInputParser.diffSections(...)`
-    /// at parse time so `makeToolEntry` emits colored old/new blocks
-    /// instead of the default single `.text([inputDetail], .normal)`
-    /// section. Nil for any non-edit tool.
-    let diffSections: [Section]?
 
     init(
         id: String,
@@ -43,8 +36,7 @@ struct AgentToolCall: Equatable {
         teamMemberName: String? = nil,
         teamName: String? = nil,
         mcpServer: String? = nil,
-        inputFilePath: String? = nil,
-        diffSections: [Section]? = nil
+        inputFilePath: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -55,6 +47,5 @@ struct AgentToolCall: Equatable {
         self.teamName = teamName
         self.mcpServer = mcpServer
         self.inputFilePath = inputFilePath
-        self.diffSections = diffSections
     }
 }
