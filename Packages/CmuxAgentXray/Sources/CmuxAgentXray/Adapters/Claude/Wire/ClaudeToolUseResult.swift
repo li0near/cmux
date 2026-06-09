@@ -35,10 +35,11 @@ struct ClaudeToolUseResult: Decodable, Equatable {
     /// reliable source of pre-edit context outside the structured
     /// patch's hunk window.
     let originalFile: String?
-    /// Pre-computed hunks. Each element is one hunk-shape entry (see
-    /// ``ClaudeStructuredPatch`` for the naming rationale). Empty for
-    /// `Write` with `type: "create"` (no diff for new files).
-    let structuredPatch: [ClaudeStructuredPatch]?
+    /// Pre-computed hunks. Empty for `Write` with `type: "create"`
+    /// (no diff for new files). Each ``DiffHunk`` is the rendering
+    /// shape directly — the wire JSON and the model type are the same
+    /// struct (see ``DiffHunk`` for the layering rationale).
+    let structuredPatch: [DiffHunk]?
     /// True when the user manually edited the diff in the Claude Code
     /// approval UI before applying. cmux can surface this as a hint.
     let userModified: Bool?
@@ -89,9 +90,9 @@ struct ClaudeToolUseResult: Decodable, Equatable {
         return nil
     }
 
-    private static func structuredPatchArray(_ value: ClaudeJSONValue?) -> [ClaudeStructuredPatch]? {
+    private static func structuredPatchArray(_ value: ClaudeJSONValue?) -> [DiffHunk]? {
         guard case .array(let arr)? = value else { return nil }
-        var hunks: [ClaudeStructuredPatch] = []
+        var hunks: [DiffHunk] = []
         hunks.reserveCapacity(arr.count)
         for entry in arr {
             guard case .object(let h) = entry,
@@ -106,7 +107,7 @@ struct ClaudeToolUseResult: Decodable, Equatable {
                 if case .string(let s) = $0 { return s }
                 return nil
             }
-            hunks.append(ClaudeStructuredPatch(
+            hunks.append(DiffHunk(
                 oldStart: oldStart,
                 oldLines: oldLines,
                 newStart: newStart,
