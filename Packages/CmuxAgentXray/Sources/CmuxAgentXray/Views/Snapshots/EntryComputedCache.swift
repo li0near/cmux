@@ -61,7 +61,7 @@ public final class EntryComputedCache {
                     return sum + toolName.utf8.count
                 case .offloadedOutput(let off):
                     return sum + off.path.utf8.count + off.sizeLabel.utf8.count
-                case .code(.plain(let text, let lang)):
+                case .code(.plain(let text, let lang, _)):
                     // Plain code: text bytes + language hint length.
                     return sum + text.utf8.count + (lang?.utf8.count ?? 0)
                 case .code(.diff(let hunks, let lang)):

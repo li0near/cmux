@@ -1041,7 +1041,24 @@ struct ClaudeTranscriptBuilder {
                 if case .text(let blocks, _) = section {
                     return .code(.plain(
                         text: blocks.joined(separator: "\n"),
-                        language: language
+                        language: language,
+                        lineNumberStart: 1
+                    ))
+                }
+                return section
+            }
+        } else if Self.isShellShape(existing.toolName) {
+            // Bash / Grep: shell-output-shaped result. No language hint
+            // (output is heterogeneous shell text), no line-number
+            // gutter (numbers don't map to anything meaningful). Code
+            // styling provides per-row layout + future char-wrap +
+            // future syntax highlighting if a hint becomes available.
+            update.resultSections = update.resultSections.map { section in
+                if case .text(let blocks, _) = section {
+                    return .code(.plain(
+                        text: blocks.joined(separator: "\n"),
+                        language: nil,
+                        lineNumberStart: nil
                     ))
                 }
                 return section
@@ -1069,6 +1086,16 @@ struct ClaudeTranscriptBuilder {
     /// a single fenced code block; revisit after a corpus probe.
     private static func isReadShape(_ name: String) -> Bool {
         name == "Read"
+    }
+
+    /// Tools whose result is heterogeneous shell-style text — Bash and
+    /// Grep. Rendered via `.code(.plain(...))` with no language hint
+    /// and no gutter; the code-block styling gives a consistent visual
+    /// frame and char-wrap behavior without pretending the output is a
+    /// numbered file. `Glob` is excluded — its output is a path list,
+    /// plain text is correct.
+    private static func isShellShape(_ name: String) -> Bool {
+        name == "Bash" || name == "Grep"
     }
 
     /// Compute the duration in milliseconds between a tool's start
