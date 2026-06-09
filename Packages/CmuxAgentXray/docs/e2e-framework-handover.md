@@ -496,6 +496,252 @@ policy and regenerate.
 
 ---
 
+## Layer 2.5 — Corpus syntax audit (exhaustive catalog with incremental scanning)
+
+A test that **catalogs every distinct JSONL syntax shape** ever seen
+in the user's corpus, persists the catalog as a committed fixture,
+and FAILS LOUDLY when a new shape surfaces — that's the signal to
+update the dispatcher (route to `.skip` or add a handler) AND update
+the docs.
+
+### Why it exists
+
+Claude Code rolls out wire-format additions silently between releases.
+Today the only way we catch new shapes is dogfood — a user hits an
+unfamiliar shape, the renderer mishandles it, the user reports it.
+The catalog turns this into a CI-detectable event: any new shape
+that lands in the user's corpus surfaces on the next run of
+`run-e2e.sh`, before it reaches a renderer.
+
+### Catalog fixture
+
+`Tests/CmuxAgentXrayTests/Fixtures/Corpus/syntax-catalog.json` —
+**committed**. JSON-encoded.
+
+```json
+{
+  "schemaVersion": 1,
+  "lastScannedMTime": "2026-06-09T12:00:00Z",
+  "totalFilesScanned": 731,
+  "totalLinesScanned": 172470,
+  "shapes": {
+    "type=user|content=blocks|blocks=[tool_result]": {
+      "count": 8743,
+      "firstSeen": {
+        "session": "<basename>:<first-8-of-uuid>",
+        "lineIndex": 12,
+        "timestamp": "2026-04-01T..."
+      },
+      "lastSeen": "2026-06-09T..."
+    },
+    "type=system|subtype=turn_duration": { ... },
+    "type=attachment|attachment.type=hook_success|commandMode=null": { ... },
+    "type=attachment|attachment.type=queued_command|commandMode=task-notification": { ... },
+    "blockType=tool_use|toolName=mcp__playwright__*": { ... },
+    "xmlWrapper=<command-name>": { ... },
+    ...
+  },
+  "knownShapes": ["..."],
+  "fingerprint": "sha256:..."
+}
+```
+
+**Shape fingerprint axes:**
+
+- `type` × `subtype` (for `system` lines)
+- `type` × `attachment.type` × `attachment.commandMode` (for `attachment` lines)
+- `type` × content-block kind multiset (for `assistant` / `user` lines — e.g. `[text, tool_use]`, `[thinking]`, `[tool_result]`)
+- xml-tag wrappers in content (`<command-name>`, `<task-notification>`, `<local-command-stdout>`, `<system-reminder>`, `<command-message>`, `<persisted-output>`)
+- `tool_use.name` family (`mcp__<server>__*` vs built-in names; track distinct families, not every individual tool)
+- `is_error` true/false in tool_result
+- `parentUuid` topology classes (null / resolves-locally / out-of-order)
+- `model` family + `stopReason` family
+
+**Session-path redaction:** stored as `<basename>:<first-8-of-uuid>`,
+not the absolute filesystem path. No PII leakage in the committed
+catalog.
+
+### Incremental scanning
+
+```
+1. If fixture exists:
+   - Read `lastScannedMTime`.
+   - For each session file in `~/.claude/projects/`:
+     - If file mtime > lastScannedMTime → scan it.
+     - Otherwise → skip (already cataloged).
+2. If fixture doesn't exist:
+   - First run. Scan all sessions.
+3. For each scanned file:
+   - For each line, compute shape fingerprint.
+   - If new shape → record + flag.
+   - If existing shape → bump count, advance lastSeen.
+4. Update `lastScannedMTime` = (now − 1s, to avoid races with files
+   modified mid-scan).
+5. Write updated catalog.
+6. Test result:
+   - FAIL if any new shape was detected. Output: list of new shapes
+     with example session+line index.
+   - PASS otherwise (catalog updated in place, no behavioral change).
+```
+
+This means **only the deltas are scanned on each run** after the
+first. A repeat run with no new sessions is near-instant.
+
+### Test
+
+`Tests/CmuxAgentXrayTests/E2E/CorpusSyntaxAuditE2E.swift`:
+
+```swift
+@Suite("E2E — corpus syntax audit (exhaustive catalog)")
+struct CorpusSyntaxAuditE2E {
+    @Test("Every JSONL shape in corpus is in the catalog; new shapes FAIL the test")
+    func corpusSyntaxAudit() throws {
+        let claudeProjects = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: ".claude/projects")
+        guard FileManager.default.fileExists(atPath: claudeProjects.path) else {
+            return  // skip — no local corpus
+        }
+        let catalogURL = catalogFixtureURL()
+        var catalog = try CorpusSyntaxCatalog.load(from: catalogURL) ?? CorpusSyntaxCatalog.empty()
+        let result = try CorpusSyntaxScanner.scan(
+            corpusRoot: claudeProjects,
+            since: catalog.lastScannedMTime,
+            into: &catalog
+        )
+        try catalog.write(to: catalogURL)
+
+        if !result.newShapes.isEmpty {
+            Issue.record("""
+                Corpus syntax audit detected \(result.newShapes.count) new shape(s):
+                \(result.newShapes.map { "  - \($0.fingerprint) — first seen at \($0.example)" }.joined(separator: "\n"))
+
+                Action required:
+                  1. Decide: route to .skip (CommonLineDispatcher.skipTypes /
+                     AttachmentLineDispatcher default) OR add a handler.
+                  2. Update Packages/CmuxAgentXray/docs/claude-jsonl-mapping.md
+                     §2 routing table.
+                  3. Update Packages/CmuxAgentXray/docs/corpus-survey.md with
+                     the new shape's distribution.
+                  4. Re-run ./scripts/run-e2e.sh — the catalog now contains
+                     the shape, the test passes.
+                """)
+        }
+    }
+}
+```
+
+### Catalog regeneration via `run-e2e.sh`
+
+The catalog auto-updates when `run-e2e.sh` runs (the test is a
+member of the `E2E` filter). The shell script doesn't need a special
+flag for this — it runs as part of the regular suite.
+
+To **force a fresh full scan** (e.g. when investigating a suspected
+catalog bug), delete the fixture and re-run:
+
+```bash
+rm Packages/CmuxAgentXray/Tests/CmuxAgentXrayTests/Fixtures/Corpus/syntax-catalog.json
+./scripts/run-e2e.sh
+```
+
+Add a `--full-corpus-rescan` flag to `run-e2e.sh` that does this
+automatically:
+
+```bash
+if [[ "$FULL_RESCAN" -eq 1 ]]; then
+    echo "[run-e2e] Full corpus rescan — deleting catalog…"
+    rm -f Packages/CmuxAgentXray/Tests/CmuxAgentXrayTests/Fixtures/Corpus/syntax-catalog.json
+fi
+```
+
+### Skill update (mandatory action item)
+
+When this audit lands, **update**
+`Packages/CmuxAgentXray/skills/claude-jsonl-corpus/SKILL.md` to add a
+new section. Concrete content:
+
+```markdown
+## Catalog as single source of truth
+
+Before scanning `~/.claude/projects/` to answer any syntax question,
+check the catalog fixture first:
+
+  `Tests/CmuxAgentXrayTests/Fixtures/Corpus/syntax-catalog.json`
+
+This fixture is exhaustively maintained by the
+`CorpusSyntaxAuditE2E` test. Every observed (type, subtype,
+attachment.type, content-block-kind, xml-wrapper, ...) combination
+from the user's corpus is recorded with count + firstSeen +
+lastSeen + example reference.
+
+**Workflow:**
+
+1. Open the catalog fixture.
+2. Search for the category your question is about (`type=...`,
+   `attachment.type=...`, `xmlWrapper=...`, etc.).
+3. If the catalog answers it — quote the catalog entry. Cite the
+   example session+line as evidence. **Do not dispatch a fresh
+   exploration subagent for known shapes.**
+4. If the catalog is silent OR ambiguous OR the question requires
+   data the catalog doesn't track (e.g. a count by some new axis,
+   or a temporal distribution) — run a fresh corpus scan via the
+   existing skill workflow.
+
+**Run the audit explicitly when:**
+- The user reports rendering oddities suggesting format drift.
+- A Claude Code release just landed.
+- The catalog's `lastScannedMTime` is older than 7 days AND the
+  user has been actively using Claude Code in the meantime.
+- Run: `./scripts/run-e2e.sh`. The audit is a built-in member of
+  the `E2E` test filter.
+
+**When the audit FAILS:**
+
+The test FAILS only when a **new shape** is detected. That's a
+strong signal — the dispatcher doesn't know about it yet. Required
+follow-up:
+
+1. Decide handling: route to `.skip` OR add a typed handler.
+2. Update `docs/claude-jsonl-mapping.md` §2 routing table.
+3. Update `docs/corpus-survey.md` with the new shape's
+   distribution + example uuid.
+4. Re-run `./scripts/run-e2e.sh` — the catalog now contains the
+   shape, the test passes.
+
+**Live-audit fallback:**
+
+The catalog tracks shape PRESENCE, not all per-shape statistics.
+Questions like "what fraction of tool_result lines have `is_error:
+true`?" or "how often does a queue-operation enqueue stay
+unconsumed?" still need a live corpus scan. Use the existing skill
+workflow for those — but cite the catalog as the starting point so
+the live scan augments rather than duplicates known data.
+```
+
+The skill update is **mandatory** — it's what closes the loop. The
+catalog without the skill update doesn't give future sessions a
+reason to consult it. **Add this to step 9 of the implementation
+order.**
+
+### Action item checklist for the next session
+
+- [ ] Land `CorpusSyntaxScanner` (Swift module under
+      `Tools/RegenerateE2EFixtures/` or a peer module — the scanner
+      is reusable beyond this one test).
+- [ ] Land `CorpusSyntaxCatalog` model (Codable struct mirroring the
+      JSON shape above).
+- [ ] Land `CorpusSyntaxAuditE2E.swift` test.
+- [ ] First run on the user's corpus generates the initial catalog;
+      commit it.
+- [ ] Add `--full-corpus-rescan` flag to `run-e2e.sh`.
+- [ ] Update `claude-jsonl-corpus` skill with the catalog-first
+      workflow.
+- [ ] Update `corpus-survey.md` to reference the catalog as the
+      empirical source-of-truth (the markdown stays the
+      human-readable narrative; the catalog is the structured data).
+
+---
+
 ## Implementation order
 
 Recommended execution sequence for the next session:
@@ -506,9 +752,10 @@ Recommended execution sequence for the next session:
 4. **Builder DEBUG seam** for invariant-checking (`awaitingParentCount` etc.). One commit.
 5. **`CorpusInvariantsE2E.swift` + heterogeneity selection** (one commit). Verify on local corpus.
 6. **`RegenerateE2EFixtures` CLI executable + per-fixture `regenerate.json` files + `scripts/run-e2e.sh`** (one commit). Verify by running `./scripts/run-e2e.sh` end-to-end on a populated corpus, then `./scripts/run-e2e.sh --skip-regenerate` to confirm the no-corpus path.
-7. **PII audit pass** (separate commit) — confirm redactor coverage; document findings.
-8. **Update `MIGRATION_PLAN.md` §16 + this handover doc** retiring marker (one commit).
-9. **Write a memory entry** (no code commit needed — saves to `~/.claude/projects/-Users-I505728-temp-github-cmux/memory/`) — see "Action item: post-landing memory entry" below.
+7. **Corpus syntax audit (Layer 2.5):** `CorpusSyntaxScanner` + `CorpusSyntaxCatalog` model + `CorpusSyntaxAuditE2E.swift` test + first-run catalog committed + `--full-corpus-rescan` flag in `run-e2e.sh`. One commit.
+8. **PII audit pass** (separate commit) — confirm redactor coverage; document findings.
+9. **Update `claude-jsonl-corpus` skill** to use the catalog as single source of truth. **Update `corpus-survey.md`** to reference the catalog. Update `MIGRATION_PLAN.md` §16 + this handover doc retiring marker. One commit.
+10. **Write the post-landing memory entry** (no code commit — saves to `~/.claude/projects/-Users-I505728-temp-github-cmux/memory/`) — see "Action item: post-landing memory entry" below.
 
 ## Action item: post-landing memory entry
 
