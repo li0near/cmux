@@ -62,8 +62,8 @@ struct ClaudeTranscriptBuilderReadTests {
     }
 
     @available(macOS 15, *)
-    @Test("Read status envelope ('File does not exist') falls through with lineNumberStart=nil")
-    func readStatusEnvelopeKeepsTextNoGutter() throws {
+    @Test("Read status envelope ('File does not exist') stays .text — parser miss falls back, no .code swap")
+    func readStatusEnvelopeStaysText() throws {
         let toolUseJSON = #"""
         {
           "type": "assistant",
@@ -99,12 +99,11 @@ struct ClaudeTranscriptBuilderReadTests {
         """#
         let agent = try buildAgent(assistantLines: [toolUseJSON, toolResultJSON])
         let tool = try #require(firstTool(in: agent))
-        guard case .code(.plain(let text, _, let lineNumberStart)) = tool.body.sections.last else {
-            Issue.record("Expected .code(.plain) result section; got \(tool.body.sections)")
+        guard case .text(let blocks, _) = tool.body.sections.last else {
+            Issue.record("Expected .text fallback for status envelope; got \(tool.body.sections)")
             return
         }
-        #expect(text.contains("File does not exist"))
-        #expect(lineNumberStart == nil)
+        #expect(blocks.joined().contains("File does not exist"))
     }
 
     @available(macOS 15, *)

@@ -72,20 +72,19 @@ public enum Section: Sendable {
 }
 
 /// Discriminated payload for ``Section/code(_:)``. Plain code carries
-/// raw text + an optional language hint + an optional line-number
-/// start (nil = no gutter, e.g. for Read status envelopes; integer =
-/// start counting from there, e.g. Read with `offset: 327` parses to
-/// 327); diff code carries the structured `[DiffHunk]` from the JSONL
-/// wire shape so the detail-tab serializer can rebuild the unified-diff
-/// text losslessly.
+/// raw text + an optional language hint + the line-number that the
+/// first row should display (Read with `offset: 327` parses to 327;
+/// no-offset Read parses to 1); diff code carries the structured
+/// `[DiffHunk]` from the JSONL wire shape so the detail-tab serializer
+/// can rebuild the unified-diff text losslessly.
 public enum CodeContent: Sendable {
-    /// File-content-shaped code. Renders as line-numbered rows when
-    /// `lineNumberStart` is set (Read tool result body, the line
-    /// numbers Claude Code embeds become the gutter values), or as
-    /// gutter-less code when it's nil (status envelopes like
-    /// "File does not exist" — sequential 1..N would be misleading).
-    /// `language` drives syntax highlighting when set.
-    case plain(text: String, language: String?, lineNumberStart: Int?)
+    /// File-content-shaped code (e.g. Read tool result body). Renders
+    /// as line-numbered rows starting at `lineNumberStart`,
+    /// syntax-highlighted by `language` when set. Status envelopes
+    /// (e.g. "File does not exist") never reach this case — the
+    /// builder leaves them as `Section.text(...)` so they render as
+    /// plain prose in a gray box.
+    case plain(text: String, language: String?, lineNumberStart: Int)
     /// Structured git-diff hunks. Renders as line-numbered rows with
     /// per-line classification (context / added / removed) and full-row
     /// red/green tints. The hunks survive the model layer untouched so

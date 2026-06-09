@@ -597,18 +597,14 @@ extension DetailContent {
     }
 
     /// Serialize `[DiffHunk]` back into a unified-diff string with
-    /// `diff --git a/<path> b/<path>` shell + `--- a/<path>` /
-    /// `+++ b/<path>` headers and one `@@ -X,Y +A,B @@` header per
-    /// hunk. The hunks' `lines` are already prefix-embedded
-    /// (` ` / `-` / `+`), so we emit them verbatim. The leading
-    /// `diff --git` line gives highlight.js's `diff` lang the
-    /// strongest recognition signal — it tints the file headers.
+    /// `--- a/<path>` / `+++ b/<path>` headers and one `@@ -X,Y +A,B @@`
+    /// header per hunk. The hunks' `lines` are already prefix-embedded
+    /// (` ` / `-` / `+`), so we emit them verbatim.
     private static func serializeUnifiedDiff(
         hunks: [DiffHunk],
         filePath: String
     ) -> String {
         var out: [String] = []
-        out.append("diff --git a/\(filePath) b/\(filePath)")
         out.append("--- a/\(filePath)")
         out.append("+++ b/\(filePath)")
         for hunk in hunks {

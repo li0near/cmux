@@ -69,11 +69,7 @@ struct CodeBlockView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(cap.visibleRows.enumerated()), id: \.offset) { _, row in
-                    rowView(
-                        row,
-                        maxDigits: cap.maxLineNumberDigits,
-                        showsGutter: cap.showsGutter
-                    )
+                    rowView(row, maxDigits: cap.maxLineNumberDigits)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
@@ -91,18 +87,16 @@ struct CodeBlockView: View {
 
     /// Project a `CodeContent` into the flat row stream the renderer
     /// consumes. Plain code: split text by `\n`, line numbers
-    /// `lineNumberStart..N` (or all nil when start is nil — gutter
-    /// suppressed for status envelopes). Diff code: delegate to
-    /// ``Array/toCodeRows()``.
+    /// `lineNumberStart..N`, classification = `.plain`. Diff code:
+    /// delegate to ``Array/toCodeRows()``.
     private func rowsFor(content: CodeContent) -> [CodeRow] {
         switch content {
         case .plain(let text, _, let lineNumberStart):
             let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
             return lines.enumerated().map { idx, slice in
-                let lineNumber: Int? = lineNumberStart.map { $0 + idx }
-                return CodeRow(kind: .line(
+                CodeRow(kind: .line(
                     text: String(slice),
-                    lineNumber: lineNumber,
+                    lineNumber: lineNumberStart + idx,
                     classification: .plain
                 ))
             }
@@ -121,7 +115,7 @@ struct CodeBlockView: View {
     }
 
     @ViewBuilder
-    private func rowView(_ row: CodeRow, maxDigits: Int, showsGutter: Bool) -> some View {
+    private func rowView(_ row: CodeRow, maxDigits: Int) -> some View {
         switch row.kind {
         case .hunkHeader(let text):
             Text(text)
@@ -133,22 +127,20 @@ struct CodeBlockView: View {
         case .line(let text, let lineNumber, let classification):
             let style = lineStyle(for: classification)
             HStack(alignment: .top, spacing: 0) {
-                if showsGutter {
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        Text(formatLineNumber(lineNumber, width: maxDigits))
-                            .font(Theme.SubRow.title)
-                            .foregroundStyle(style.gutterFg)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .padding(.trailing, 6)
-                        Text(style.glyph)
-                            .font(Theme.SubRow.title)
-                            .foregroundStyle(style.gutterFg)
-                            .frame(width: 12, alignment: .center)
-                    }
-                    .padding(.leading, 6)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .background(Rectangle().fill(style.gutterBg))
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(formatLineNumber(lineNumber, width: maxDigits))
+                        .font(Theme.SubRow.title)
+                        .foregroundStyle(style.gutterFg)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.trailing, 6)
+                    Text(style.glyph)
+                        .font(Theme.SubRow.title)
+                        .foregroundStyle(style.gutterFg)
+                        .frame(width: 12, alignment: .center)
                 }
+                .padding(.leading, 6)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(Rectangle().fill(style.gutterBg))
                 Text(highlightedText(text))
                     .font(Theme.SubRow.title)
                     .textSelection(.enabled)
@@ -264,12 +256,6 @@ struct CodeBlockView: View {
         let overflow: Bool
         let totalLines: Int
         let maxLineNumberDigits: Int
-        /// Whether to render the line-number / glyph gutter at all.
-        /// True when ANY row has a line number (Read) OR ANY row has
-        /// a non-`.plain` classification (diff content). False for
-        /// plain code with `lineNumberStart: nil` (e.g. Read status
-        /// envelopes — sequential 1..N numbering would be misleading).
-        let showsGutter: Bool
     }
 
     /// Truncate the projected row stream to the inline cap. The
@@ -284,34 +270,25 @@ struct CodeBlockView: View {
         var lineRowCount = 0
         var totalBytes = 0
         var maxLineNumber = 0
-        var hasLineNumber = false
-        var hasDiffClassification = false
         for row in rows {
             switch row.kind {
-            case .hunkHeader:
-                hasDiffClassification = true
-            case .line(let text, let lineNumber, let classification):
+            case .hunkHeader: continue
+            case .line(let text, let lineNumber, _):
                 lineRowCount += 1
                 totalBytes += text.utf8.count
                 if let n = lineNumber {
-                    hasLineNumber = true
                     maxLineNumber = max(maxLineNumber, n)
-                }
-                if classification != .plain {
-                    hasDiffClassification = true
                 }
             }
         }
         let maxDigits = max(1, String(maxLineNumber).count)
-        let showsGutter = hasLineNumber || hasDiffClassification
         let overflow = lineRowCount > lineCap || totalBytes > byteCap
         if !overflow {
             return CapResult(
                 visibleRows: rows,
                 overflow: false,
                 totalLines: lineRowCount,
-                maxLineNumberDigits: maxDigits,
-                showsGutter: showsGutter
+                maxLineNumberDigits: maxDigits
             )
         }
         var visible: [CodeRow] = []
@@ -333,8 +310,7 @@ struct CodeBlockView: View {
             visibleRows: visible,
             overflow: true,
             totalLines: lineRowCount,
-            maxLineNumberDigits: maxDigits,
-            showsGutter: showsGutter
+            maxLineNumberDigits: maxDigits
         )
     }
 }

@@ -289,7 +289,6 @@ struct DetailContentResolverTests {
         let content = DetailContent.resolve(request: request, entry: entry)
         let expected = """
         ```diff
-        diff --git a/\("/abs/foo.swift") b/\("/abs/foo.swift")
         --- a/\("/abs/foo.swift")
         +++ b/\("/abs/foo.swift")
         @@ -10,3 +10,3 @@

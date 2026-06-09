@@ -1039,16 +1039,16 @@ struct ClaudeTranscriptBuilder {
             // gutter shows real file line numbers (with `offset:` /
             // `limit:` honored) and strip them from the rendered text.
             // Status envelopes (e.g. "File does not exist") fall
-            // through with `lineNumberStart: nil` — gutter suppressed.
+            // through unchanged — the section stays `.text` and renders
+            // as plain prose in a gray box.
             let language = LanguagePicker.language(forFilePath: path)
             update.resultSections = update.resultSections.map { section in
-                if case .text(let blocks, _) = section {
-                    let raw = blocks.joined(separator: "\n")
-                    let (text, lineNumberStart) = Self.parseReadLineNumbers(raw)
+                if case .text(let blocks, _) = section,
+                   let parsed = Self.parseReadLineNumbers(blocks.joined(separator: "\n")) {
                     return .code(.plain(
-                        text: text,
+                        text: parsed.text,
                         language: language,
-                        lineNumberStart: lineNumberStart
+                        lineNumberStart: parsed.lineNumberStart
                     ))
                 }
                 return section
@@ -1080,13 +1080,13 @@ struct ClaudeTranscriptBuilder {
 
     /// Parse Claude Code's Read tool result format
     /// (`<padded-num>\t<text>` per line) into stripped content + the
-    /// first line's number. Status envelopes (no numbered output) fall
-    /// through with `lineNumberStart = nil` — the renderer suppresses
-    /// the gutter for those. Corpus probe 2026-06-10 (9,872 results /
-    /// 776 sessions): 99.86% of non-empty lines match `^\s*\d+\t`; the
-    /// 0.14% remainder are whole-result envelopes (errors, dedup
+    /// first line's number. Returns nil for status envelopes (no
+    /// numbered output) — caller leaves the section as `.text` so it
+    /// renders as plain prose. Corpus probe 2026-06-10 (9,872 results
+    /// / 776 sessions): 99.86% of non-empty lines match `^\s*\d+\t`;
+    /// the 0.14% remainder are whole-result envelopes (errors, dedup
     /// markers) that never interleave numbered output.
-    private static func parseReadLineNumbers(_ raw: String) -> (text: String, lineNumberStart: Int?) {
+    private static func parseReadLineNumbers(_ raw: String) -> (text: String, lineNumberStart: Int)? {
         let lines = raw.split(separator: "\n", omittingEmptySubsequences: false)
         var stripped: [String] = []
         stripped.reserveCapacity(lines.count)
@@ -1098,11 +1098,12 @@ struct ClaudeTranscriptBuilder {
             }
             guard let m = line.firstMatch(of: #/\A\s*(\d+)\t(.*)\z/#),
                   let n = Int(m.output.1) else {
-                return (raw, nil)
+                return nil
             }
             if firstNumber == nil { firstNumber = n }
             stripped.append(String(m.output.2))
         }
+        guard let firstNumber else { return nil }
         return (stripped.joined(separator: "\n"), firstNumber)
     }
 
