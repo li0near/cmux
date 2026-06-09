@@ -336,9 +336,35 @@ final class AgentXrayWorkspaceHost: AgentXrayHost {
         activate: Bool,
         reuseExisting: Bool
     ) -> UUID? {
+        openFileInPanel(
+            fileURL,
+            activate: activate,
+            reuseExisting: reuseExisting,
+            inPaneOfPanel: nil
+        )
+    }
+
+    /// Internal variant — opens the new tab in the pane that
+    /// already hosts `inPaneOfPanel` (the AgentX-ray panel that
+    /// triggered the click), so detail tabs land as siblings of
+    /// AgentX-ray instead of in the focused terminal's pane.
+    /// Falls back to `focusedPaneId` then to the first available
+    /// pane when the panel can't be located (e.g. the panel was
+    /// just closed). When `activate` is true the workspace's
+    /// `newMarkdownSurface` / `newFilePreviewSurface` path also
+    /// calls `focusPane(paneId)` / `selectTab(newTabId)`, so focus
+    /// follows the new tab into the AgentX-ray pane.
+    @discardableResult
+    func openFileInPanel(
+        _ fileURL: URL,
+        activate: Bool,
+        reuseExisting: Bool,
+        inPaneOfPanel panelID: UUID?
+    ) -> UUID? {
         guard let workspace else { return nil }
         guard
-            let paneId = workspace.bonsplitController.focusedPaneId
+            let paneId = panelID.flatMap({ workspace.paneId(forPanelId: $0) })
+                ?? workspace.bonsplitController.focusedPaneId
                 ?? workspace.bonsplitController.allPaneIds.first
         else { return nil }
         let panels = workspace.openFileSurfaces(

@@ -28,7 +28,8 @@ extension AgentXrayWorkspaceHost {
             _ = openFileInPanel(
                 URL(fileURLWithPath: path),
                 activate: activate,
-                reuseExisting: true
+                reuseExisting: true,
+                inPaneOfPanel: panelID
             )
             return nil
 
@@ -47,7 +48,8 @@ extension AgentXrayWorkspaceHost {
                     _ = self.openFileInPanel(
                         url,
                         activate: activate,
-                        reuseExisting: true
+                        reuseExisting: true,
+                        inPaneOfPanel: panelID
                     )
                 }
             }
@@ -71,7 +73,8 @@ extension AgentXrayWorkspaceHost {
                     _ = self.openFileInPanel(
                         url,
                         activate: activate,
-                        reuseExisting: true
+                        reuseExisting: true,
+                        inPaneOfPanel: panelID
                     )
                 }
             }
