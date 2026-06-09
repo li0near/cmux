@@ -504,6 +504,12 @@ and FAILS LOUDLY when a new shape surfaces — that's the signal to
 update the dispatcher (route to `.skip` or add a handler) AND update
 the docs.
 
+**The catalog also drives parameterized unit tests** — every shape
+in the catalog generates 3 auto-derived test cases (decode, route,
+build-without-crash). When a new shape lands, the parameterized
+tests fail per-shape with a specific "TBD — triage and update
+catalog" message. See "Layer 2.6" below.
+
 ### Why it exists
 
 Claude Code rolls out wire-format additions silently between releases.
@@ -742,6 +748,238 @@ order.**
 
 ---
 
+## Layer 2.6 — Catalog-driven parameterized unit tests
+
+The catalog isn't just a passive record — it's an **active driver
+of unit-test coverage**. Every shape in the catalog generates 3
+auto-derived test cases via `@Test(arguments: catalogShapes())`. New
+catalog entries → new test cases at the next test-discovery pass.
+**No code generation.**
+
+### Catalog field addition
+
+Each shape in `syntax-catalog.json` carries a triage decision:
+
+```json
+"type=user|content=blocks|blocks=[tool_result]": {
+  "count": 8743,
+  "firstSeen": { "session": "abc-...", "lineIndex": 12 },
+  "lastSeen": "...",
+  "exampleLine": "<<<full JSONL line text, redacted per the redactor policy>>>",
+  "dispatcherExpectation": {
+    "kind": "render",
+    "value": "agent",
+    "rationale": "tool_result mutates an existing ToolEntry (post-G6 design)"
+  }
+}
+```
+
+`dispatcherExpectation.kind` ∈ `"skip"` / `"render"` / `"renderSpecial"` / `"queueOperation"` / `"TBD"`.
+
+`dispatcherExpectation.value` pins the case associated with `render`
+/ `renderSpecial` (e.g. `"agent"`, `"user"`, `"queuedPrompt"`,
+`"recap"`); `null` for `"skip"` / `"queueOperation"` / `"TBD"`.
+
+`exampleLine` carries the full redacted JSONL text of the first
+example for that shape. Stored in the catalog so tests can decode +
+dispatch + build without re-reading from disk.
+
+### When the audit detects a new shape
+
+Auto-set:
+
+```json
+"dispatcherExpectation": {
+  "kind": "TBD",
+  "value": null,
+  "rationale": "NEW — set after triage on YYYY-MM-DD"
+}
+```
+
+This makes the new shape's per-shape parameterized tests fail until
+the developer manually triages.
+
+### Parameterized tests
+
+`Tests/CmuxAgentXrayTests/E2E/CorpusShapeRoutingE2E.swift`:
+
+```swift
+import Testing
+@testable import CmuxAgentXray
+
+@Suite("E2E — every catalog shape (parameterized)")
+struct CorpusShapeRoutingE2E {
+
+    /// Read the catalog once at test-discovery time. New entries =
+    /// new test cases on the next run.
+    private static func catalogShapes() -> [CatalogShape] {
+        guard let url = Bundle.module.url(
+            forResource: "syntax-catalog", withExtension: "json",
+            subdirectory: "Fixtures/Corpus"
+        ),
+        let data = try? Data(contentsOf: url),
+        let catalog = try? JSONDecoder().decode(CorpusSyntaxCatalog.self, from: data)
+        else { return [] }   // empty array → all 3 tests below run zero cases (catalog absent)
+        return catalog.shapes.map { (key, value) in
+            CatalogShape(fingerprint: key, entry: value)
+        }
+    }
+
+    @Test("Every catalog shape decodes cleanly", arguments: catalogShapes())
+    func decodes(shape: CatalogShape) throws {
+        _ = try AgentXrayJSON.decoder.decode(
+            ClaudeJSONLLine.self,
+            from: Data(shape.entry.exampleLine.utf8)
+        )
+    }
+
+    @Test("Every catalog shape routes to its expected dispatcher arm", arguments: catalogShapes())
+    func routesToExpected(shape: CatalogShape) throws {
+        let expectation = shape.entry.dispatcherExpectation
+        if expectation.kind == "TBD" {
+            Issue.record("""
+                Shape `\(shape.fingerprint)` is TBD in the catalog.
+
+                Action required:
+                  1. Decide routing: skip / render(<kind>) / renderSpecial(<kind>) / queueOperation.
+                  2. If skip — confirm the dispatcher's existing skip rules cover it; otherwise extend them.
+                  3. If render/renderSpecial/queueOperation — confirm the existing handler accepts the shape; otherwise add a handler.
+                  4. Edit Tests/CmuxAgentXrayTests/Fixtures/Corpus/syntax-catalog.json:
+                       set dispatcherExpectation.kind + value + rationale (replacing "NEW — set after triage…").
+                  5. Re-run ./scripts/run-e2e.sh.
+
+                First seen at: \(shape.entry.firstSeen)
+                """)
+            return
+        }
+        let line = try AgentXrayJSON.decoder.decode(
+            ClaudeJSONLLine.self,
+            from: Data(shape.entry.exampleLine.utf8)
+        )
+        let routing = ClaudeLineDispatcher.route(line)
+        #expect(routing.matchesExpectation(expectation),
+                "Shape `\(shape.fingerprint)` routed to \(routing) but expected \(expectation).")
+    }
+
+    @Test("Every catalog shape builds without crash", arguments: catalogShapes())
+    func buildsWithoutCrash(shape: CatalogShape) throws {
+        let line = try AgentXrayJSON.decoder.decode(
+            ClaudeJSONLLine.self,
+            from: Data(shape.entry.exampleLine.utf8)
+        )
+        var builder = ClaudeTranscriptBuilder()
+        builder.ingest(line)
+        _ = builder.transcript()  // returning at all = pass; trap signals corruption
+    }
+}
+
+struct CatalogShape {
+    let fingerprint: String
+    let entry: CorpusSyntaxCatalog.ShapeEntry
+}
+```
+
+### Routing comparator
+
+A small extension on `ClaudeLineRouting`:
+
+```swift
+extension ClaudeLineRouting {
+    func matchesExpectation(_ exp: CorpusSyntaxCatalog.DispatcherExpectation) -> Bool {
+        switch (self, exp.kind) {
+        case (.skip, "skip"):
+            return true
+        case (.queueOperation, "queueOperation"):
+            return true
+        case (.render(let kind), "render"):
+            return String(describing: kind) == exp.value
+        case (.renderSpecial(let kind), "renderSpecial"):
+            return String(describing: kind) == exp.value
+        default:
+            return false
+        }
+    }
+}
+```
+
+(The `String(describing:)` comparison is fine because
+`ClaudeRenderKind` and `ClaudeSpecialKind` are simple enums; no
+associated-value escapes the comparison surface for the values we
+care about. `slashCmdInput(name:args:)` and similar
+parameterized-special-kinds get fingerprinted as
+`"slashCmdInput(name:..., args:...)"`; the catalog stores the
+high-level shape `"slashCmdInput"` and we extend the matcher to
+prefix-compare for those cases.)
+
+### Closed feedback loop
+
+1. New session in `~/.claude/projects/` carries a syntax shape never
+   seen before.
+2. `./scripts/run-e2e.sh` runs the audit. The audit:
+   - Detects the new shape.
+   - Adds it to `syntax-catalog.json` with `dispatcherExpectation: {kind: "TBD", ...}` and `exampleLine` populated.
+   - The audit test FAILS (Layer 2.5 behavior — "new shape detected").
+3. **Plus**: the parameterized tests in Layer 2.6 fail for the new
+   shape:
+   - `decodes(shape:)` — usually passes (the line did decode for the audit).
+   - `routesToExpected(shape:)` — fails with "TBD — triage required" message.
+   - `buildsWithoutCrash(shape:)` — passes if the dispatcher's
+     fallback (unknown type → `.skip`) is still in place; fails if
+     the new shape exposes a crash path.
+4. Developer:
+   - Decides routing.
+   - Implements dispatcher / handler if needed.
+   - Edits the catalog: sets `dispatcherExpectation.kind` + `value` + `rationale`.
+   - Re-runs `./scripts/run-e2e.sh`.
+5. All four failures clear; the catalog now records the triage
+   decision permanently.
+
+### Coverage budget
+
+The catalog is bounded — ~50-100 distinct shapes once stable
+(corpus has ~10 line types × ~10 subtypes / attachment-types ×
+~5 content-block-multisets × xml-wrapper variants, but most
+combinations don't exist in practice).
+
+Three parameterized tests × ~80 shapes = ~240 effective test cases
+auto-derived from corpus reality. Swift Testing parallelizes; total
+runtime negligible (~10ms total per parameterized arm at the unit
+size we're testing).
+
+### Testing-pyramid placement
+
+Layer 2.6 tests are **unit-tier** (single line in, decode/route/build
+out — no multi-line interactions, no full transcript shape
+assertion). Layer 1 fixture tests cover the multi-line scenarios.
+Layer 2 corpus invariants cover the structural-property checks. So:
+
+| Layer | Coverage axis | Fixture source |
+|---|---|---|
+| Existing inline unit tests | Per-feature behaviors | Inline heredoc |
+| **Layer 1** | Hand-pinned scenarios (multi-line) | `Fixtures/Claude/<scenario>/input.jsonl` |
+| **Layer 2** | Structural invariants on real corpus | `~/.claude/projects/` (heterogeneity-selected) |
+| **Layer 2.5** | Catalog of every shape ever seen | `Fixtures/Corpus/syntax-catalog.json` |
+| **Layer 2.6** | Per-shape unit tests, auto-enumerated | Same catalog (reads `exampleLine` field) |
+
+The four layers cover orthogonal axes; minimal overlap.
+
+### Action item checklist for the next session (Layer 2.6 additions)
+
+- [ ] Add `dispatcherExpectation` + `exampleLine` fields to the
+      `CorpusSyntaxCatalog.ShapeEntry` Codable model.
+- [ ] First-run audit populates `dispatcherExpectation.kind = "TBD"`
+      for every newly cataloged shape; the developer triages each
+      one before committing the initial catalog.
+- [ ] Land `CorpusShapeRoutingE2E.swift` with the 3 parameterized
+      tests.
+- [ ] Land the `ClaudeLineRouting.matchesExpectation(_:)` extension.
+      Place under `Adapters/Claude/Dispatchers/` next to
+      `ClaudeLineRouting`.
+- [ ] Verify `./scripts/run-e2e.sh` runs the parameterized tests and
+      reports per-shape pass/fail status.
+
+---
+
 ## Implementation order
 
 Recommended execution sequence for the next session:
@@ -752,10 +990,11 @@ Recommended execution sequence for the next session:
 4. **Builder DEBUG seam** for invariant-checking (`awaitingParentCount` etc.). One commit.
 5. **`CorpusInvariantsE2E.swift` + heterogeneity selection** (one commit). Verify on local corpus.
 6. **`RegenerateE2EFixtures` CLI executable + per-fixture `regenerate.json` files + `scripts/run-e2e.sh`** (one commit). Verify by running `./scripts/run-e2e.sh` end-to-end on a populated corpus, then `./scripts/run-e2e.sh --skip-regenerate` to confirm the no-corpus path.
-7. **Corpus syntax audit (Layer 2.5):** `CorpusSyntaxScanner` + `CorpusSyntaxCatalog` model + `CorpusSyntaxAuditE2E.swift` test + first-run catalog committed + `--full-corpus-rescan` flag in `run-e2e.sh`. One commit.
-8. **PII audit pass** (separate commit) — confirm redactor coverage; document findings.
-9. **Update `claude-jsonl-corpus` skill** to use the catalog as single source of truth. **Update `corpus-survey.md`** to reference the catalog. Update `MIGRATION_PLAN.md` §16 + this handover doc retiring marker. One commit.
-10. **Write the post-landing memory entry** (no code commit — saves to `~/.claude/projects/-Users-I505728-temp-github-cmux/memory/`) — see "Action item: post-landing memory entry" below.
+7. **Corpus syntax audit (Layer 2.5):** `CorpusSyntaxScanner` + `CorpusSyntaxCatalog` model (with `dispatcherExpectation` + `exampleLine` fields) + `CorpusSyntaxAuditE2E.swift` test + first-run catalog committed (with **manual triage** of `dispatcherExpectation` for every initial shape) + `--full-corpus-rescan` flag in `run-e2e.sh`. One commit.
+8. **Catalog-driven parameterized tests (Layer 2.6):** `CorpusShapeRoutingE2E.swift` + `matchesExpectation(_:)` extension on `ClaudeLineRouting`. One commit.
+9. **PII audit pass** (separate commit) — confirm redactor coverage of `exampleLine` fields too; document findings.
+10. **Update `claude-jsonl-corpus` skill** to use the catalog as single source of truth. **Update `corpus-survey.md`** to reference the catalog. Update `MIGRATION_PLAN.md` §16 + this handover doc retiring marker. One commit.
+11. **Write the post-landing memory entry** (no code commit — saves to `~/.claude/projects/-Users-I505728-temp-github-cmux/memory/`) — see "Action item: post-landing memory entry" below.
 
 ## Action item: post-landing memory entry
 
