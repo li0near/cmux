@@ -205,15 +205,31 @@ struct ClaudeTranscriptBuilder {
     /// the index so future children's parent resolution is O(1). No-op
     /// if the line's own append already registered the uuid (real
     /// entries win).
+    ///
+    /// Lines whose parent uuid is missing/empty (e.g., session-orphan
+    /// metadata, top-level attachments like `hook_success` whose
+    /// `parentUuid` is null) still get aliased — at the empty path
+    /// `[]` — so their children resolve via the empty-path
+    /// fallthrough (pool gate sees `path(of:)` returning
+    /// `Optional.some([])`, treats parent as resolved; assistant arm's
+    /// `parentPath.first` returns nil and creates a fresh AgentEntry
+    /// at top-level). Without this, a single `hook_success` parent
+    /// blocks every descendant in cascade and the transcript
+    /// renders empty.
     private func registerLineAlias(
         _ line: ClaudeJSONLLine,
         ctx: inout BuildContext
     ) {
         let lineId = EntryID.fromJSONL(line.stableId)
-        if ctx.root.path(of: lineId) != nil { return }
-        guard let parentUuid = line.parentUuid, !parentUuid.isEmpty,
-              let parentPath = ctx.root.path(of: .fromJSONL(parentUuid))
-        else { return }
+        if ctx.root.path(of: lineId) != nil { return }   // covered by real append
+        let parentPath: [Int]
+        if let parentUuid = line.parentUuid, !parentUuid.isEmpty {
+            // Pool gate above guarantees parent is in index when we
+            // reach here; the `?? []` is defensive.
+            parentPath = ctx.root.path(of: .fromJSONL(parentUuid)) ?? []
+        } else {
+            parentPath = []
+        }
         ctx.root.registerAlias(lineUuid: lineId, path: parentPath)
     }
 

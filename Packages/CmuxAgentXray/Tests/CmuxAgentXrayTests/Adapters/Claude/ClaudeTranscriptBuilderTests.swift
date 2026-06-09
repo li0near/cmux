@@ -481,4 +481,65 @@ struct ClaudeTranscriptBuilderTests {
         #expect(agent?.perTurnDurationMs == 1234)
         #expect(agent?.messageCount == 3)
     }
+
+    @Test("Skipped attachment with null parentUuid still aliases — children chaining off it don't pool forever")
+    func skippedOrphanAttachmentDoesNotBlockDescendants() throws {
+        // Real-corpus shape (verified 2026-06-09 in this very session):
+        // line 0 is an `attachment/hook_success` with parentUuid=null.
+        // hook_success is not in AttachmentLineDispatcher's render set,
+        // so it routes to .skip. Without aliasing the orphan to []
+        // path, every descendant (the user prompt that follows, plus
+        // its entire turn chain) blocks in awaitingParent and the
+        // transcript renders empty.
+        let attachJSON = #"""
+        {
+          "type": "attachment",
+          "uuid": "attach-1",
+          "parentUuid": null,
+          "timestamp": "2026-06-05T10:00:00.000Z",
+          "attachment": {"type": "hook_success", "hookName": "x"}
+        }
+        """#
+        let userJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u1",
+          "parentUuid": "attach-1",
+          "timestamp": "2026-06-05T10:00:01.000Z",
+          "message": {"role": "user", "content": "hello"}
+        }
+        """#
+        let assistantJSON = #"""
+        {
+          "type": "assistant",
+          "uuid": "a1",
+          "parentUuid": "u1",
+          "timestamp": "2026-06-05T10:00:02.000Z",
+          "message": {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "hi"}]
+          }
+        }
+        """#
+        var builder = ClaudeTranscriptBuilder()
+        try builder.ingest(decodeLine(attachJSON))
+        try builder.ingest(decodeLine(userJSON))
+        try builder.ingest(decodeLine(assistantJSON))
+
+        let entries = builder.transcript()
+        // [user, agent] — the hook_success attachment is skipped (no
+        // entry produced) but its alias unblocks the user + agent
+        // descendants.
+        let userEntries = entries.compactMap { entry -> UserEntry? in
+            if case .user(let u) = entry { return u }
+            return nil
+        }
+        let agentEntries = entries.compactMap { entry -> AgentEntry? in
+            if case .agent(let a) = entry { return a }
+            return nil
+        }
+        #expect(userEntries.count == 1)
+        #expect(agentEntries.count == 1)
+        #expect(agentEntries.first?.subEntries.count == 1)
+    }
 }
