@@ -61,6 +61,15 @@ public final class EntryComputedCache {
                     return sum + toolName.utf8.count
                 case .offloadedOutput(let off):
                     return sum + off.path.utf8.count + off.sizeLabel.utf8.count
+                case .diffHunks(let hunks):
+                    // Sum each hunk line's UTF-8 byte count so two
+                    // transcripts that differ only in hunk content
+                    // produce distinct signatures (cache must not
+                    // return stale Computed for a body whose only
+                    // change is the diff content itself).
+                    return sum + hunks.reduce(0) { hunkSum, hunk in
+                        hunkSum + hunk.lines.reduce(0) { $0 + $1.utf8.count }
+                    }
                 }
             }
             self.displayMode = displayMode
@@ -122,12 +131,14 @@ public final class EntryComputedCache {
                 let joined = blocks.joined(separator: "\n")
                 let words = joined.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
                 totalWordCount += words
-            case .image, .toolReference, .offloadedOutput:
-                // Image / toolReference / offloadedOutput sections render
-                // as a single visual unit (thumbnail / chip / link); they
-                // don't participate in cap-based truncation. Empty content
-                // prevents the walker from emitting an "open detail" link
-                // for them.
+            case .image, .toolReference, .offloadedOutput, .diffHunks:
+                // Image / toolReference / offloadedOutput / diffHunks
+                // sections render as a single visual unit (thumbnail /
+                // chip / link / DiffHunkView). They don't participate
+                // in the cap-based truncation here — `DiffHunkView`
+                // computes its own cap state at render time. Empty
+                // content prevents the walker from emitting an
+                // "open detail" link for them.
                 sections.append(.empty)
             }
         }

@@ -43,6 +43,12 @@ struct EntryBodyView: View {
             ToolReferenceChipView(toolName: toolName, palette: palette)
         case .offloadedOutput(let off):
             OffloadedOutputLinkView(offloaded: off, palette: palette, action: onOpenDetail)
+        case .diffHunks:
+            // Phase H6 lands the inline DiffHunkView. Until then,
+            // diff-hunks sections render as a no-op so the build stays
+            // green from H2 onward (placeholder only — no producer
+            // emits .diffHunks until H4).
+            EmptyView()
         }
     }
 

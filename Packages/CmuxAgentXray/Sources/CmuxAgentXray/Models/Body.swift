@@ -26,8 +26,17 @@ public struct Body: Equatable, Sendable {
 ///
 /// Pure rendering payloads. Container-shape data (nested children)
 /// lives on the parent ``Entry``'s `subEntries` projection, not in a
-/// section. Re-evaluate if a 5th rendering case becomes necessary.
-public enum Section: Equatable, Sendable {
+/// section.
+///
+/// `Section` defines a custom `==` so the `.diffHunks` case compares
+/// hunks by their structural signature only (count + per-hunk header
+/// tuple + per-hunk line count) — synthesizing equality would
+/// deep-walk every line of every hunk, and `DetailContent: Equatable`
+/// runs that comparison on every reactive update. Hunks are immutable
+/// per builder pass, so a structural-signature collision across
+/// distinct edits is vanishingly unlikely. Other cases compare their
+/// associated values normally.
+public enum Section: Sendable {
     /// Inline text block(s) rendered in a gray background. The `style`
     /// drives per-section visual treatment (italic, error red, etc.).
     /// Detail-tab rendering hint (markdown / json / code / diff) is
@@ -47,6 +56,46 @@ public enum Section: Equatable, Sendable {
     /// on disk. The renderer surfaces an "↗ Open offloaded result" link;
     /// the detail-tab resolver reads the file lazily on click.
     case offloadedOutput(OffloadedOutput)
+    /// Pre-computed git-diff hunks from Claude Code's
+    /// `toolUseResult.structuredPatch[]`. Used for Edit / MultiEdit /
+    /// Write-update result sections; the renderer paints each line
+    /// (context / removed / added) with its own background color +
+    /// line-number gutters. Detail-tab routing serializes back to a
+    /// unified-diff string wrapped in a ```diff fence.
+    case diffHunks([DiffHunk])
+}
+
+extension Section: Equatable {
+    public static func == (lhs: Section, rhs: Section) -> Bool {
+        switch (lhs, rhs) {
+        case (.text(let lb, let ls), .text(let rb, let rs)):
+            return lb == rb && ls == rs
+        case (.image(let l), .image(let r)):
+            return l == r
+        case (.toolReference(let l), .toolReference(let r)):
+            return l == r
+        case (.offloadedOutput(let l), .offloadedOutput(let r)):
+            return l == r
+        case (.diffHunks(let l), .diffHunks(let r)):
+            // Cheap structural-signature comparison — see the type's
+            // doc comment for the rationale. Avoids deep walks on every
+            // reactive `DetailContent: Equatable` comparison.
+            guard l.count == r.count else { return false }
+            for (lhsHunk, rhsHunk) in zip(l, r) {
+                if lhsHunk.oldStart != rhsHunk.oldStart
+                    || lhsHunk.oldLines != rhsHunk.oldLines
+                    || lhsHunk.newStart != rhsHunk.newStart
+                    || lhsHunk.newLines != rhsHunk.newLines
+                    || lhsHunk.lines.count != rhsHunk.lines.count {
+                    return false
+                }
+            }
+            return true
+        case (.text, _), (.image, _), (.toolReference, _),
+             (.offloadedOutput, _), (.diffHunks, _):
+            return false
+        }
+    }
 }
 
 /// Visual treatment applied to a `.text` section.
@@ -57,13 +106,13 @@ public enum TextStyle: Equatable, Sendable {
     case thinking
     /// Red foreground — used for tool error results.
     case error
-    /// Green foreground — used for added lines in unified-diff
-    /// rendering. Ships with Phase D's foundation; the detail-tab
-    /// diff renderer (follow-up PR) consumes the style alongside
-    /// ``ContentType/diff``.
+    /// Green foreground — Phase F's pre-structuredPatch placeholder
+    /// for added diff lines. No producer post-Phase H; case retained
+    /// transitionally and dropped in H5.
     case diffAdded
-    /// Red foreground — used for removed lines in unified-diff
-    /// rendering.
+    /// Red foreground — Phase F's pre-structuredPatch placeholder for
+    /// removed diff lines. No producer post-Phase H; case retained
+    /// transitionally and dropped in H5.
     case diffRemoved
     /// Monospace foreground — used for code spans inside markdown
     /// or for a fully-monospaced code section (alongside
@@ -71,11 +120,154 @@ public enum TextStyle: Equatable, Sendable {
     case codeMonospace
 }
 
+/// Image content carried in a ``Section/image(_:)``. Two parents in the
+/// corpus today (verified 2026-06-07):
+/// - User-pasted screenshots in top-level `user.message.content[]`.
+/// - Tool-returned screenshots in `tool_result.content[]` (e.g. Playwright
+///   `browser_take_screenshot`).
+///
+/// The base64 payload is kept as `String` and **lazy-decoded** at render
+/// time (in `Task.detached`, never on the main thread) so we don't pay
+/// the ~150KB-per-image decode cost during transcript build.
+public struct ImageSource: Equatable, Sendable {
+    /// Encoding of `data`. Today only `.base64` is observed; URL-mode
+    /// is in the Anthropic Messages API spec but absent from the corpus.
+    public enum Kind: Equatable, Sendable { case base64 }
+
+    public let kind: Kind
+    /// MIME type, e.g. `"image/png"`, `"image/jpeg"`.
+    public let mediaType: String
+    /// Base64-encoded image bytes (no `data:` prefix).
+    public let data: String
+
+    public init(kind: Kind = .base64, mediaType: String, data: String) {
+        self.kind = kind
+        self.mediaType = mediaType
+        self.data = data
+    }
+}
+
+/// Stub representing Claude Code's `<persisted-output>` wrapper —
+/// the inline placeholder that CC injects when a tool's stdout exceeds
+/// its size threshold. Real bytes are written to a `.txt` / `.json`
+/// file on disk and referenced by absolute path.
+///
+/// Two-commit corpus shape (verified 2026-06-07, 97 files / 78 distinct
+/// sessions):
+/// ```
+/// <persisted-output>
+/// Output too large (29.3KB). Full output saved to: /Users/<...>/<...>.txt
+///
+/// Preview (first 2KB):
+/// <preview bytes>
+/// </persisted-output>
+/// ```
+/// ~21 of 252 corpus occurrences truncate before the close tag — the
+/// detector must match on the open tag + canonical "Output too large"
+/// line only. Path always ends in `.txt` (most) or `.json`.
+public struct OffloadedOutput: Equatable, Sendable {
+    /// Absolute path to the offloaded `.txt` or `.json` file.
+    public let path: String
+    /// Display-friendly size label (e.g. `"29.3KB"`, `"1.2MB"`).
+    public let sizeLabel: String
+    /// First ~2 KB inlined by CC after the path line. nil when the
+    /// wrapper truncated before the preview header (rare).
+    public let preview: String?
+
+    public init(path: String, sizeLabel: String, preview: String? = nil) {
+        self.path = path
+        self.sizeLabel = sizeLabel
+        self.preview = preview
+    }
+}
+
+/// One git-diff hunk inside a structured patch — the rendering shape
+/// for an Edit / MultiEdit / Write-update result. Decodes directly
+/// from Claude Code's JSONL `toolUseResult.structuredPatch[]` array,
+/// which means the wire shape and the rendering shape are the same
+/// type (no intermediate parser needed). The wire layer references
+/// this Models type through ``ClaudeToolUseResult/structuredPatch``;
+/// the layering bend mirrors the existing
+/// ``ClaudeJSONLLine/attachment`` referencing ``ClaudeAttachment``.
+///
+/// Lines in ``lines`` are pre-prefixed by Claude Code: each entry
+/// starts with one of `' '` (context), `'-'` (removed), or `'+'`
+/// (added) followed by the line text. The renderer peeks at the
+/// line's `first` to classify; ``classifyLine(_:)`` is the canonical
+/// helper.
+public struct DiffHunk: Decodable, Equatable, Sendable {
+    /// 1-indexed first line of the pre-edit file represented by this
+    /// hunk.
+    public let oldStart: Int
+    /// Number of pre-edit file lines covered (counts both context and
+    /// removed lines).
+    public let oldLines: Int
+    /// 1-indexed first line of the post-edit file.
+    public let newStart: Int
+    /// Number of post-edit file lines covered (counts both context and
+    /// added lines).
+    public let newLines: Int
+    /// Per-line entries in arrival order. Each line's first character
+    /// is the diff prefix (` ` / `-` / `+`); use ``classifyLine(_:)``
+    /// to split into kind + text.
+    public let lines: [String]
+
+    public init(
+        oldStart: Int,
+        oldLines: Int,
+        newStart: Int,
+        newLines: Int,
+        lines: [String]
+    ) {
+        self.oldStart = oldStart
+        self.oldLines = oldLines
+        self.newStart = newStart
+        self.newLines = newLines
+        self.lines = lines
+    }
+
+    /// One classified line: a kind (context / removed / added) plus
+    /// the line text without its prefix character.
+    public struct Line: Equatable, Sendable {
+        public enum Kind: Equatable, Sendable {
+            case context
+            case removed
+            case added
+        }
+        public let kind: Kind
+        public let text: String
+
+        public init(kind: Kind, text: String) {
+            self.kind = kind
+            self.text = text
+        }
+    }
+
+    /// Classify a prefix-embedded line. `' '` → `.context`, `'-'` →
+    /// `.removed`, `'+'` → `.added`. Defensive fallback for unprefixed
+    /// or empty lines: treats them as context with the full text
+    /// preserved (unobserved in the corpus, but cheap insurance).
+    public static func classifyLine(_ line: String) -> Line {
+        guard let first = line.first else {
+            return Line(kind: .context, text: "")
+        }
+        switch first {
+        case "-": return Line(kind: .removed, text: String(line.dropFirst()))
+        case "+": return Line(kind: .added, text: String(line.dropFirst()))
+        case " ": return Line(kind: .context, text: String(line.dropFirst()))
+        default:  return Line(kind: .context, text: line)
+        }
+    }
+}
+
 // MARK: - Convenience accessors
 
 extension Body {
     /// Concatenated text content from every `.text` section, joined
     /// by `"\n"`. Returns "" when the body is header-only.
+    /// `.diffHunks` sections are not walked — diff bodies are surfaced
+    /// through dedicated `.diffHunks`-aware paths (renderer + detail
+    /// resolver), not via plain text concatenation.
     public var textContent: String {
         var parts: [String] = []
         for section in sections {
@@ -86,4 +278,3 @@ extension Body {
         return parts.joined(separator: "\n")
     }
 }
-
