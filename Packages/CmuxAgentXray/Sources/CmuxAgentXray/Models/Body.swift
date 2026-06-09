@@ -87,6 +87,25 @@ public enum CodeContent: Sendable {
     case diff(hunks: [DiffHunk], language: String?)
 }
 
+extension CodeContent {
+    /// Cheap structural fingerprint used by ``Section/==(_:_:)``.
+    /// Tuple shape `(caseTag, count, totalBytes, language)` matches
+    /// the `.text` arm's signature shape — count + style/language +
+    /// total UTF-8 bytes — with a leading case tag so `.plain` and
+    /// `.diff` can never alias even when their bytes/count coincide.
+    /// See the rationale in ``Section`` for why this stays a
+    /// fingerprint and not a deep walk.
+    fileprivate var equalityFingerprint: (caseTag: Int, count: Int, totalBytes: Int, language: String?) {
+        switch self {
+        case .plain(let text, let language):
+            return (0, 1, text.utf8.count, language)
+        case .diff(let hunks, let language):
+            let bytes = hunks.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.utf8.count } }
+            return (1, hunks.count, bytes, language)
+        }
+    }
+}
+
 extension Section: Equatable {
     public static func == (lhs: Section, rhs: Section) -> Bool {
         switch (lhs, rhs) {
@@ -110,20 +129,11 @@ extension Section: Equatable {
             return l == r
         case (.code(let l), .code(let r)):
             // Cheap structural-signature comparison — see the type's
-            // doc comment for the rationale. Avoids deep walks on every
-            // reactive `DetailContent: Equatable` comparison. Same
-            // shape as `.text`'s arm: count + lang/style + total UTF-8
-            // bytes.
-            switch (l, r) {
-            case (.plain(let lt, let ll), .plain(let rt, let rl)):
-                return lt.utf8.count == rt.utf8.count && ll == rl
-            case (.diff(let lh, let ll), .diff(let rh, let rl)):
-                guard ll == rl, lh.count == rh.count else { return false }
-                return lh.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.utf8.count } }
-                    == rh.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.utf8.count } }
-            case (.plain, _), (.diff, _):
-                return false
-            }
+            // doc comment for the rationale. `.plain` and `.diff`
+            // share the same shape (`(count, language, total UTF-8
+            // bytes)`); the leading `caseTag` keeps cross-case
+            // mismatches from colliding when fingerprints coincide.
+            return l.equalityFingerprint == r.equalityFingerprint
         case (.text, _), (.image, _), (.toolReference, _),
              (.offloadedOutput, _), (.code, _):
             return false
