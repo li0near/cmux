@@ -1028,6 +1028,24 @@ struct ClaudeTranscriptBuilder {
            !hunks.isEmpty {
             let language = LanguagePicker.language(forFilePath: existing.inputFilePath)
             update.resultSections = [.code(.diff(hunks: hunks, language: language))]
+        } else if Self.isReadShape(existing.toolName),
+                  let path = existing.inputFilePath {
+            // Read tool: file content arrives as plain `.text` after
+            // `OffloadedOutputParser.promote(_:)` has already swapped
+            // any `<persisted-output>` wrapper into `.offloadedOutput`.
+            // Replace any remaining `.text` result section with
+            // `.code(.plain)` so the row renders with a line-number
+            // gutter + per-language syntax highlighting.
+            let language = LanguagePicker.language(forFilePath: path)
+            update.resultSections = update.resultSections.map { section in
+                if case .text(let blocks, _) = section {
+                    return .code(.plain(
+                        text: blocks.joined(separator: "\n"),
+                        language: language
+                    ))
+                }
+                return section
+            }
         }
         ctx.root.mutate(id: toolId) { entry in
             update.apply(&entry)
@@ -1041,6 +1059,16 @@ struct ClaudeTranscriptBuilder {
     /// output) agree on the set.
     private static func isEditShape(_ name: String) -> Bool {
         name == "Edit" || name == "MultiEdit" || name == "Write"
+    }
+
+    /// Tools whose result is the raw contents of a single file —
+    /// rendered via `.code(.plain(...))` with a line-number gutter +
+    /// per-language syntax highlighting derived from `inputFilePath`'s
+    /// extension. `NotebookRead` is intentionally excluded for now —
+    /// its result bundles cell metadata that doesn't render cleanly as
+    /// a single fenced code block; revisit after a corpus probe.
+    private static func isReadShape(_ name: String) -> Bool {
+        name == "Read"
     }
 
     /// Compute the duration in milliseconds between a tool's start
