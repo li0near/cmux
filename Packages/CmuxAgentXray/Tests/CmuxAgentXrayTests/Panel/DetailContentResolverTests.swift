@@ -185,57 +185,6 @@ struct DetailContentResolverTests {
         ))
     }
 
-    // MARK: - Tool sub-entries: Edit / MultiEdit diff sections
-
-    @Test("Edit diff sections concatenate into one tool-input.diff")
-    func editDiffSections() {
-        let body = Body(sections: [
-            .text(["let x = 1"], style: .diffRemoved),
-            .text(["let x = 2"], style: .diffAdded),
-            .text(["The file has been updated"], style: .normal)
-        ])
-        let sub = toolSub(id: "e1", toolName: "Edit", body: body, inputFilePath: "/foo.swift")
-        let entry = agentEntry(subEntries: [sub])
-        let request = DetailRequest.bodySection(targetID: "e1", sectionIndex: 0)
-        let content = DetailContent.resolve(request: request, entry: entry)
-        let expected = "-let x = 1\n+let x = 2"
-        #expect(content?.source == .text(body: expected, suggestedFilename: "tool-input.diff"))
-    }
-
-    @Test("MultiEdit diff sections produce one combined tool-input.diff")
-    func multiEditDiffSections() {
-        let body = Body(sections: [
-            .text(["a1"], style: .diffRemoved),
-            .text(["b1"], style: .diffAdded),
-            .text(["a2"], style: .diffRemoved),
-            .text(["b2"], style: .diffAdded)
-        ])
-        let sub = toolSub(id: "m1", toolName: "MultiEdit", body: body)
-        let entry = agentEntry(subEntries: [sub])
-        let request = DetailRequest.bodySection(targetID: "m1", sectionIndex: 1)
-        let content = DetailContent.resolve(request: request, entry: entry)
-        #expect(content?.source == .text(
-            body: "-a1\n+b1\n-a2\n+b2",
-            suggestedFilename: "tool-input.diff"
-        ))
-    }
-
-    @Test("Multi-line diff blocks split on \\n with prefix per line")
-    func multiLineDiffSplit() {
-        let body = Body(sections: [
-            .text(["line1\nline2"], style: .diffRemoved),
-            .text(["line1'\nline2'"], style: .diffAdded)
-        ])
-        let sub = toolSub(id: "e2", toolName: "Edit", body: body)
-        let entry = agentEntry(subEntries: [sub])
-        let request = DetailRequest.bodySection(targetID: "e2", sectionIndex: 0)
-        let content = DetailContent.resolve(request: request, entry: entry)
-        #expect(content?.source == .text(
-            body: "-line1\n-line2\n+line1'\n+line2'",
-            suggestedFilename: "tool-input.diff"
-        ))
-    }
-
     // MARK: - Tool sub-entries: result section
 
     @Test("Tool result with inputFilePath uses the basename as suggestedFilename")

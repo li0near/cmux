@@ -106,14 +106,6 @@ public enum TextStyle: Equatable, Sendable {
     case thinking
     /// Red foreground — used for tool error results.
     case error
-    /// Green foreground — Phase F's pre-structuredPatch placeholder
-    /// for added diff lines. No producer post-Phase H; case retained
-    /// transitionally and dropped in H5.
-    case diffAdded
-    /// Red foreground — Phase F's pre-structuredPatch placeholder for
-    /// removed diff lines. No producer post-Phase H; case retained
-    /// transitionally and dropped in H5.
-    case diffRemoved
     /// Monospace foreground — used for code spans inside markdown
     /// or for a fully-monospaced code section (alongside
     /// ``ContentType/code(language:)``).

@@ -63,7 +63,10 @@ struct EntryBodyView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Theme.Padding.expandedBodyBlock)
-                .background(sectionBackground(style: style, color: colors.background))
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.CornerRadius.expandedBodyBlock)
+                        .fill(colors.background)
+                )
         }
         if content.overflow {
             OpenDetailLinkView(
@@ -71,20 +74,6 @@ struct EntryBodyView: View {
                 palette: palette,
                 action: onOpenDetail
             )
-        }
-    }
-
-    /// Diff styles paint as a flat rectangle so adjacent removed /
-    /// added sections look like one contiguous hunk; every other
-    /// style keeps its rounded chip.
-    @ViewBuilder
-    private func sectionBackground(style: TextStyle, color: Color) -> some View {
-        switch style {
-        case .diffAdded, .diffRemoved:
-            Rectangle().fill(color)
-        case .normal, .thinking, .error, .codeMonospace:
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.expandedBodyBlock)
-                .fill(color)
         }
     }
 }

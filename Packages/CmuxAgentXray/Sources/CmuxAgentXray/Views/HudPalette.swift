@@ -99,8 +99,6 @@ public struct HudPalette: Sendable {
         case .normal:        return (primary.opacity(0.85), expandedBackground)
         case .thinking:      return (primary.opacity(0.85), expandedBackground)
         case .error:         return (red, expandedBackground)
-        case .diffAdded:     return (green, green.opacity(0.15))
-        case .diffRemoved:   return (red, red.opacity(0.15))
         case .codeMonospace: return (primary.opacity(0.85), expandedBackground)
         }
     }

@@ -386,25 +386,6 @@ extension DetailContent {
             )
         }
 
-        // Diff-styled section (Edit / MultiEdit input). Concatenate
-        // every diff-styled section in the body into a unified diff
-        // so the detail tab opens with a single full-context view.
-        if case .text(_, let style) = section,
-           style == .diffAdded || style == .diffRemoved,
-           let diffBody = synthesizeUnifiedDiff(from: tool.body) {
-            return DetailContent(
-                title: localized(
-                    "agentXray.detail.title.toolInput",
-                    defaultValue: "Tool input · \(tool.toolName)"
-                ),
-                subtitle: subtitleFromTimestamp(timestamp),
-                sourceEntryID: tool.id.stableString,
-                icon: EntryIcon.tool(named: tool.toolName),
-                accent: .primary,
-                source: .text(body: diffBody, suggestedFilename: "tool-input.diff")
-            )
-        }
-
         // Plain-text section.
         guard case .text(let blocks, _) = section else { return nil }
         let text = blocks.joined(separator: "\n")
@@ -503,32 +484,6 @@ extension DetailContent {
 
     private static func localized(_ key: StaticString, defaultValue: String.LocalizationValue) -> String {
         String(localized: key, defaultValue: defaultValue, bundle: .module)
-    }
-
-    /// Walk every `.text(_, .diffAdded/.diffRemoved)` section in
-    /// arrival order and build a unified-diff-shaped string — `-`
-    /// prefix for removed lines, `+` for added. Returns nil when no
-    /// diff sections are present (caller falls through to the
-    /// plain-text resolution path).
-    private static func synthesizeUnifiedDiff(from body: Body) -> String? {
-        var lines: [String] = []
-        var sawAny = false
-        for section in body.sections {
-            guard case .text(let blocks, let style) = section else { continue }
-            let prefix: String
-            switch style {
-            case .diffRemoved: prefix = "-"
-            case .diffAdded:   prefix = "+"
-            default: continue
-            }
-            sawAny = true
-            for block in blocks {
-                for line in block.split(separator: "\n", omittingEmptySubsequences: false) {
-                    lines.append("\(prefix)\(line)")
-                }
-            }
-        }
-        return sawAny ? lines.joined(separator: "\n") : nil
     }
 
     /// First `.image` section in a body, if any. Used by the user
