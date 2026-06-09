@@ -111,22 +111,16 @@ extension Section: Equatable {
         case (.code(let l), .code(let r)):
             // Cheap structural-signature comparison — see the type's
             // doc comment for the rationale. Avoids deep walks on every
-            // reactive `DetailContent: Equatable` comparison.
+            // reactive `DetailContent: Equatable` comparison. Same
+            // shape as `.text`'s arm: count + lang/style + total UTF-8
+            // bytes.
             switch (l, r) {
             case (.plain(let lt, let ll), .plain(let rt, let rl)):
                 return lt.utf8.count == rt.utf8.count && ll == rl
             case (.diff(let lh, let ll), .diff(let rh, let rl)):
                 guard ll == rl, lh.count == rh.count else { return false }
-                for (lhsHunk, rhsHunk) in zip(lh, rh) {
-                    if lhsHunk.oldStart != rhsHunk.oldStart
-                        || lhsHunk.oldLines != rhsHunk.oldLines
-                        || lhsHunk.newStart != rhsHunk.newStart
-                        || lhsHunk.newLines != rhsHunk.newLines
-                        || lhsHunk.lines.count != rhsHunk.lines.count {
-                        return false
-                    }
-                }
-                return true
+                return lh.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.utf8.count } }
+                    == rh.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.utf8.count } }
             case (.plain, _), (.diff, _):
                 return false
             }
