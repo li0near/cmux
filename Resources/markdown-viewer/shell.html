@@ -46,16 +46,6 @@ body {
   font-size: 13.5px;
   line-height: 1.5;
 }
-/* Diff blocks: highlight.js wraps each added/removed line in
-   <span class="hljs-addition"> (default inline). Force block-level
-   so the background paints the full row, matching git/GitHub's
-   diff view. */
-.markdown-body pre code.language-diff .hljs-addition,
-.markdown-body pre code.language-diff .hljs-deletion {
-  display: block;
-  margin: 0 -16px;
-  padding: 0 16px;
-}
 .markdown-body pre {
   padding: 0; /* hljs class already pads */
   overflow: auto;
