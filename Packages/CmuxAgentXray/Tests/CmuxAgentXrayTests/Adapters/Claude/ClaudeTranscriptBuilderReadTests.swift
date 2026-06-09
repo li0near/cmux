@@ -52,13 +52,12 @@ struct ClaudeTranscriptBuilderReadTests {
         #expect(tool.toolName == "Read")
         // Body: index 0 = parser-input section (file_path summary),
         // index 1 = the result. The Read swap targets the result only.
-        guard case .code(.plain(let text, let language, let lineNumberStart)) = tool.body.sections.last else {
+        guard case .code(.plain(let text, let language)) = tool.body.sections.last else {
             Issue.record("Expected .code(.plain) result section; got \(tool.body.sections)")
             return
         }
         #expect(text == "let x = 1\nlet y = 2")
         #expect(language == "swift")
-        #expect(lineNumberStart == 1)
     }
 
     @available(macOS 15, *)
@@ -131,8 +130,8 @@ struct ClaudeTranscriptBuilderReadTests {
     }
 
     @available(macOS 15, *)
-    @Test("Bash result becomes .code(.plain) with no language hint and no gutter")
-    func bashResultBecomesCodePlain() throws {
+    @Test("Bash result stays .text (Read swap doesn't touch other tools)")
+    func bashResultStaysText() throws {
         let toolUseJSON = #"""
         {
           "type": "assistant",
@@ -169,15 +168,13 @@ struct ClaudeTranscriptBuilderReadTests {
         let agent = try buildAgent(assistantLines: [toolUseJSON, toolResultJSON])
         let tool = try #require(firstTool(in: agent))
         #expect(tool.toolName == "Bash")
-        // Bash body has the input section + result section; the
-        // result is `.code(.plain(_, language: nil, lineNumberStart: nil))`.
-        guard case .code(.plain(let text, let language, let lineNumberStart)) = tool.body.sections.last else {
-            Issue.record("Expected .code(.plain) result section for Bash; got \(tool.body.sections)")
+        // Bash body has the input section + result text section; the
+        // result must remain .text (sectionIndex 1).
+        let last = tool.body.sections.last
+        guard case .text = last else {
+            Issue.record("Expected .text result for Bash; got \(String(describing: last))")
             return
         }
-        #expect(text == "hi")
-        #expect(language == nil)
-        #expect(lineNumberStart == nil)
     }
 
     // MARK: - Helpers

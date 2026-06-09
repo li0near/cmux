@@ -570,7 +570,7 @@ struct ClaudeTranscriptBuilderTests {
         }
     }
 
-    @Test("Non-Edit tool keeps input section and result section (Bash → .code(.plain))")
+    @Test("Non-Edit tool keeps input section and parser result section")
     func nonEditToolKeepsBothSections() throws {
         let toolUseJSON = #"""
         {
@@ -611,11 +611,11 @@ struct ClaudeTranscriptBuilderTests {
             return nil
         }
         let tool = try #require(toolSubs.first)
-        // Body: [input .text, result .code(.plain)] — Bash is shell-shape.
+        // Body: [input .text, result .text].
         #expect(tool.body.sections.count == 2)
         guard case .text = tool.body.sections[0],
-              case .code(.plain(_, nil, nil)) = tool.body.sections[1] else {
-            Issue.record("Expected [.text, .code(.plain(_, nil, nil))] for Bash; got \(tool.body.sections)")
+              case .text = tool.body.sections[1] else {
+            Issue.record("Expected [.text, .text] for non-Edit tool; got \(tool.body.sections)")
             return
         }
     }

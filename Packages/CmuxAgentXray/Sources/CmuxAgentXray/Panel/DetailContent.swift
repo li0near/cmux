@@ -402,7 +402,7 @@ extension DetailContent {
                     filePath: tool.inputFilePath ?? tool.toolName
                 ))
                 filename = "tool-result.diff.md"
-            case .plain(let text, _, _):
+            case .plain(let text, _):
                 body = text
                 filename = (tool.inputFilePath as NSString?)?.lastPathComponent
                     ?? "tool-result.txt"
