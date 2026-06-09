@@ -1126,7 +1126,24 @@ Recommended execution sequence for the next session:
 7. **Corpus syntax audit (Layer 2.5):** `CorpusSyntaxScanner` + `CorpusSyntaxCatalog` model (with `dispatcherExpectation` + `exampleLine` fields) + `CorpusSyntaxAuditE2E.swift` test + first-run catalog committed (with **manual triage** of `dispatcherExpectation` for every initial shape) + `--full-corpus-rescan` flag in `run-e2e.sh`. One commit.
 8. **Catalog-driven parameterized tests (Layer 2.6):** `CorpusShapeRoutingE2E.swift` + `matchesExpectation(_:)` extension on `ClaudeLineRouting`. One commit.
 9. **PII audit pass** (separate commit) — confirm redactor coverage of `exampleLine` fields too; document findings.
-10. **Update `claude-jsonl-corpus` skill** to use the catalog as single source of truth. **Update `corpus-survey.md`** to reference the catalog. Update `MIGRATION_PLAN.md` §16 + this handover doc retiring marker. One commit.
+10. **Update `claude-jsonl-corpus` skill** to use the catalog as single source of truth, with the **three-tier consultation hierarchy**:
+    1. **Catalog** (`syntax-catalog.json`) — for any per-shape question (routing, count, example uuid).
+    2. **Markdown docs** (`corpus-survey.md`, `claude-jsonl-mapping.md`) — for cross-cutting narrative (architecture, dispatch flow, multi-shape interactions, design lessons, xml-tag conventions, methodology).
+    3. **Live corpus scan** — for residual questions neither tier answers (statistical ratios, temporal distributions, novel cross-cutting investigations).
+    The skill must direct future sessions to **never consult the markdown docs for per-shape mechanical questions** — the docs have been pruned of that content per step 9.5; the catalog is the single source.
+10.5. **Refactor `corpus-survey.md` and `claude-jsonl-mapping.md` to be narrative-only.** Prune everything that duplicates the catalog. Keep the narrative.
+
+    **`claude-jsonl-mapping.md` keeps:** §1 vocabulary, §2-§3 line-type universe at the conceptual level, §6 per-line dispatch flow narrative, §7 special-case stitching (multi-shape interactions like rewind / FIFO / pool-drain), §8 xml-tag conventions, §11 content-block reference. Add a new §0 header pointing at `syntax-catalog.json` for per-shape routing.
+
+    **`claude-jsonl-mapping.md` drops:** the §2 routing table itself (replaced by 2-line pointer). Any inline "this shape routes to .skip / .render(...)" statement that duplicates `dispatcherExpectation`.
+
+    **`corpus-survey.md` keeps:** archetype narrative, edge-case discovery stories with design lessons, cross-cutting observations the catalog can't track (e.g. tool_use_id collision behavior across turns, FIFO ordering relative to slash-cmd consumption), methodology notes, audit techniques. Add a new top-level header pointing at `syntax-catalog.json`.
+
+    **`corpus-survey.md` drops:** per-shape distribution tables, static count snapshots ("X out of Y sessions"), example session uuid lists per shape.
+
+    **Maintenance discipline post-refactor:** when the audit detects a new shape and the developer triages, the **catalog** always gets the routing decision. The **docs** only get an update if the new shape teaches a cross-cutting pattern (a new edge case in rewind detection, a new xml-tag convention, a new multi-shape interaction worth narrating). When in doubt, catalog wins.
+
+    Update `MIGRATION_PLAN.md` §16 + this handover doc retiring marker. One commit covers all three doc updates (skill + corpus-survey + claude-jsonl-mapping + migration-plan).
 11. **Write the post-landing memory entry** (no code commit — saves to `~/.claude/projects/-Users-I505728-temp-github-cmux/memory/`) — see "Action item: post-landing memory entry" below.
 
 ## Action item: post-landing memory entry
