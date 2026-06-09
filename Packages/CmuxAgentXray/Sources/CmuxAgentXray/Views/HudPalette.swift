@@ -1,28 +1,27 @@
-public import AppKit
 public import SwiftUI
 
 /// Terminal-styled color palette for the AgentX-ray panel. Resolves
-/// against the host's foreground `NSColor` so colors remain readable
+/// against the host's foreground `Color` so colors remain readable
 /// on both light and dark themes.
 ///
-/// The package keeps a slim `NSColor`-based input rather than a full
+/// The package keeps a slim `Color`-based input rather than a full
 /// `PanelAppearance` value type — the host adapter passes its
 /// terminal-foreground color directly. The palette lives in the View
 /// layer, NOT Models, since SwiftUI Color is a view-layer concept.
 @available(macOS 15, *)
 public struct HudPalette: Sendable {
-    public let foreground: NSColor
+    public let foreground: Color
 
-    public init(foreground: NSColor) {
+    public init(foreground: Color) {
         self.foreground = foreground
     }
 
     public var dim: Color {
-        Color(nsColor: foreground).opacity(0.55)
+        foreground.opacity(0.55)
     }
 
     public var primary: Color {
-        Color(nsColor: foreground)
+        foreground
     }
 
     public var cyan: Color {
@@ -56,7 +55,25 @@ public struct HudPalette: Sendable {
     /// Soft background used behind expanded inline blocks so they
     /// read as a contained section rather than blending into the row.
     public var expandedBackground: Color {
-        Color(nsColor: foreground).opacity(0.06)
+        foreground.opacity(0.06)
+    }
+
+    /// Per-line background for `+` rows in unified-diff hunks. Resolved
+    /// at draw time from `colorScheme`. Light: GitHub Primer `green.0`
+    /// (#dafbe1); Dark: `#2ea043` @ 15% (`bgColor.success.muted`).
+    public func diffAddedBackground(colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark
+            ? Color(.sRGB, red: 46.0/255, green: 160.0/255, blue: 67.0/255, opacity: 0.15)
+            : Color(.sRGB, red: 0xDA/255.0, green: 0xFB/255.0, blue: 0xE1/255.0, opacity: 1.0)
+    }
+
+    /// Per-line background for `-` rows in unified-diff hunks. Light:
+    /// GitHub Primer `red.0` (#ffebe9); Dark: `#f85149` @ 10%
+    /// (`bgColor.danger.muted`).
+    public func diffRemovedBackground(colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark
+            ? Color(.sRGB, red: 248.0/255, green: 81.0/255, blue: 73.0/255, opacity: 0.10)
+            : Color(.sRGB, red: 0xFF/255.0, green: 0xEB/255.0, blue: 0xE9/255.0, opacity: 1.0)
     }
 
     private static func fixed(red: Int, green: Int, blue: Int) -> Color {

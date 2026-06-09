@@ -27,69 +27,97 @@ struct DiffHunkView: View {
     let palette: HudPalette
     let onOpenDetail: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         let cap = computeCap(hunks: hunks)
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(cap.visibleRows.enumerated()), id: \.offset) { _, row in
-                rowView(row)
+        let maxDigits = cap.maxLineNumberDigits
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(cap.visibleRows.enumerated()), id: \.offset) { _, row in
+                    rowView(row, maxDigits: maxDigits)
+                }
             }
+            .background(Rectangle().fill(palette.expandedBackground))
             if cap.overflow {
                 OpenDetailLinkView(
                     totalLines: cap.totalLines,
                     palette: palette,
                     action: onOpenDetail
                 )
+                .padding(.top, 2)
             }
         }
-        .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
-    private func rowView(_ row: Row) -> some View {
+    private func rowView(_ row: Row, maxDigits: Int) -> some View {
         switch row {
         case .header(let hunk):
             Text(hunkHeaderText(hunk))
                 .font(Theme.SubRow.title)
                 .foregroundStyle(palette.dim)
                 .padding(.horizontal, Theme.Padding.expandedBodyBlock)
-                .padding(.vertical, 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
         case .line(let line, let oldNo, let newNo):
-            let colors = lineColors(for: line.kind)
+            let bg = lineBackground(for: line.kind)
+            let gutterFg = lineGutterForeground(for: line.kind)
+            let display = oldNo ?? newNo
             HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text(formatLineNumber(oldNo))
+                Text(formatLineNumber(display, width: maxDigits))
                     .font(Theme.SubRow.title)
-                    .foregroundStyle(palette.dim)
-                    .frame(width: 36, alignment: .trailing)
-                Text(formatLineNumber(newNo))
-                    .font(Theme.SubRow.title)
-                    .foregroundStyle(palette.dim)
-                    .frame(width: 36, alignment: .trailing)
+                    .foregroundStyle(gutterFg)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.leading, 4)
+                    .padding(.trailing, 6)
                 Text(prefixGlyph(for: line.kind))
                     .font(Theme.SubRow.title)
-                    .foregroundStyle(colors.foreground)
-                    .frame(width: 14, alignment: .center)
-                Text(line.text)
+                    .foregroundStyle(gutterFg)
+                    .frame(width: 12, alignment: .center)
+                Text(charWrappable(line.text))
                     .font(Theme.SubRow.title)
-                    .foregroundStyle(colors.foreground)
+                    .foregroundStyle(palette.primary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.vertical, 1)
-            .background(Rectangle().fill(colors.background))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Rectangle().fill(bg))
         }
     }
 
-    private func lineColors(
-        for kind: DiffHunk.Line.Kind
-    ) -> (foreground: Color, background: Color) {
+    private func lineBackground(for kind: DiffHunk.Line.Kind) -> Color {
         switch kind {
-        case .context: return (palette.primary.opacity(0.85), .clear)
-        case .removed: return (palette.red, palette.red.opacity(0.20))
-        case .added:   return (palette.green, palette.green.opacity(0.20))
+        case .context: return .clear
+        case .removed: return palette.diffRemovedBackground(colorScheme: colorScheme)
+        case .added:   return palette.diffAddedBackground(colorScheme: colorScheme)
         }
+    }
+
+    /// Foreground for the line-number gutter and prefix glyph. Removed
+    /// rows tint red, added rows tint green, context stays dim — mirrors
+    /// Claude TUI's gutter coloring.
+    private func lineGutterForeground(for kind: DiffHunk.Line.Kind) -> Color {
+        switch kind {
+        case .context: return palette.dim
+        case .removed: return palette.red
+        case .added:   return palette.green
+        }
+    }
+
+    /// Inject a zero-width space (`\u{200B}`) between every character
+    /// so SwiftUI's `Text` word-wrap engine — which has no
+    /// public modifier to flip to character-wrap mode and silently
+    /// drops `NSParagraphStyle.lineBreakMode = .byCharWrapping` when
+    /// bridged through `AttributedString` — sees a break opportunity
+    /// at every position. Long unbroken tokens like
+    /// `Style::default().fg(theme::TEXT_SECONDARY)` then wrap at
+    /// character boundaries instead of overflowing the row. ZWSP is
+    /// invisible at render time and stripped by most paste targets.
+    private func charWrappable(_ text: String) -> String {
+        guard !text.isEmpty else { return text }
+        return text.map(String.init).joined(separator: "\u{200B}")
     }
 
     private func prefixGlyph(for kind: DiffHunk.Line.Kind) -> String {
@@ -100,9 +128,11 @@ struct DiffHunkView: View {
         }
     }
 
-    private func formatLineNumber(_ n: Int?) -> String {
-        guard let n else { return "" }
-        return String(n)
+    /// Right-aligned, blank-padded to `width` so every row's number
+    /// column is identical pixel width (font is monospaced).
+    private func formatLineNumber(_ n: Int?, width: Int) -> String {
+        let padded = n.map { String($0) } ?? ""
+        return String(repeating: " ", count: max(0, width - padded.count)) + padded
     }
 
     private func hunkHeaderText(_ hunk: DiffHunk) -> String {
@@ -124,6 +154,7 @@ struct DiffHunkView: View {
         let visibleRows: [Row]
         let overflow: Bool
         let totalLines: Int
+        let maxLineNumberDigits: Int
     }
 
     /// Project hunks into a flat list of rows (header + per-line) and
@@ -133,6 +164,7 @@ struct DiffHunkView: View {
     private func computeCap(hunks: [DiffHunk]) -> CapResult {
         var allRows: [Row] = []
         var totalBytes = 0
+        var maxLineNumber = 0
         for hunk in hunks {
             allRows.append(.header(hunk))
             var oldOffset = hunk.oldStart
@@ -156,10 +188,13 @@ struct DiffHunkView: View {
                     newNo = newOffset
                     newOffset += 1
                 }
+                if let n = oldNo { maxLineNumber = max(maxLineNumber, n) }
+                if let n = newNo { maxLineNumber = max(maxLineNumber, n) }
                 allRows.append(.line(line, oldNo: oldNo, newNo: newNo))
                 totalBytes += line.text.utf8.count
             }
         }
+        let maxDigits = max(1, String(maxLineNumber).count)
         let lineRowCount = allRows.reduce(0) { count, row in
             if case .line = row { return count + 1 }
             return count
@@ -173,7 +208,8 @@ struct DiffHunkView: View {
             return CapResult(
                 visibleRows: allRows,
                 overflow: false,
-                totalLines: lineRowCount
+                totalLines: lineRowCount,
+                maxLineNumberDigits: maxDigits
             )
         }
         // Truncate to first N line rows (keep their preceding header).
@@ -195,7 +231,8 @@ struct DiffHunkView: View {
         return CapResult(
             visibleRows: visible,
             overflow: true,
-            totalLines: lineRowCount
+            totalLines: lineRowCount,
+            maxLineNumberDigits: maxDigits
         )
     }
 }

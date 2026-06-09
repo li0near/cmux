@@ -41,7 +41,7 @@ public struct TranscriptView: View {
                 transcriptList
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: appearance.contentBackgroundColor))
+            .background(appearance.contentBackgroundColor)
         case .detail(let content):
             detailView(content: content)
         }
@@ -97,7 +97,7 @@ public struct TranscriptView: View {
 
     private var topDivider: some View {
         Divider()
-            .background(Color(nsColor: appearance.foregroundColor).opacity(Theme.Opacity.divider))
+            .background(appearance.foregroundColor.opacity(Theme.Opacity.divider))
     }
 
     // MARK: - Transcript list
@@ -290,7 +290,7 @@ public struct TranscriptView: View {
     /// that doubles as the `proxy.scrollTo(...)` target.
     private func boundaryDivider(id: String, palette: HudPalette) -> some View {
         Divider()
-            .background(Color(nsColor: appearance.foregroundColor).opacity(Theme.Opacity.bgWash))
+            .background(appearance.foregroundColor.opacity(Theme.Opacity.bgWash))
             .id(id)
     }
 
@@ -467,7 +467,7 @@ public struct TranscriptView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: appearance.contentBackgroundColor))
+        .background(appearance.contentBackgroundColor)
     }
 
     /// Render an entries array (abandoned-branch / sub-agent

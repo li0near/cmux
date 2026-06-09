@@ -115,8 +115,8 @@ struct PanelContentView: View {
                 TranscriptView(
                     panel: agentXrayHost.xrayPanel,
                     appearance: HostAppearance(
-                        foregroundColor: NSColor.labelColor,
-                        contentBackgroundColor: NSColor.windowBackgroundColor
+                        foregroundColor: .primary,
+                        contentBackgroundColor: .clear
                     )
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
