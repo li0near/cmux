@@ -173,14 +173,8 @@ struct CodeBlockView: View {
     private func lineStyle(for classification: CodeRow.Classification) -> LineStyle {
         switch classification {
         case .plain, .context:
-            // Gutter AND code area both wear `expandedBackground` so
-            // the whole row reads as a single uniform gray strip —
-            // same visual presence as `cappedTextSection`'s gray box.
-            // Painting only the gutter would leave the code half clear,
-            // creating an adjacency illusion where the gutter strip
-            // looks lighter than a normal text section's gray box.
             return LineStyle(
-                codeBg: palette.expandedBackground,
+                codeBg: .clear,
                 gutterBg: palette.expandedBackground,
                 gutterFg: palette.dim,
                 glyph: " "
