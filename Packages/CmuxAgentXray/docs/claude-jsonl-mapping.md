@@ -486,3 +486,79 @@ Path-extraction regex (validated against 252 corpus occurrences):
 **Robust to truncated tails.** ~21 of 252 corpus occurrences omit the
 `</persisted-output>` close tag; detection only requires the open
 tag + the canonical "Output too large" line.
+
+### `toolUseResult` envelope (Claude Code extension)
+
+Every `tool_result`-bearing JSONL line on Edit / MultiEdit / Write
+(and several other tools) carries a top-level `toolUseResult` field
+**alongside** the standard Anthropic `message.content[].tool_result`
+shape. This is a Claude-Code-specific extension — not part of the
+public Messages API — and it ships exactly the data the TUI uses to
+paint Edit rows, on first run *and* on session resume (no filesystem
+access, no diff algorithm).
+
+**Polymorphism.** The field's value is **not** uniformly an object.
+Corpus survey (415 occurrences in one session): 391 objects, 21 bare
+strings (Bash error tails), 3 arrays (Playwright text-block results).
+A typed-only `let toolUseResult: ClaudeToolUseResult?` would
+`typeMismatch` and silently drop every Bash error / Playwright
+result on resume. Wire shape is `ClaudeJSONValue?` (matching
+`ClaudeContentBlock.toolResultContent`); typed projection happens at
+the builder via `ClaudeToolUseResult.from(_ value: ClaudeJSONValue?)`,
+which returns nil for non-object shapes.
+
+Object schema (all fields optional):
+
+| Field | Type | Notes |
+|---|---|---|
+| `filePath` | `String` | Absolute path of the edited file. |
+| `oldString` / `newString` | `String` | Per-edit pre / post text (Edit / MultiEdit). |
+| `originalFile` | `String` | Pre-edit snapshot of the *full file*. **Not consumed** by the model — kept on the wire type for a possible future "show pre-edit file" affordance. |
+| `userModified` | `Bool` | True when the user manually tweaked the model's edit. |
+| `replaceAll` | `Bool` | Edit / MultiEdit replace-all flag. |
+| `type` | `String` | Write tool: `"create"` (new file) vs `"update"` (existing). Empty `structuredPatch` on `create`. |
+| `structuredPatch` | `[Hunk]` | Per-hunk array — see below. |
+
+### `structuredPatch[]` schema
+
+```jsonc
+{
+  "oldStart": 17,    // 1-indexed first line in the pre-edit file
+  "oldLines": 5,     // # pre-edit lines covered (context + removed)
+  "newStart": 17,    // 1-indexed first line in the post-edit file
+  "newLines": 6,     // # post-edit lines covered (context + added)
+  "lines": [         // pre-prefixed line array, arrival order:
+    " context line",
+    "-removed line",
+    "+added line",
+    " context"
+  ]
+}
+```
+
+Each entry in `lines[]` starts with one of `' '` (context), `'-'`
+(removed), or `'+'` (added) followed by the line text. Corpus
+distribution on a single 93-Edit session (119 hunks): 1050 context,
+853 removed, 1362 added, **0** anomalous prefixes.
+
+**Use sites:**
+
+- `ClaudeTranscriptBuilder.attachToolResult(...)` projects the
+  envelope and, when `structuredPatch` is non-empty AND the matched
+  tool is Edit-shape (`Edit` / `MultiEdit` / `Write` with
+  `type == "update"`), swaps `update.resultSections =
+  [.diffHunks(hunks)]`. Bash errors / Playwright text-list results /
+  nil envelope → factory returns nil → existing parser sections pass
+  through.
+- `Models/Body.swift` ships `DiffHunk` as the wire-and-model type
+  (collapsed from a parallel pair during plan validation). Inline
+  rendering: `Views/Sections/DiffHunkView.swift` (line-number gutters
+  + per-line bg + 30-row / 3-KiB cap). Detail-tab serialization:
+  `DetailContent.serializeUnifiedDiff(hunks:filePath:)` reassembles
+  `--- a/...` + `+++ b/...` + `@@ -X,Y +A,B @@` headers + the
+  prefix-embedded `lines`, wraps in a ` ```diff ` fence, routes as
+  `tool-result.diff.md` so cmux's `MarkdownPanel` + highlight.js
+  paints diff coloring.
+- `Write.type == "create"` ships `structuredPatch: []`. The
+  builder's non-empty guard skips the swap on create; the file
+  content travels through the standard `tool_result.content[]` path.

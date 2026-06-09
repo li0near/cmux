@@ -141,8 +141,7 @@ The 2026-06-08 Phase E redesign **superseded Phase D-rev's embed
 approach** — detail-tab opens now redirect through cmux's existing
 panel-open pipeline (`Workspace.openFileSurfaces`), giving users
 full panel chrome for free. See §14 row 19t. The 2026-06-08 Phase F
-content-type cleanup made Edit / MultiEdit input render as colored
-diff hunks at parse time, collapsed `DetailContent` to a single
+content-type cleanup collapsed `DetailContent` to a single
 discriminated `source: DetailSource`, dropped the parallel
 `openImageInPanel` host method, and added a sniffer arm for `git
 diff` Bash output. See §14 row 19u. The 2026-06-08/09 Phase G
@@ -152,7 +151,20 @@ streaming dispatch model with a single `Transcript` mutation API
 (`ClaudeBranchResolver`, `ClaudeQueuedPromptResolver`,
 `ClaudeSkillCommandResolver`, `ClaudeTurnDurationResolver`), and
 landed inline rewind detection + parallel-tool-result `awaitingParent`
-pool. Phase G is fully landed.
+pool. Phase G is fully landed. The 2026-06-09 Phase H pass
+**replaced Phase F's wrong-shape Edit / MultiEdit / Write rendering**
+with a structured-patch path: every Edit-shape `tool_result` JSONL
+line carries a `toolUseResult.structuredPatch: [Hunk]` envelope that
+ships exactly the data Claude Code's TUI uses (no filesystem access,
+no diff algorithm). New `Section.diffHunks([DiffHunk])` case + new
+`DiffHunkView` paint full git-diff parity inline (line-number gutters,
+hunk headers, context + removed + added rows with full-width
+backgrounds); the detail tab serializes hunks back to a unified-diff
+string fenced as ``` ```diff ``` markdown so cmux's `MarkdownPanel` +
+highlight.js paints it. Phase H also lands a JSONL fixture-loader
+test infra (`JSONLFixture.line(named:lineIndex:)`). Phase F's
+`.diffAdded` / `.diffRemoved` `TextStyle` and `ToolInputParser.diffSections`
+are gone. See §14 row 19y.
 
 **Carry-forward items** (still genuinely pending; not in §16
 deferred-by-policy because they're shippable, just not yet
