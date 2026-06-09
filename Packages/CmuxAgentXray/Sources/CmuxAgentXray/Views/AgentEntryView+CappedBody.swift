@@ -47,12 +47,12 @@ extension AgentEntryView {
                     OffloadedOutputLinkView(offloaded: off, palette: palette) {
                         onOpenDetail(idx)
                     }
-                case .diffHunks:
-                    // Phase H6 lands the inline DiffHunkView. Until
-                    // then, diff-hunks sections render as a no-op so
-                    // the build stays green from H2 onward (placeholder
-                    // only — no producer emits .diffHunks until H4).
-                    EmptyView()
+                case .diffHunks(let hunks):
+                    DiffHunkView(
+                        hunks: hunks,
+                        palette: palette,
+                        onOpenDetail: { onOpenDetail(idx) }
+                    )
                 }
             }
         }
@@ -76,10 +76,7 @@ extension AgentEntryView {
                 .foregroundStyle(colors.foreground)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Theme.Padding.expandedBodyBlock)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.expandedBodyBlock)
-                        .fill(colors.background)
-                )
+                .background(Rectangle().fill(colors.background))
                 .textSelection(.enabled)
         }
         if content.overflow {
