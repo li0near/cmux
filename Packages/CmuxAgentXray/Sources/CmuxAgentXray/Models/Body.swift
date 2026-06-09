@@ -88,20 +88,28 @@ public enum CodeContent: Sendable {
 }
 
 extension CodeContent {
-    /// Cheap structural fingerprint used by ``Section/==(_:_:)``.
-    /// Tuple shape `(caseTag, count, totalBytes, language)` matches
-    /// the `.text` arm's signature shape — count + style/language +
-    /// total UTF-8 bytes — with a leading case tag so `.plain` and
-    /// `.diff` can never alias even when their bytes/count coincide.
-    /// See the rationale in ``Section`` for why this stays a
-    /// fingerprint and not a deep walk.
-    fileprivate var equalityFingerprint: (caseTag: Int, count: Int, totalBytes: Int, language: String?) {
+    /// Language hint shared by both inner cases.
+    fileprivate var language: String? {
         switch self {
-        case .plain(let text, let language):
-            return (0, 1, text.utf8.count, language)
-        case .diff(let hunks, let language):
-            let bytes = hunks.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.utf8.count } }
-            return (1, hunks.count, bytes, language)
+        case .plain(_, let lang), .diff(_, let lang):
+            return lang
+        }
+    }
+
+    /// Total UTF-8 byte count across all this section's text content
+    /// (the single string for `.plain`, every hunk line for `.diff`).
+    /// Used by ``Section/==(_:_:)`` as the structural-signature
+    /// fingerprint — same shape as `.text`'s arm. The
+    /// `.plain` ↔ `.diff` cross-case alias is a theoretical
+    /// collision; tools don't transition between shapes within a
+    /// single result, so a render would never observe one swap to
+    /// the other.
+    fileprivate var totalBytes: Int {
+        switch self {
+        case .plain(let text, _):
+            return text.utf8.count
+        case .diff(let hunks, _):
+            return hunks.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.utf8.count } }
         }
     }
 }
@@ -128,12 +136,10 @@ extension Section: Equatable {
         case (.offloadedOutput(let l), .offloadedOutput(let r)):
             return l == r
         case (.code(let l), .code(let r)):
-            // Cheap structural-signature comparison — see the type's
-            // doc comment for the rationale. `.plain` and `.diff`
-            // share the same shape (`(count, language, total UTF-8
-            // bytes)`); the leading `caseTag` keeps cross-case
-            // mismatches from colliding when fingerprints coincide.
-            return l.equalityFingerprint == r.equalityFingerprint
+            // Same shape as `.text`'s arm: total UTF-8 bytes + language.
+            // `.plain` and `.diff` reduce to the same fingerprint
+            // formula here — see the rationale on `CodeContent`.
+            return l.totalBytes == r.totalBytes && l.language == r.language
         case (.text, _), (.image, _), (.toolReference, _),
              (.offloadedOutput, _), (.code, _):
             return false
