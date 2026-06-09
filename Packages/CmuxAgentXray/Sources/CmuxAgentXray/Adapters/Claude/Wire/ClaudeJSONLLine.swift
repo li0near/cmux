@@ -99,10 +99,13 @@ struct ClaudeJSONLLine: Decodable {
     /// repeated accesses for the same line — for uuid-less lines
     /// (`queue-operation`, `last-prompt`, session-orphan metadata)
     /// the id is synthesized from `type` + `timestamp` + `parentUuid` +
-    /// the leading bytes of `content`. Without this determinism, two
-    /// accesses on the same nil-uuid line yield two different fresh
-    /// UUIDs, causing the index alias key to disagree with the
-    /// appended entry's id.
+    /// `String.hashValue` of the content. `String.hashValue` is
+    /// process-deterministic (same seed for the process lifetime),
+    /// which is sufficient — the index keys generated from `stableId`
+    /// only need to agree within one `transcript()` rebuild. Without
+    /// this determinism, two accesses on the same nil-uuid line yield
+    /// two different fresh UUIDs, causing the index alias key to
+    /// disagree with the appended entry's id.
     var stableId: String {
         if let uuid { return uuid }
         var key = "synthetic:\(type)"
@@ -113,10 +116,7 @@ struct ClaudeJSONLLine: Decodable {
             key += ":\(pu)"
         }
         if let c = content, !c.isEmpty {
-            // First 64 chars suffice to disambiguate `queue-operation`
-            // enqueue lines that share `(type, timestamp, parent)`;
-            // longer content adds bytes to the key for no benefit.
-            key += ":\(c.prefix(64))"
+            key += ":\(c.hashValue)"
         }
         return key
     }
