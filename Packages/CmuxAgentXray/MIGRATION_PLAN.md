@@ -36,13 +36,10 @@ host-adapter overhaul, 9 commits ending at `b0624eab8` on branch
 ## Continuity (resuming work in a new session)
 
 1. Read this doc's intro + skim §14 / §16.
-2. **Read [`docs/next-session-handover.md`](docs/next-session-handover.md)** — pending tasks
-   from the 2026-06-05/06 refactor session, with cross-verification reminders for items
-   that depend on JSONL corpus shapes.
-3. Verify branch tip matches §14's latest row (`git log -1 --oneline`).
-4. `swift build` + `swift test` from `Packages/CmuxAgentXray` should be green.
-5. For UI-touching changes, `./scripts/reload.sh --tag agentxray --launch`.
-6. Anything ambiguous → trust the code over the doc. If a doc claim is wrong,
+2. Verify branch tip matches §14's latest row (`git log -1 --oneline`).
+3. `swift build` + `swift test` from `Packages/CmuxAgentXray` should be green.
+4. For UI-touching changes, `./scripts/reload.sh --tag agentxray --launch`.
+5. Anything ambiguous → trust the code over the doc. If a doc claim is wrong,
    fix the doc in the same change.
 
 ---

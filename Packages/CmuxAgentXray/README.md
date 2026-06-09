@@ -128,8 +128,8 @@ commits. Highlights of the refactor:
 
 See `MIGRATION_PLAN.md` §14 rows 19a–19i for commits.
 
-**Pending work** is tracked in `docs/next-session-handover.md` (active
-queue) and `MIGRATION_PLAN.md` §16 (deferred-by-policy items). The
+**Pending work** is tracked in `MIGRATION_PLAN.md` §16 (deferred-by-policy
+items). The
 2026-06-07 Phase A–E refactor + audit-cleanup pass landed every Tier
 3/4/5 item from the previous handover, plus a structural folder
 cleanup and a 6-commit audit trim that shrank `ClaudeTranscriptBuilder.swift`
@@ -145,9 +145,18 @@ content-type cleanup made Edit / MultiEdit input render as colored
 diff hunks at parse time, collapsed `DetailContent` to a single
 discriminated `source: DetailSource`, dropped the parallel
 `openImageInPanel` host method, and added a sniffer arm for `git
-diff` Bash output. See §14 row 19u.
+diff` Bash output. See §14 row 19u. The 2026-06-08/09 Phase G
+work (rows 19v–19x) migrated `ClaudeTranscriptBuilder` to a per-line
+streaming dispatch model with a single `Transcript` mutation API
+(`append` / `mutate` / `slice`), deleted four pre-pass resolvers
+(`ClaudeBranchResolver`, `ClaudeQueuedPromptResolver`,
+`ClaudeSkillCommandResolver`, `ClaudeTurnDurationResolver`), and
+landed inline rewind detection + parallel-tool-result `awaitingParent`
+pool. Phase G is fully landed.
 
-**Active queue** (`docs/next-session-handover.md`):
+**Carry-forward items** (still genuinely pending; not in §16
+deferred-by-policy because they're shippable, just not yet
+prioritized):
 1. **Richer transcript renderer (FU 3)** — sticky header, search,
    fold, diff-vs-parent. Sub-agent / abandoned-branch transcripts
    stay in-package; future enhancement.
@@ -157,6 +166,11 @@ diff` Bash output. See §14 row 19u.
    default placement isn't what users expect.
 4. **Audit deferral S3** — system/compact image drop (corpus
    has 0 hits today).
+5. **Sub-agent-as-AgentEntry surfacing** — Task / Agent tool
+   transcripts currently render via universal alias rule but the
+   `branchLink`-style top-level row treatment hasn't been wired.
+   See §14 row 19x for context (the dropped `ToolEntry.subEntries`
+   shape).
 
 **Deferred-by-policy items** still tracked in `MIGRATION_PLAN.md` §16:
 - B. Inline sub-agent transcript rendering (future UX evolution)
@@ -175,12 +189,11 @@ future requirements" — none block current functionality.
 
 **For the next session resuming this work, read in this order:**
 
-1. `docs/next-session-handover.md` (sibling file) — active queue:
-   rich renderers + audit deferrals.
-2. `MIGRATION_PLAN.md` (sibling file) — full phase plan, status table
+1. `MIGRATION_PLAN.md` (sibling file) — full phase plan, status table
    (§1), progress log (§14), bug-fix ledger (§15), deferred-task
-   ledger (§16), origin cross-reference (§18).
-3. `FORK_NOTES.md` (sibling file) — upstream-touch surface ledger;
+   ledger (§16), open questions resolved (§17), origin cross-reference
+   (§18).
+2. `FORK_NOTES.md` (sibling file) — upstream-touch surface ledger;
    update on any fork-side edit outside the package.
 4. `docs/claude-jsonl-mapping.md` §11 — canonical content-block type
    reference (Phase B/C/E findings).
