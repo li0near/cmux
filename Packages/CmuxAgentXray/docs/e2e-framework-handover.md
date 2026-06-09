@@ -963,6 +963,139 @@ Layer 2 corpus invariants cover the structural-property checks. So:
 
 The four layers cover orthogonal axes; minimal overlap.
 
+### Failure ergonomics — every test failure prints enough to debug
+
+**Two-tier path representation.** The committed catalog stores
+**redacted** refs (no absolute paths, no PII):
+- `firstSeen.session` = `<basename>:<first-8-of-uuid>`
+- `firstSeen.lineIndex` = the 0-based line number in that file
+- `exampleLine` = the redacted JSONL line text (per the redactor policy)
+
+But **runtime test failures** print **richer context** — they're not
+committed, so they can include local paths. Each failure message
+includes:
+
+| Field | Source |
+|---|---|
+| Shape fingerprint | The catalog key (human-readable, e.g. `type=user|content=blocks|blocks=[tool_result]`) |
+| Source session path | At audit time: full path of the live file. At parameterized-test time: redacted ref + a one-line `find` helper (see below). |
+| Line index | The 0-based line number in the source session |
+| Example line text (redacted) | From `exampleLine` in the catalog — preserves the structural shape so the reader can see exactly what surface the dispatcher hit |
+| Per-failure triage checklist | What action(s) close the failure |
+
+**Layer 2.5 audit failure** (new shape detected, scanning live
+corpus — full path is available):
+
+```
+Corpus syntax audit detected 1 new shape:
+  fingerprint: type=attachment|attachment.type=tool_completion|commandMode=null
+  first encountered:
+    file: /Users/I505728/.claude/projects/-Users-I505728-cmux/3f5f91ea-…jsonl
+    line index: 247 (1-based: 248)
+    line text:
+      {"type":"attachment","uuid":"abc-…","parentUuid":"def-…",
+       "attachment":{"type":"tool_completion","status":"ok"}}
+
+Action required:
+  1. Decide: route to .skip OR add a typed handler.
+  2. Update Packages/CmuxAgentXray/docs/claude-jsonl-mapping.md §2 routing table.
+  3. Update Packages/CmuxAgentXray/docs/corpus-survey.md.
+  4. Re-run ./scripts/run-e2e.sh.
+```
+
+The full file path is printed because the audit is operating on
+live files. The path leaks to stdout / CI logs but doesn't get
+committed.
+
+**Layer 2.6 parameterized-test failure** (TBD shape — the catalog
+already stores only redacted refs; runtime can resolve them):
+
+```
+Shape `type=attachment|attachment.type=tool_completion|commandMode=null`
+is TBD in the catalog.
+
+First seen at: 3f5f91ea-:line 247
+Find the source file:
+  find ~/.claude/projects -name '3f5f91ea*.jsonl' 2>/dev/null
+
+Example line (redacted):
+  {"type":"attachment","uuid":"<redacted>","parentUuid":"<redacted>",
+   "attachment":{"type":"tool_completion","status":"ok"}}
+
+Action required:
+  1. Decide routing: skip / render(<kind>) / renderSpecial(<kind>) / queueOperation.
+  2. If skip — confirm CommonLineDispatcher.skipTypes /
+     AttachmentLineDispatcher default already handle it.
+  3. If render/renderSpecial/queueOperation — confirm the matching
+     handler accepts this shape; otherwise add a handler.
+  4. Edit Tests/CmuxAgentXrayTests/Fixtures/Corpus/syntax-catalog.json:
+       set dispatcherExpectation = {"kind": ..., "value": ..., "rationale": ...}.
+  5. Re-run ./scripts/run-e2e.sh.
+```
+
+The `find` helper resolves the redacted basename-prefix to a real
+path on the user's machine. CI without the corpus prints the
+redacted ref unchanged (the find command would no-op, and the user
+running locally re-resolves it).
+
+**Layer 2 corpus-invariants failure** (structural invariant violated
+on a live session — full path available):
+
+```
+Corpus invariant violation: every input uuid must be in
+transcript.index OR awaitingParent post-build.
+
+session: /Users/I505728/.claude/projects/-Users-I505728-cmux/3f5f91ea-…jsonl
+input lines: 1032
+indexed uuids: 989
+awaitingParent count post-build: 0
+silently dropped uuids: 43
+
+First 5 dropped:
+  line 12: type=attachment, uuid=abc-…
+  line 47: type=user, uuid=def-…
+  …
+
+Run with --verbose to see all dropped uuids.
+```
+
+Failure messages name the exact session path so the user can `head`
+/ `sed` / open in an editor immediately.
+
+**Layer 1 fixture-test failure** (deterministic, fixture-bounded —
+the fixture's `input.jsonl` is right there in the source tree):
+
+```
+RewindFoldsTailE2E.transcriptShape — failure at:
+  Tests/CmuxAgentXrayTests/Fixtures/Claude/rewind-folds-tail/input.jsonl
+
+Expected: entries.count == 3
+Got:      entries.count == 2
+
+Inspect the fixture:
+  cat Tests/CmuxAgentXrayTests/Fixtures/Claude/rewind-folds-tail/input.jsonl
+  cat Tests/CmuxAgentXrayTests/Fixtures/Claude/rewind-folds-tail/README.md
+```
+
+The fixture path is the source-tree path, not absolute — printable
+without leakage.
+
+### Helper for failure-message construction
+
+Centralize the "find" helper format in `E2EFixture.swift`:
+
+```swift
+extension E2EFixture {
+    /// Build a one-line `find` command that resolves a redacted
+    /// session ref (`<basename-prefix>`) to its local path.
+    static func findHelper(forSessionPrefix prefix: String) -> String {
+        "find ~/.claude/projects -name '\(prefix)*.jsonl' 2>/dev/null"
+    }
+}
+```
+
+Used by every failure-message builder so the format is consistent.
+
 ### Action item checklist for the next session (Layer 2.6 additions)
 
 - [ ] Add `dispatcherExpectation` + `exampleLine` fields to the
