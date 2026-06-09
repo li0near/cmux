@@ -28,14 +28,16 @@ public struct Body: Equatable, Sendable {
 /// lives on the parent ``Entry``'s `subEntries` projection, not in a
 /// section.
 ///
-/// `Section` defines a custom `==` so the `.code` case compares its
-/// inner content by a structural signature only — synthesizing
-/// equality would deep-walk every line of every hunk (or every byte of
-/// a Read tool's file content), and `DetailContent: Equatable` runs
-/// that comparison on every reactive update. Section content is
-/// immutable per builder pass, so structural-signature collisions
-/// across distinct contents are vanishingly unlikely. Other cases
-/// compare their associated values normally.
+/// `Section` defines a custom `==` so the `.text` and `.code` cases
+/// compare their content by a **structural signature** only — synthesizing
+/// equality would deep-walk every byte of every text block (or every
+/// line of every diff hunk), and `DetailContent: Equatable` runs that
+/// comparison on every reactive update at SwiftUI's hot path. Section
+/// content is immutable per builder pass, so a structural-signature
+/// collision across distinct contents is vanishingly unlikely (a real
+/// content change almost always changes the byte count too). The
+/// `.image` / `.toolReference` / `.offloadedOutput` arms compare their
+/// associated values normally — they're small and stable.
 public enum Section: Sendable {
     /// Inline text block(s) rendered in a gray background. The `style`
     /// drives per-section visual treatment (italic, error red, etc.).
@@ -89,7 +91,17 @@ extension Section: Equatable {
     public static func == (lhs: Section, rhs: Section) -> Bool {
         switch (lhs, rhs) {
         case (.text(let lb, let ls), .text(let rb, let rs)):
-            return lb == rb && ls == rs
+            // Structural signature: block count + style + total UTF-8
+            // bytes. Avoids the deep `[String] == [String]` walk that
+            // synthesized equality would trigger on the SwiftUI hot
+            // path (a 50 KB Bash result or a long pasted prompt would
+            // be O(N) per reactive update). Collision class is the
+            // same as the `.code` arms — distinct contents with the
+            // same byte count + style is vanishingly rare since
+            // section content is immutable per builder pass.
+            guard ls == rs, lb.count == rb.count else { return false }
+            return lb.reduce(0) { $0 + $1.utf8.count }
+                == rb.reduce(0) { $0 + $1.utf8.count }
         case (.image(let l), .image(let r)):
             return l == r
         case (.toolReference(let l), .toolReference(let r)):
