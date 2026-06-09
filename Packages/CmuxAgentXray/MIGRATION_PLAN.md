@@ -269,6 +269,19 @@ O. **Async resolver for `DetailContent.resolveOffloadedOutput`.** The
    `TranscriptView.detailView`). *(Stays deferred — needs a wider
    resolver-pipeline async refactor; tracked here so future drift is
    visible.)*
+P. **Sub-entry id format walks back the G6 brief's "no derived ids"
+   directive.** The G6 brief said "NO `EntryID.derived(parent:kind:)`
+   for thinking/text. The line's stableId IS the entry id." Shipped
+   uses `EntryID.derived(parent: line.stableId, kind: "thinking-N" /
+   "text-N")` instead. Reasoning: the bare-stableId form only works
+   for single-block-per-line (the corpus norm at 99.97%), but the
+   derived form handles the 0.027% multi-block-outlier case
+   uniformly without conditional logic. The brief's "if a single line
+   ever carries multiple blocks of the same kind, address with a
+   block-index suffix" carve-out effectively required a derivation
+   anyway; the shipped code makes that derivation unconditional.
+   *(Stays — uniform handling preferred over conditional. Recorded so
+   future readers don't try to "restore" the bare-stableId form.)*
 ```
 
 ## §17 Open questions resolved (audit trail)
