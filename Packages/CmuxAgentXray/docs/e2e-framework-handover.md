@@ -315,10 +315,79 @@ metadata.
 
 ---
 
+## Single-command runner shell script
+
+`Packages/CmuxAgentXray/scripts/run-e2e.sh` — one command does the
+whole loop. The user never has to remember the regenerator + test
+incantations separately.
+
+```bash
+#!/usr/bin/env bash
+# Regenerate e2e fixtures from local Claude Code corpus, then run the
+# full e2e test suite. Exit non-zero on any failure.
+#
+# Usage:  ./scripts/run-e2e.sh [--skip-regenerate] [--corpus-only]
+#
+#   --skip-regenerate   Skip the fixture regenerator (use existing
+#                       committed fixtures). Useful in CI or when the
+#                       corpus is unavailable.
+#   --corpus-only       Skip fixture regen AND skip Layer 1; only run
+#                       the Layer 2 corpus-invariant suite.
+#
+# Auto-skips fixture regeneration if `~/.claude/projects/` doesn't
+# exist (CI / fresh-clone safe).
+
+set -euo pipefail
+cd "$(dirname "$0")/.."   # → Packages/CmuxAgentXray/
+
+SKIP_REGEN=0
+CORPUS_ONLY=0
+for arg in "$@"; do
+    case "$arg" in
+        --skip-regenerate) SKIP_REGEN=1 ;;
+        --corpus-only)     SKIP_REGEN=1; CORPUS_ONLY=1 ;;
+        *) echo "unknown flag: $arg" >&2; exit 2 ;;
+    esac
+done
+
+# Auto-skip regen if no local corpus.
+if [[ ! -d "$HOME/.claude/projects" ]]; then
+    SKIP_REGEN=1
+    echo "[run-e2e] No ~/.claude/projects — skipping fixture regenerate."
+fi
+
+if [[ "$SKIP_REGEN" -eq 0 ]]; then
+    echo "[run-e2e] Regenerating fixtures from corpus…"
+    swift run RegenerateE2EFixtures
+fi
+
+if [[ "$CORPUS_ONLY" -eq 1 ]]; then
+    echo "[run-e2e] Running Layer 2 corpus-invariant suite only…"
+    swift test --filter "CorpusInvariantsE2E"
+else
+    echo "[run-e2e] Running full e2e (Layer 1 fixtures + Layer 2 corpus)…"
+    swift test --filter "E2E"
+fi
+
+echo "[run-e2e] ✅ done"
+```
+
+Properties:
+
+- **Idempotent.** Re-running it gives the same result given the same corpus state.
+- **CI-safe.** Auto-skips regeneration when `~/.claude/projects/` doesn't exist; the corpus suite itself already auto-skips per Layer 2's design.
+- **Discoverable.** Two flags only — `--skip-regenerate` and `--corpus-only`. Documented in the `# Usage:` header.
+- **Loud failures.** `set -euo pipefail` — any tool failure aborts and exits non-zero.
+- **No interactivity.** No prompts; runs end-to-end without supervision.
+
+**Acceptance criterion** (added to the Layer 1 section): the shell
+script lands together with the regenerator and is exercised once
+during commit verification (`./scripts/run-e2e.sh` returns 0).
+
 ## Fixture regenerator (Swift CLI)
 
 `Packages/CmuxAgentXray/Tools/RegenerateE2EFixtures/` — separate Swift
-executable target.
+executable target. Invoked by `run-e2e.sh`; not run directly by hand.
 
 ```swift
 // Package.swift
@@ -436,9 +505,46 @@ Recommended execution sequence for the next session:
 3. **Migrate the remaining 6 scenario-shaped tests + author the 3 net-new fixtures** (one commit per migration is fine; all 10 in one commit is also fine).
 4. **Builder DEBUG seam** for invariant-checking (`awaitingParentCount` etc.). One commit.
 5. **`CorpusInvariantsE2E.swift` + heterogeneity selection** (one commit). Verify on local corpus.
-6. **`RegenerateE2EFixtures` CLI executable + per-fixture `regenerate.json` files** (one commit). Verify it overwrites a fixture cleanly without losing the existing scenario-pinning predicate.
+6. **`RegenerateE2EFixtures` CLI executable + per-fixture `regenerate.json` files + `scripts/run-e2e.sh`** (one commit). Verify by running `./scripts/run-e2e.sh` end-to-end on a populated corpus, then `./scripts/run-e2e.sh --skip-regenerate` to confirm the no-corpus path.
 7. **PII audit pass** (separate commit) — confirm redactor coverage; document findings.
 8. **Update `MIGRATION_PLAN.md` §16 + this handover doc** retiring marker (one commit).
+9. **Write a memory entry** (no code commit needed — saves to `~/.claude/projects/-Users-I505728-temp-github-cmux/memory/`) — see "Action item: post-landing memory entry" below.
+
+## Action item: post-landing memory entry
+
+**As soon as the e2e framework lands and `run-e2e.sh` returns green
+on a populated corpus**, write this feedback memory:
+
+```
+File: feedback_run_e2e_after_nontrivial_work.md
+Title: Run ./scripts/run-e2e.sh after any non-trivial AgentX-ray work
+
+After any non-trivial change to AgentX-ray code under
+`Packages/CmuxAgentXray/Sources/CmuxAgentXray/Adapters/Claude/**`,
+`Models/Transcript.swift`, the dispatcher, or anything that touches
+the per-line dispatch / pool / alias paths — run
+`./Packages/CmuxAgentXray/scripts/run-e2e.sh` before declaring the
+task done. The shell wraps regenerate + Layer 1 + Layer 2 in one
+command.
+
+When uncertain whether a change qualifies as "non-trivial" — ASK
+the user explicitly: "Should I run the e2e suite for this change?"
+Don't silently skip; don't silently run. The user knows the actual
+risk surface better than I do for any given diff.
+
+Trivial cases that don't need e2e (these are the only auto-skip
+defaults):
+- Doc-comment edits / typo fixes
+- Pure renderer / cmux-host adapter changes that don't touch the
+  package's Sources/
+- Localization-only edits in `Resources/Localizable.xcstrings`
+
+Anything else is non-trivial enough to warrant either running it
+or asking.
+```
+
+Add the corresponding `MEMORY.md` index entry pointing at the new
+file. Title kept short so the index stays scannable.
 
 ---
 
