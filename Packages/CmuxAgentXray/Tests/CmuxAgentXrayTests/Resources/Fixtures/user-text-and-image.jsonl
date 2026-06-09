@@ -1,0 +1,1 @@
+{"type":"user","uuid":"u1","parentUuid":null,"timestamp":"2026-06-07T10:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"see screenshot"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0K"}}]}}

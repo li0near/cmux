@@ -29,6 +29,9 @@ let package = Package(
         .testTarget(
             name: "CmuxAgentXrayTests",
             dependencies: ["CmuxAgentXray"],
+            resources: [
+                .process("Resources/Fixtures"),
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
                 .enableUpcomingFeature("ExistentialAny"),

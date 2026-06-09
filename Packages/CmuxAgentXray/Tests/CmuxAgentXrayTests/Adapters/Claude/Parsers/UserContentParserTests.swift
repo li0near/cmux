@@ -11,13 +11,9 @@ import Testing
 @Suite("UserContentParser — user-paste image regression")
 struct UserContentParserTests {
 
-    private func decodeLine(_ json: String) throws -> ClaudeJSONLLine {
-        try AgentXrayJSON.decoder.decode(ClaudeJSONLLine.self, from: Data(json.utf8))
-    }
-
-    private func buildUserEntry(jsonl: String) throws -> UserEntry {
+    private func buildUserEntry(fixtureNamed name: String) throws -> UserEntry {
         var builder = ClaudeTranscriptBuilder()
-        try builder.ingest(decodeLine(jsonl))
+        try builder.ingest(JSONLFixture.line(named: name))
         let entries = builder.transcript()
         guard let user = entries.compactMap({ entry -> UserEntry? in
             if case .user(let u) = entry { return u }
@@ -36,22 +32,7 @@ struct UserContentParserTests {
 
     @Test("user message with text + image emits both sections")
     func userTextAndImage() throws {
-        let json = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": null,
-          "timestamp": "2026-06-07T10:00:00.000Z",
-          "message": {
-            "role": "user",
-            "content": [
-              {"type":"text","text":"see screenshot"},
-              {"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0K"}}
-            ]
-          }
-        }
-        """#
-        let user = try buildUserEntry(jsonl: json)
+        let user = try buildUserEntry(fixtureNamed: "user-text-and-image")
         #expect(user.body.sections.count == 2)
         guard case .text(let blocks, _) = user.body.sections[0],
               case .image(let source) = user.body.sections[1] else {
@@ -66,21 +47,7 @@ struct UserContentParserTests {
 
     @Test("user message with image-only produces UserEntry with .image section")
     func userImageOnly() throws {
-        let json = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": null,
-          "timestamp": "2026-06-07T10:00:00.000Z",
-          "message": {
-            "role": "user",
-            "content": [
-              {"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"/9j/4AA"}}
-            ]
-          }
-        }
-        """#
-        let user = try buildUserEntry(jsonl: json)
+        let user = try buildUserEntry(fixtureNamed: "user-image-only")
         #expect(user.body.sections.count == 1)
         guard case .image(let source) = user.body.sections[0] else {
             Issue.record("Expected .image section, got \(user.body.sections)")
@@ -91,16 +58,7 @@ struct UserContentParserTests {
 
     @Test("string-shaped user content produces single .text section")
     func userStringShaped() throws {
-        let json = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": null,
-          "timestamp": "2026-06-07T10:00:00.000Z",
-          "message": {"role": "user", "content": "hello"}
-        }
-        """#
-        let user = try buildUserEntry(jsonl: json)
+        let user = try buildUserEntry(fixtureNamed: "user-string-content")
         #expect(user.body.sections.count == 1)
         guard case .text(let blocks, _) = user.body.sections[0] else {
             Issue.record("Expected .text section")
@@ -111,19 +69,7 @@ struct UserContentParserTests {
 
     @Test("text-only blocks user content produces single .text section")
     func userTextBlocks() throws {
-        let json = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": null,
-          "timestamp": "2026-06-07T10:00:00.000Z",
-          "message": {
-            "role": "user",
-            "content": [{"type":"text","text":"hello"}]
-          }
-        }
-        """#
-        let user = try buildUserEntry(jsonl: json)
+        let user = try buildUserEntry(fixtureNamed: "user-text-blocks")
         #expect(user.body.sections.count == 1)
         guard case .text(let blocks, _) = user.body.sections[0] else {
             Issue.record("Expected .text section")
@@ -134,22 +80,7 @@ struct UserContentParserTests {
 
     @Test("URL-mode image block (spec but not in corpus) is dropped silently")
     func userUrlModeImageDropped() throws {
-        let json = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": null,
-          "timestamp": "2026-06-07T10:00:00.000Z",
-          "message": {
-            "role": "user",
-            "content": [
-              {"type":"text","text":"caption"},
-              {"type":"image","source":{"type":"url","url":"https://x"}}
-            ]
-          }
-        }
-        """#
-        let user = try buildUserEntry(jsonl: json)
+        let user = try buildUserEntry(fixtureNamed: "user-url-mode-image")
         // URL-mode image dropped; only the text block survives.
         #expect(user.body.sections.count == 1)
         if case .text(let blocks, _) = user.body.sections[0] {

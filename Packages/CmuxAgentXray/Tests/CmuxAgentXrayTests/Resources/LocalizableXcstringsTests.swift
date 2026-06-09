@@ -15,7 +15,7 @@ struct LocalizableXcstringsTests {
     /// is wired up.
     @Test("xcstrings ships in Bundle.module")
     func xcstringsShippedInBundle() throws {
-        let url = Bundle.module.url(
+        let url = CmuxAgentXrayResourceBundle.bundle.url(
             forResource: "Localizable",
             withExtension: "xcstrings"
         )
@@ -29,7 +29,10 @@ struct LocalizableXcstringsTests {
     @Test("Agent label keys are kind-specific in xcstrings")
     func agentLabelsKindSpecificInXcstrings() throws {
         let url = try #require(
-            Bundle.module.url(forResource: "Localizable", withExtension: "xcstrings")
+            CmuxAgentXrayResourceBundle.bundle.url(
+                forResource: "Localizable",
+                withExtension: "xcstrings"
+            )
         )
         let data = try Data(contentsOf: url)
         let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])

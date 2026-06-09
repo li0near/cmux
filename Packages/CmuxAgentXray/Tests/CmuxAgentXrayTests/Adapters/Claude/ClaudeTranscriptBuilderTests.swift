@@ -301,30 +301,12 @@ struct ClaudeTranscriptBuilderTests {
         // at u1. The dispatcher detects rewind (u1's tail past slot 0
         // has trailing entries) and slices the tail into a synthesized
         // .branchLink at top-level slot 1.
-        let userJSON = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": null,
-          "timestamp": "2026-06-05T10:00:00.000Z",
-          "message": {"role": "user", "content": "first"}
-        }
-        """#
-        let rewindUserJSON = #"""
-        {
-          "type": "user",
-          "uuid": "u-rewind",
-          "parentUuid": "u1",
-          "timestamp": "2026-06-05T10:00:10.000Z",
-          "message": {"role": "user", "content": "rewound"}
-        }
-        """#
         var builder = ClaudeTranscriptBuilder()
-        try builder.ingest(decodeLine(userJSON))
+        try builder.ingest(JSONLFixture.line(named: "builder-user-first"))
         try builder.ingest(decodeLine(makeAssistantTextLine(
             uuid: "a1", parentUuid: "u1", text: "first response"
         )))
-        try builder.ingest(decodeLine(rewindUserJSON))
+        try builder.ingest(JSONLFixture.line(named: "builder-user-rewind"))
 
         let entries = builder.transcript()
         // [u1, branchLink (with a1 nested), u-rewind]
@@ -355,41 +337,10 @@ struct ClaudeTranscriptBuilderTests {
         // same text — should slice out the .pending UserEntry and
         // append a .consumed UserEntry. (Verified empirically in this
         // very session: queued `/aicore-api` surfaced this way.)
-        let userJSON = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": null,
-          "timestamp": "2026-06-05T10:00:00.000Z",
-          "message": {"role": "user", "content": "go"}
-        }
-        """#
-        let enqueueJSON = #"""
-        {
-          "type": "queue-operation",
-          "operation": "enqueue",
-          "uuid": "q1",
-          "parentUuid": "u1",
-          "timestamp": "2026-06-05T10:00:01.000Z",
-          "content": "/aicore-api"
-        }
-        """#
-        // System slash-command input line carries the <command-name>
-        // / <command-message> wrappers in its content.
-        let slashCmdInputJSON = #"""
-        {
-          "type": "system",
-          "subtype": "local_command",
-          "uuid": "s1",
-          "parentUuid": "u1",
-          "timestamp": "2026-06-05T10:00:02.000Z",
-          "content": "<command-message>aicore-api</command-message>\n<command-name>aicore-api</command-name>"
-        }
-        """#
         var builder = ClaudeTranscriptBuilder()
-        try builder.ingest(decodeLine(userJSON))
-        try builder.ingest(decodeLine(enqueueJSON))
-        try builder.ingest(decodeLine(slashCmdInputJSON))
+        try builder.ingest(JSONLFixture.line(named: "builder-user-go"))
+        try builder.ingest(JSONLFixture.line(named: "builder-queue-enqueue-aicore-api"))
+        try builder.ingest(JSONLFixture.line(named: "builder-slash-cmd-input-aicore-api"))
 
         let entries = builder.transcript()
         let users = entries.compactMap { entry -> UserEntry? in
@@ -407,28 +358,9 @@ struct ClaudeTranscriptBuilderTests {
     func unconsumedEnqueueRemainsPending() throws {
         // Enqueue without a matching slash-cmd or attachment.queued_command
         // → `.pending` UserEntry stays in the transcript.
-        let userJSON = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": null,
-          "timestamp": "2026-06-05T10:00:00.000Z",
-          "message": {"role": "user", "content": "go"}
-        }
-        """#
-        let enqueueJSON = #"""
-        {
-          "type": "queue-operation",
-          "operation": "enqueue",
-          "uuid": "q1",
-          "parentUuid": "u1",
-          "timestamp": "2026-06-05T10:00:01.000Z",
-          "content": "stay pending"
-        }
-        """#
         var builder = ClaudeTranscriptBuilder()
-        try builder.ingest(decodeLine(userJSON))
-        try builder.ingest(decodeLine(enqueueJSON))
+        try builder.ingest(JSONLFixture.line(named: "builder-user-go"))
+        try builder.ingest(JSONLFixture.line(named: "builder-queue-enqueue-stay-pending"))
 
         let entries = builder.transcript()
         let pendings = entries.compactMap { entry -> UserEntry? in
@@ -449,32 +381,12 @@ struct ClaudeTranscriptBuilderTests {
         let lines = [
             makeAssistantTextLine(uuid: "a1", parentUuid: "u1", text: "Working"),
         ]
-        let turnDurationJSON = #"""
-        {
-          "type": "system",
-          "subtype": "turn_duration",
-          "uuid": "td1",
-          "parentUuid": "a1",
-          "timestamp": "2026-06-05T10:00:05.000Z",
-          "durationMs": 1234,
-          "messageCount": 3
-        }
-        """#
-        let userJSON = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": null,
-          "timestamp": "2026-06-05T10:00:00.000Z",
-          "message": {"role": "user", "content": "go"}
-        }
-        """#
         var builder = ClaudeTranscriptBuilder()
-        try builder.ingest(decodeLine(userJSON))
+        try builder.ingest(JSONLFixture.line(named: "builder-user-go"))
         for line in lines {
             try builder.ingest(decodeLine(line))
         }
-        try builder.ingest(decodeLine(turnDurationJSON))
+        try builder.ingest(JSONLFixture.line(named: "builder-turn-duration"))
 
         let entries = builder.transcript()
         let agent = entries.compactMap { entry -> AgentEntry? in
@@ -494,40 +406,10 @@ struct ClaudeTranscriptBuilderTests {
         // path, every descendant (the user prompt that follows, plus
         // its entire turn chain) blocks in awaitingParent and the
         // transcript renders empty.
-        let attachJSON = #"""
-        {
-          "type": "attachment",
-          "uuid": "attach-1",
-          "parentUuid": null,
-          "timestamp": "2026-06-05T10:00:00.000Z",
-          "attachment": {"type": "hook_success", "hookName": "x"}
-        }
-        """#
-        let userJSON = #"""
-        {
-          "type": "user",
-          "uuid": "u1",
-          "parentUuid": "attach-1",
-          "timestamp": "2026-06-05T10:00:01.000Z",
-          "message": {"role": "user", "content": "hello"}
-        }
-        """#
-        let assistantJSON = #"""
-        {
-          "type": "assistant",
-          "uuid": "a1",
-          "parentUuid": "u1",
-          "timestamp": "2026-06-05T10:00:02.000Z",
-          "message": {
-            "role": "assistant",
-            "content": [{"type": "text", "text": "hi"}]
-          }
-        }
-        """#
         var builder = ClaudeTranscriptBuilder()
-        try builder.ingest(decodeLine(attachJSON))
-        try builder.ingest(decodeLine(userJSON))
-        try builder.ingest(decodeLine(assistantJSON))
+        for line in try JSONLFixture.lines(named: "builder-skipped-attachment-orphan") {
+            try builder.ingest(line)
+        }
 
         let entries = builder.transcript()
         // [user, agent] — the hook_success attachment is skipped (no

@@ -18,59 +18,23 @@ import Testing
 @Suite("AttachmentLineDispatcher — queued_command commandMode routing")
 struct AttachmentLineDispatcherTests {
 
-    private func decodeLine(_ json: String) throws -> ClaudeJSONLLine {
-        try AgentXrayJSON.decoder.decode(
-            ClaudeJSONLLine.self,
-            from: Data(json.utf8)
-        )
-    }
-
     @Test("commandMode 'prompt' renders as queued user prompt")
     func promptRouting() throws {
-        let line = try decodeLine(#"""
-        {
-          "type": "attachment",
-          "uuid": "u-1",
-          "attachment": {
-            "type": "queued_command",
-            "prompt": "hello",
-            "commandMode": "prompt"
-          }
-        }
-        """#)
+        let line = try JSONLFixture.line(named: "attachment-queued-command-prompt")
         let routing = AttachmentLineDispatcher.parse(line)
         #expect(routing == .renderSpecial(.queuedPrompt))
     }
 
     @Test("commandMode missing (legacy) renders as queued user prompt")
     func legacyMissingCommandMode() throws {
-        let line = try decodeLine(#"""
-        {
-          "type": "attachment",
-          "uuid": "u-3",
-          "attachment": {
-            "type": "queued_command",
-            "prompt": "legacy prompt"
-          }
-        }
-        """#)
+        let line = try JSONLFixture.line(named: "attachment-queued-command-legacy")
         let routing = AttachmentLineDispatcher.parse(line)
         #expect(routing == .renderSpecial(.queuedPrompt))
     }
 
     @Test("commandMode 'task-notification' is a harness echo and must be skipped")
     func taskNotificationRouting() throws {
-        let line = try decodeLine(#"""
-        {
-          "type": "attachment",
-          "uuid": "u-2",
-          "attachment": {
-            "type": "queued_command",
-            "prompt": "<task-notification><task-id>x</task-id></task-notification>",
-            "commandMode": "task-notification"
-          }
-        }
-        """#)
+        let line = try JSONLFixture.line(named: "attachment-queued-command-task-notification")
         let routing = AttachmentLineDispatcher.parse(line)
         #expect(routing == .skip)
     }
