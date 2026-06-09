@@ -1033,15 +1033,29 @@ struct ClaudeTranscriptBuilder {
             // Read tool: file content arrives as plain `.text` after
             // `OffloadedOutputParser.promote(_:)` has already swapped
             // any `<persisted-output>` wrapper into `.offloadedOutput`.
-            // Replace any remaining `.text` result section with
-            // `.code(.plain)` so the row renders with a line-number
-            // gutter + per-language syntax highlighting.
+            // Each remaining `.text` carries Claude Code's
+            // `<padded-line-num>\t<text>` shape; lift the embedded
+            // numbers into the section's `lineNumberStart` so the row
+            // gutter shows real file line numbers (with `offset:` /
+            // `limit:` honored) and strip them from the rendered text
+            // so we don't double-display. Status envelopes (e.g.
+            // "File does not exist") fall through with `lineNumberStart:
+            // nil` so the gutter is suppressed.
             let language = LanguagePicker.language(forFilePath: path)
             update.resultSections = update.resultSections.map { section in
                 if case .text(let blocks, _) = section {
+                    let raw = blocks.joined(separator: "\n")
+                    if let stripped = ReadLineNumberParser.strip(raw) {
+                        return .code(.plain(
+                            text: stripped.text,
+                            language: language,
+                            lineNumberStart: stripped.lineNumberStart
+                        ))
+                    }
                     return .code(.plain(
-                        text: blocks.joined(separator: "\n"),
-                        language: language
+                        text: raw,
+                        language: language,
+                        lineNumberStart: nil
                     ))
                 }
                 return section

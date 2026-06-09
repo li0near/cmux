@@ -72,13 +72,20 @@ public enum Section: Sendable {
 }
 
 /// Discriminated payload for ``Section/code(_:)``. Plain code carries
-/// raw text + an optional language hint; diff code carries the
-/// structured `[DiffHunk]` from the JSONL wire shape so the detail-tab
-/// serializer can rebuild the unified-diff text losslessly.
+/// raw text + an optional language hint + an optional line-number
+/// start (nil = no gutter, e.g. for Read status envelopes; integer =
+/// start counting from there, e.g. Read with `offset: 327` parses to
+/// 327); diff code carries the structured `[DiffHunk]` from the JSONL
+/// wire shape so the detail-tab serializer can rebuild the unified-diff
+/// text losslessly.
 public enum CodeContent: Sendable {
-    /// File-content-shaped code (e.g. Read tool result body). Renders
-    /// as line-numbered rows, syntax-highlighted by `language`.
-    case plain(text: String, language: String?)
+    /// File-content-shaped code. Renders as line-numbered rows when
+    /// `lineNumberStart` is set (Read tool result body, the line
+    /// numbers Claude Code embeds become the gutter values), or as
+    /// gutter-less code when it's nil (status envelopes like
+    /// "File does not exist" — sequential 1..N would be misleading).
+    /// `language` drives syntax highlighting when set.
+    case plain(text: String, language: String?, lineNumberStart: Int?)
     /// Structured git-diff hunks. Renders as line-numbered rows with
     /// per-line classification (context / added / removed) and full-row
     /// red/green tints. The hunks survive the model layer untouched so
@@ -91,7 +98,7 @@ extension CodeContent {
     /// Language hint shared by both inner cases.
     fileprivate var language: String? {
         switch self {
-        case .plain(_, let lang), .diff(_, let lang):
+        case .plain(_, let lang, _), .diff(_, let lang):
             return lang
         }
     }
@@ -106,7 +113,7 @@ extension CodeContent {
     /// the other.
     fileprivate var totalBytes: Int {
         switch self {
-        case .plain(let text, _):
+        case .plain(let text, _, _):
             return text.utf8.count
         case .diff(let hunks, _):
             return hunks.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.utf8.count } }
@@ -320,7 +327,7 @@ extension Body {
             switch section {
             case .text(let blocks, _):
                 parts.append(contentsOf: blocks)
-            case .code(.plain(let text, _)):
+            case .code(.plain(let text, _, _)):
                 parts.append(text)
             case .code(.diff), .image, .toolReference, .offloadedOutput:
                 continue

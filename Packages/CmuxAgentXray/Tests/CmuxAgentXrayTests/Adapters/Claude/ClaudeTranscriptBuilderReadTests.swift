@@ -12,8 +12,8 @@ import Testing
 struct ClaudeTranscriptBuilderReadTests {
 
     @available(macOS 15, *)
-    @Test("Read result body becomes .code(.plain) with language derived from file extension")
-    func readResultBecomesCodePlain() throws {
+    @Test("Read result body parses Claude Code's <num>\\t<text> shape: strips numbers, captures offset")
+    func readResultStripsLineNumbers() throws {
         let toolUseJSON = #"""
         {
           "type": "assistant",
@@ -26,7 +26,57 @@ struct ClaudeTranscriptBuilderReadTests {
               "type": "tool_use",
               "id": "tool-read-1",
               "name": "Read",
-              "input": {"file_path": "/tmp/foo.swift"}
+              "input": {"file_path": "/tmp/foo.swift", "offset": 10, "limit": 2}
+            }]
+          }
+        }
+        """#
+        // Claude Code's Read tool output: padded line number + tab +
+        // line text. Two lines: "10\tlet x = 1" and "11\tlet y = 2".
+        let toolResultJSON = #"""
+        {
+          "type": "user",
+          "uuid": "u2",
+          "parentUuid": "a1",
+          "timestamp": "2026-06-05T10:00:02.000Z",
+          "message": {
+            "role": "user",
+            "content": [{
+              "type": "tool_result",
+              "tool_use_id": "tool-read-1",
+              "content": "    10\tlet x = 1\n    11\tlet y = 2"
+            }]
+          }
+        }
+        """#
+        let agent = try buildAgent(assistantLines: [toolUseJSON, toolResultJSON])
+        let tool = try #require(firstTool(in: agent))
+        guard case .code(.plain(let text, let language, let lineNumberStart)) = tool.body.sections.last else {
+            Issue.record("Expected .code(.plain) result section; got \(tool.body.sections)")
+            return
+        }
+        // Numbers stripped; offset captured as 10.
+        #expect(text == "let x = 1\nlet y = 2")
+        #expect(language == "swift")
+        #expect(lineNumberStart == 10)
+    }
+
+    @available(macOS 15, *)
+    @Test("Read status envelope ('File does not exist') falls through with lineNumberStart=nil")
+    func readStatusEnvelopeKeepsTextNoGutter() throws {
+        let toolUseJSON = #"""
+        {
+          "type": "assistant",
+          "uuid": "a1",
+          "parentUuid": "u1",
+          "timestamp": "2026-06-05T10:00:01.000Z",
+          "message": {
+            "role": "assistant",
+            "content": [{
+              "type": "tool_use",
+              "id": "tool-read-1",
+              "name": "Read",
+              "input": {"file_path": "/tmp/missing.txt"}
             }]
           }
         }
@@ -42,22 +92,19 @@ struct ClaudeTranscriptBuilderReadTests {
             "content": [{
               "type": "tool_result",
               "tool_use_id": "tool-read-1",
-              "content": "let x = 1\nlet y = 2"
+              "content": "File does not exist. Note: your current working directory is /tmp"
             }]
           }
         }
         """#
         let agent = try buildAgent(assistantLines: [toolUseJSON, toolResultJSON])
         let tool = try #require(firstTool(in: agent))
-        #expect(tool.toolName == "Read")
-        // Body: index 0 = parser-input section (file_path summary),
-        // index 1 = the result. The Read swap targets the result only.
-        guard case .code(.plain(let text, let language)) = tool.body.sections.last else {
+        guard case .code(.plain(let text, _, let lineNumberStart)) = tool.body.sections.last else {
             Issue.record("Expected .code(.plain) result section; got \(tool.body.sections)")
             return
         }
-        #expect(text == "let x = 1\nlet y = 2")
-        #expect(language == "swift")
+        #expect(text.contains("File does not exist"))
+        #expect(lineNumberStart == nil)
     }
 
     @available(macOS 15, *)
