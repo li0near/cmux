@@ -28,6 +28,7 @@ extension AgentEntryView {
     /// inline rendering.
     func cappedBody(
         _ body: Body,
+        filePath: String? = nil,
         onOpenDetail: @escaping (_ sectionIndex: Int) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -51,6 +52,7 @@ extension AgentEntryView {
                     DiffHunkView(
                         hunks: hunks,
                         palette: palette,
+                        filePath: filePath,
                         onOpenDetail: { onOpenDetail(idx) }
                     )
                 }

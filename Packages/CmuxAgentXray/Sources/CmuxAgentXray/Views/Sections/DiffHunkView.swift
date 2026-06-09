@@ -25,6 +25,7 @@ struct DiffHunkView: View {
 
     let hunks: [DiffHunk]
     let palette: HudPalette
+    let filePath: String?
     let onOpenDetail: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -38,7 +39,7 @@ struct DiffHunkView: View {
                     rowView(row, maxDigits: maxDigits)
                 }
             }
-            .background(Rectangle().fill(palette.expandedBackground))
+            .fixedSize(horizontal: false, vertical: true)
             if cap.overflow {
                 OpenDetailLinkView(
                     totalLines: cap.totalLines,
@@ -58,38 +59,62 @@ struct DiffHunkView: View {
             Text(hunkHeaderText(hunk))
                 .font(Theme.SubRow.title)
                 .foregroundStyle(palette.dim)
-                .padding(.horizontal, Theme.Padding.expandedBodyBlock)
+                .padding(.horizontal, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
         case .line(let line, let oldNo, let newNo):
-            let bg = lineBackground(for: line.kind)
+            let codeBg = lineBackground(for: line.kind)
+            let gutterBg = lineGutterBackground(for: line.kind)
             let gutterFg = lineGutterForeground(for: line.kind)
-            let display = oldNo ?? newNo
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text(formatLineNumber(display, width: maxDigits))
+            // For `-` rows newNo is nil → falls back to oldNo. For `+`
+            // and context rows we prefer newNo so the gutter shows the
+            // post-edit (new file) position — matches Claude TUI and
+            // git's `--unified` display, which is what users care about
+            // when reviewing an edit's destination.
+            let display = newNo ?? oldNo
+            HStack(alignment: .top, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(formatLineNumber(display, width: maxDigits))
+                        .font(Theme.SubRow.title)
+                        .foregroundStyle(gutterFg)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.trailing, 6)
+                    Text(prefixGlyph(for: line.kind))
+                        .font(Theme.SubRow.title)
+                        .foregroundStyle(gutterFg)
+                        .frame(width: 12, alignment: .center)
+                }
+                .padding(.leading, 6)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(Rectangle().fill(gutterBg))
+                Text(highlightedText(line.text))
                     .font(Theme.SubRow.title)
-                    .foregroundStyle(gutterFg)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.leading, 4)
-                    .padding(.trailing, 6)
-                Text(prefixGlyph(for: line.kind))
-                    .font(Theme.SubRow.title)
-                    .foregroundStyle(gutterFg)
-                    .frame(width: 12, alignment: .center)
-                Text(charWrappable(line.text))
-                    .font(Theme.SubRow.title)
-                    .foregroundStyle(palette.primary)
                     .textSelection(.enabled)
+                    .padding(.leading, 6)
+                    .padding(.trailing, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Rectangle().fill(codeBg))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Rectangle().fill(bg))
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func lineBackground(for kind: DiffHunk.Line.Kind) -> Color {
         switch kind {
         case .context: return .clear
+        case .removed: return palette.diffRemovedBackground(colorScheme: colorScheme)
+        case .added:   return palette.diffAddedBackground(colorScheme: colorScheme)
+        }
+    }
+
+    /// Background for the line-number / prefix-glyph gutter. Context
+    /// rows get the standard expanded-body gray (matches text-section
+    /// gray-bg pattern); +/- rows match their full-row tint so the
+    /// gutter blends into the change strip.
+    private func lineGutterBackground(for kind: DiffHunk.Line.Kind) -> Color {
+        switch kind {
+        case .context: return palette.expandedBackground
         case .removed: return palette.diffRemovedBackground(colorScheme: colorScheme)
         case .added:   return palette.diffAddedBackground(colorScheme: colorScheme)
         }
@@ -118,6 +143,47 @@ struct DiffHunkView: View {
     private func charWrappable(_ text: String) -> String {
         guard !text.isEmpty else { return text }
         return text.map(String.init).joined(separator: "\u{200B}")
+    }
+
+    /// Try to syntax-highlight the line text against the file's
+    /// language (derived from `filePath`'s extension). Falls back to
+    /// the plain char-wrappable string when the language is unknown
+    /// or the highlighter rejects the input. ZWSP injection is layered
+    /// on top to keep char-level wrap regardless of which path won.
+    private func highlightedText(_ text: String) -> AttributedString {
+        let language = SyntaxHighlight.language(forFilePath: filePath)
+        let font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        if let attr = SyntaxHighlight.attributed(
+            text,
+            language: language,
+            font: font,
+            colorScheme: colorScheme
+        ) {
+            return charWrap(attr)
+        }
+        return charWrap(AttributedString(text))
+    }
+
+    /// Insert a ZWSP between every character of an `AttributedString`,
+    /// preserving each character's attributes (foreground color from
+    /// highlight.js). Slow but called per visible row only.
+    private func charWrap(_ attr: AttributedString) -> AttributedString {
+        var out = AttributedString()
+        var first = true
+        for run in attr.runs {
+            for ch in attr[run.range].characters {
+                if !first {
+                    var sep = AttributedString("\u{200B}")
+                    if let fg = run.foregroundColor { sep.foregroundColor = fg }
+                    out.append(sep)
+                }
+                first = false
+                var single = AttributedString(String(ch))
+                if let fg = run.foregroundColor { single.foregroundColor = fg }
+                out.append(single)
+            }
+        }
+        return out
     }
 
     private func prefixGlyph(for kind: DiffHunk.Line.Kind) -> String {

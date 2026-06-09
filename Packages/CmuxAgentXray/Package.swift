@@ -14,9 +14,18 @@ let package = Package(
             targets: ["CmuxAgentXray"]
         ),
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/smittytone/HighlighterSwift.git",
+            from: "3.1.0"
+        ),
+    ],
     targets: [
         .target(
             name: "CmuxAgentXray",
+            dependencies: [
+                .product(name: "Highlighter", package: "HighlighterSwift"),
+            ],
             resources: [
                 .process("Resources"),
             ],

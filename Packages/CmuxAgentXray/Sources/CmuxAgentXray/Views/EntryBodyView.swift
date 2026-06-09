@@ -47,6 +47,7 @@ struct EntryBodyView: View {
             DiffHunkView(
                 hunks: hunks,
                 palette: palette,
+                filePath: nil,
                 onOpenDetail: onOpenDetail
             )
         }
