@@ -267,49 +267,53 @@ struct CodeBlockView: View {
     private func computeCap(rows: [CodeRow]) -> CapResult {
         let lineCap = 30
         let byteCap = 3 * 1024
-        var lineRowCount = 0
+        var totalLineCount = 0
         var totalBytes = 0
-        var maxLineNumber = 0
         for row in rows {
-            switch row.kind {
-            case .hunkHeader: continue
-            case .line(let text, let lineNumber, _):
-                lineRowCount += 1
+            if case .line(let text, _, _) = row.kind {
+                totalLineCount += 1
                 totalBytes += text.utf8.count
-                if let n = lineNumber {
-                    maxLineNumber = max(maxLineNumber, n)
+            }
+        }
+        let overflow = totalLineCount > lineCap || totalBytes > byteCap
+        let visible: [CodeRow]
+        if !overflow {
+            visible = rows
+        } else {
+            var v: [CodeRow] = []
+            var c = 0
+            var b = 0
+            for row in rows {
+                switch row.kind {
+                case .hunkHeader:
+                    v.append(row)
+                case .line(let text, _, _):
+                    if c >= lineCap || b >= byteCap { break }
+                    v.append(row)
+                    c += 1
+                    b += text.utf8.count
                 }
+                if c >= lineCap || b >= byteCap { break }
+            }
+            visible = v
+        }
+        // Compute the gutter's column width from VISIBLE rows only —
+        // a Read of a 200-line file with cap at row 30 should size
+        // the gutter to fit the largest visible number (e.g. 30,
+        // 2 digits), not the off-screen file's last line (200, 3
+        // digits). Off-screen content would over-pad the visible
+        // gutter for no benefit.
+        var maxLineNumber = 0
+        for row in visible {
+            if case .line(_, let lineNumber, _) = row.kind, let n = lineNumber {
+                maxLineNumber = max(maxLineNumber, n)
             }
         }
         let maxDigits = max(1, String(maxLineNumber).count)
-        let overflow = lineRowCount > lineCap || totalBytes > byteCap
-        if !overflow {
-            return CapResult(
-                visibleRows: rows,
-                overflow: false,
-                totalLines: lineRowCount,
-                maxLineNumberDigits: maxDigits
-            )
-        }
-        var visible: [CodeRow] = []
-        var visibleLineCount = 0
-        var visibleBytes = 0
-        for row in rows {
-            switch row.kind {
-            case .hunkHeader:
-                visible.append(row)
-            case .line(let text, _, _):
-                if visibleLineCount >= lineCap || visibleBytes >= byteCap { break }
-                visible.append(row)
-                visibleLineCount += 1
-                visibleBytes += text.utf8.count
-            }
-            if visibleLineCount >= lineCap || visibleBytes >= byteCap { break }
-        }
         return CapResult(
             visibleRows: visible,
-            overflow: true,
-            totalLines: lineRowCount,
+            overflow: overflow,
+            totalLines: totalLineCount,
             maxLineNumberDigits: maxDigits
         )
     }
