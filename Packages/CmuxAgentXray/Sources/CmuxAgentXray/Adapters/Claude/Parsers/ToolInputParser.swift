@@ -26,16 +26,12 @@ enum ToolInputParser {
         case "Read", "Edit", "Write", "MultiEdit":
             if case .string(let path)? = obj["file_path"] { return path }
         case "Bash":
-            if case .string(let cmd)? = obj["command"] {
-                return truncated(cmd, max: ClaudeRenderConsts.toolSummaryMaxChars)
-            }
+            if case .string(let cmd)? = obj["command"] { return cmd }
         case "Grep", "Glob":
             if case .string(let pat)? = obj["pattern"] { return pat }
         case "Task":
             if case .string(let desc)? = obj["description"] { return desc }
-            if case .string(let prompt)? = obj["prompt"] {
-                return truncated(prompt, max: ClaudeRenderConsts.toolSummaryMaxChars)
-            }
+            if case .string(let prompt)? = obj["prompt"] { return prompt }
         case "WebFetch", "WebSearch":
             if case .string(let url)? = obj["url"] ?? obj["query"] { return url }
         default:
@@ -47,9 +43,7 @@ enum ToolInputParser {
         let preferred = ["url", "path", "file_path", "query", "command",
                          "name", "id", "skill", "key"]
         for key in preferred {
-            if case .string(let v)? = obj[key] {
-                return truncated(v, max: ClaudeRenderConsts.toolSummaryMaxChars)
-            }
+            if case .string(let v)? = obj[key] { return v }
         }
         return obj.map { "\($0.key)=\($0.value.displayString)" }.sorted().first ?? ""
     }
