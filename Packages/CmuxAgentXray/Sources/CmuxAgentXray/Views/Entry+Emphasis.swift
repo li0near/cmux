@@ -1,3 +1,5 @@
+public import SwiftUI
+
 /// Configurable per-Entry emphasis predicate. The unified renderer reads
 /// this to pick between ``/Theme/Entry/nameEmphasis`` (semibold) and
 /// ``/Theme/Entry/nameRegular`` (no weight) for the header's `name`
@@ -16,6 +18,26 @@ extension Entry {
             return true
         case .text, .tool:
             return false
+        }
+    }
+
+    /// Truncation mode for the header's `title` slot when its width
+    /// overflows the available space.
+    ///
+    /// - ``Text/TruncationMode/tail`` (head-priority) — for content
+    ///   where the lede carries the meaning: user prompts, assistant
+    ///   thinking, assistant text. The renderer keeps the start of
+    ///   the string visible and drops trailing characters.
+    /// - ``Text/TruncationMode/middle`` (head + tail) — for content
+    ///   where both ends carry meaning: tool file paths (the basename
+    ///   matters), shell commands, recap titles. The renderer keeps
+    ///   the start AND end visible and drops middle characters.
+    public var titleTruncation: Text.TruncationMode {
+        switch self {
+        case .user, .text:
+            return .tail
+        default:
+            return .middle
         }
     }
 }

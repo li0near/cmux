@@ -31,6 +31,11 @@ struct EntryHeaderView: View {
     /// Whether the header shows an expanded chevron rotation. Drives
     /// the ``EntryIcon/systemName(expanded:)`` lookup.
     let isExpanded: Bool
+    /// Truncation mode for the title slot when it overflows. Caller
+    /// reads ``Entry/titleTruncation`` so head-priority kinds
+    /// (user / text) keep the lede visible while default kinds
+    /// (tools / system / etc.) keep both ends visible.
+    let titleTruncation: Text.TruncationMode
 
     var body: some View {
         HStack(spacing: Theme.Spacing.entryIconText) {
@@ -64,7 +69,7 @@ struct EntryHeaderView: View {
                     .font(Theme.Entry.title)
                     .foregroundStyle(palette.primary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
+                    .truncationMode(titleTruncation)
             }
             Spacer(minLength: Theme.Spacing.tight)
             ForEach(Array(header.trailing.enumerated()), id: \.offset) { _, item in

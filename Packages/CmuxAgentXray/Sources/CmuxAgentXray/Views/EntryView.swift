@@ -72,7 +72,8 @@ public struct EntryView: View, Equatable {
                     emphasized: entry.isEmphasized,
                     chip: chipDisplay,
                     pulseIcon: pulseIcon,
-                    isExpanded: isExpanded
+                    isExpanded: isExpanded,
+                    titleTruncation: entry.titleTruncation
                 )
             }
             .buttonStyle(.plain)
