@@ -254,13 +254,24 @@
         }
       }
     },
+    "agentXray.entry.rewind.label.entries" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld entries"
+          }
+        }
+      }
+    },
     "agentXray.entry.rewind.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rewind"
+            "value" : "Abandoned Branch"
           }
         }
       }

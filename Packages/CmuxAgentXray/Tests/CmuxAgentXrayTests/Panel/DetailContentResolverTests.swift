@@ -117,8 +117,11 @@ struct DetailContentResolverTests {
         #expect(DetailContent.resolve(request: request, entry: entry) == nil)
     }
 
-    @Test("Synthesized rewind → .transcript with rootUuid as sourceEntryID")
-    func rewindTranscript() {
+    @Test("Synthesized rewind → no detail request (renders inline)")
+    func rewindHasNoDetailRequest() {
+        // Rewind entries render their abandoned-branch transcript inline
+        // via RewindEntryView; the resolver returns nil so no detail tab
+        // opens.
         let abandoned: [Entry] = [
             userEntry(id: "u-abandoned", body: .text(["old prompt"]))
         ]
@@ -132,13 +135,7 @@ struct DetailContentResolverTests {
             )
         )
         let request = DetailRequest.bodySection(targetID: "synth-1", sectionIndex: 0)
-        let content = DetailContent.resolve(request: request, entry: entry)
-        if case .transcript(let sourceEntryID, let entries) = content?.source {
-            #expect(sourceEntryID == "branch-root-uuid")
-            #expect(entries.count == 1)
-        } else {
-            Issue.record("Expected .transcript source; got \(String(describing: content?.source))")
-        }
+        #expect(DetailContent.resolve(request: request, entry: entry) == nil)
     }
 
     // MARK: - Agent sub-entries

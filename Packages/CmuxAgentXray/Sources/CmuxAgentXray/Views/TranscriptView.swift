@@ -140,7 +140,16 @@ public struct TranscriptView: View {
                         GeometryReader { geo in
                             Color.clear
                                 .onChange(of: Set(anchors.keys)) { _, _ in
-                                    handleEntryAnchorsChange(anchors: anchors, geo: geo)
+                                    // Filter to top-level entry IDs only — when
+                                    // a rewind container is expanded, its
+                                    // children publish anchors via the same
+                                    // `entryView(for:)` dispatch, but those
+                                    // ids are not valid `proxy.scrollTo`
+                                    // targets at the parent LazyVStack and
+                                    // would corrupt `currentTopVisibleID`.
+                                    let topLevelIDs = Set(entries.map { $0.id.stableString })
+                                    let filtered = anchors.filter { topLevelIDs.contains($0.key) }
+                                    handleEntryAnchorsChange(anchors: filtered, geo: geo)
                                 }
                         }
                     }
@@ -218,21 +227,29 @@ public struct TranscriptView: View {
         }
     }
 
-    /// Per-kind dispatch for `SynthesizedEntry`. Branch links render as
-    /// a compact sub-entry (predecessor parity, PARITY §3.15 / §5b);
-    /// PR links render via the generic `EntryView` since they're a
-    /// header-only external link.
+    /// Per-kind dispatch for `SynthesizedEntry`. Rewind entries render
+    /// as a container that inline-expands its abandoned-branch
+    /// transcript; PR links render via the generic `EntryView` since
+    /// they're a header-only external link.
     @ViewBuilder
     private func synthesizedEntryView(entry: SynthesizedEntry, palette: HudPalette) -> some View {
         switch entry.kind {
-        case .rewind(let rootUUID):
-            BranchLinkEntryRow(
+        case .rewind:
+            let entryID = entry.id.stableString
+            RewindEntryView(
+                entry: entry,
                 palette: palette,
-                onOpenDetail: {
-                    panel.openDetail(request: .bodySection(targetID: rootUUID, sectionIndex: 0))
-                }
+                isExpanded: panel.currentExpanded.contains(entryID),
+                actions: RewindEntryActions(
+                    isSubEntryExpanded: { panel.currentExpanded.contains($0) },
+                    onToggleExpansion: { panel.toggleExpansion($0) },
+                    onOpenDetail: { panel.openDetail(request: $0) },
+                    renderSubEntry: { sub in
+                        AnyView(entryView(for: sub, palette: palette))
+                    }
+                )
             )
-            .id(entry.id.stableString)
+            .equatable()
         case .prLink:
             genericEntryView(entry: .synthesized(entry), palette: palette)
         }
@@ -271,8 +288,9 @@ public struct TranscriptView: View {
     /// Default detail-tab routing for entries whose body has a single
     /// section the renderer treats as the canonical "open detail"
     /// surface. Tools / text sub-entries route per-section from inside
-    /// `AgentEntryView+*` instead. Returns nil for entries with no
-    /// such surface (PR-link external URL, agent-turn header).
+    /// `AgentEntryView+*` instead. Rewinds render their abandoned
+    /// transcript inline via ``RewindEntryView`` and never produce a
+    /// detail request. Returns nil for entries with no such surface.
     private func defaultDetailRequest(for entry: Entry) -> DetailRequest? {
         let id = entry.id.stableString
         switch entry {
@@ -281,7 +299,7 @@ public struct TranscriptView: View {
         case .synthesized(let s):
             switch s.kind {
             case .rewind:
-                return .bodySection(targetID: id, sectionIndex: 0)
+                return nil
             case .prLink:
                 return nil
             }
@@ -528,69 +546,5 @@ private struct EntryAnchorsKey: PreferenceKey {
         nextValue: () -> [String: Anchor<CGRect>]
     ) {
         value.merge(nextValue()) { _, new in new }
-    }
-}
-
-// MARK: - Branch-link sub-entry
-
-/// Rewind / abandoned-branch link rendered as a compact sub-entry
-/// (predecessor parity per PARITY §3.15 / dogfood feedback). Layout
-/// mirrors the spike's `tangentLeading` chrome:
-///
-///     [↳] [branch] Rewind
-///       └─ glyph in the gap between parent's icon column and name column
-///          └─ branch icon aligns with the parent's NAME column (= where
-///             other sub-entry icons would land if this were a true sub-entry)
-///
-/// Post-G6 the entry is a flat "Rewind" label — `rewindIndex` /
-/// `totalRewinds` / `entryCount` / `firstPromptPreview` are gone.
-/// Click → `onOpenDetail(.abandonedBranch(...))` — the abandoned-branch
-/// transcript opens in a sibling detail tab.
-@available(macOS 15, *)
-private struct BranchLinkEntryRow: View {
-    let palette: HudPalette
-    let onOpenDetail: () -> Void
-
-    var body: some View {
-        Button(action: onOpenDetail) {
-            HStack(spacing: Theme.Spacing.entryIconText) {
-                // Tangent leading: reserve the parent's icon-column
-                // width and overlay `↳` at the trailing edge with a
-                // half-spacing offset so it lands in the gap between
-                // the parent's icon and name columns.
-                Color.clear
-                    .frame(width: Theme.Metric.entryIconWidth, height: 12)
-                    .overlay(alignment: .trailing) {
-                        Text("↳")
-                            .font(Theme.SubEntry.title)
-                            .foregroundStyle(palette.dim)
-                            .fixedSize()
-                            .offset(x: Theme.Spacing.entryIconText / 2)
-                    }
-                Image(systemName: EntryIcon.rewind.collapsed)
-                    .font(Theme.SubEntry.icon)
-                    .foregroundStyle(palette.dim)
-                Text(titleText)
-                    .font(Theme.SubEntry.title)
-                    .foregroundStyle(palette.dim)
-                    .underline(true, color: palette.dim.opacity(Theme.Opacity.dim))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, Theme.Padding.horizontal)
-            .padding(.vertical, Theme.Spacing.verticalStack)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .hoverHighlight(palette: palette)
-    }
-
-    private var titleText: String {
-        String(
-            localized: "agentXray.entry.rewind.title",
-            defaultValue: "Rewind",
-            bundle: .module
-        )
     }
 }

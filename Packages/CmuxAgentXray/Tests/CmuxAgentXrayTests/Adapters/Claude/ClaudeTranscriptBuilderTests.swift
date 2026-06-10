@@ -318,6 +318,10 @@ struct ClaudeTranscriptBuilderTests {
         }
         // The abandoned AgentEntry@a1 should be inside the link.
         #expect(link.subEntries.count == 1)
+        // Header carries the new "Abandoned Branch" name + a count
+        // label that matches subEntries.count.
+        #expect(link.header.name == "Abandoned Branch")
+        #expect(link.header.label == "1 entries")
         guard case .agent(let abandoned) = link.subEntries[0] else {
             Issue.record("expected abandoned .agent inside rewind; got \(link.subEntries[0])")
             return

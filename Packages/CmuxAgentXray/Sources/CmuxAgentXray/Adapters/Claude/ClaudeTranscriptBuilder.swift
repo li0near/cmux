@@ -277,7 +277,11 @@ struct ClaudeTranscriptBuilder {
             id: .derived(parent: firstUuid, kind: "rewind"),
             header: Header(
                 icon: .rewind,
-                name: Self.loc("agentXray.entry.rewind.title", "Rewind"),
+                name: Self.loc("agentXray.entry.rewind.title", "Abandoned Branch"),
+                label: Self.loc(
+                    "agentXray.entry.rewind.label.entries",
+                    "\(abandoned.count) entries"
+                ),
                 timeMarker: .clock(line.timestamp ?? .distantPast)
             ),
             body: Body(sections: []),

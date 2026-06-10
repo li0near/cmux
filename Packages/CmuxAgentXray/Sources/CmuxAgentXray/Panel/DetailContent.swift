@@ -165,22 +165,14 @@ extension DetailContent {
             )
 
         case .synthesized(let s):
-            guard case .rewind(let rootUuid) = s.kind else { return nil }
-            let transcript = s.subEntries
-            return DetailContent(
-                title: localized(
-                    "agentXray.detail.title.abandonedBranch",
-                    defaultValue: "Abandoned branch"
-                ),
-                subtitle: localized(
-                    "agentXray.detail.subtitle.abandonedBranch",
-                    defaultValue: "diverged at \(timestamp)"
-                ),
-                sourceEntryID: rootUuid,
-                icon: EntryIcon.rewind,
-                accent: .dim,
-                source: .transcript(sourceEntryID: rootUuid, entries: transcript)
-            )
+            switch s.kind {
+            case .rewind:
+                // Rewind entries render their abandoned-branch transcript
+                // inline via ``RewindEntryView``; no detail-tab path.
+                return nil
+            case .prLink:
+                return nil
+            }
 
         case .agent:
             // AgentEntry — detail is reached via individual sub-entries,
