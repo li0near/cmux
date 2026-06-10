@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Two-tier policy:
 ///   - **Standard** (`.standard`) — 30 lines / 3 KiB. Bounds maximum
-///     row height so LazyVStack's lazy-row height estimation can't
+///     entry height so LazyVStack's lazy-entry height estimation can't
 ///     drift by orders of magnitude when long sections fold into the
 ///     rendered set.
 ///   - **Always link** (`.alwaysLink`) — title-only inline rendering;

@@ -6,7 +6,7 @@ public import Foundation
 /// mode, external-edit markers, and a forward-compat escape hatch.
 ///
 /// The renderer dispatches on `subType` to choose icon, accent color,
-/// and section layout — but the row's `Header` and `Body` are pre-built
+/// and section layout — but the entry's `Header` and `Body` are pre-built
 /// at construction time, so the renderer never reaches into `subType`
 /// for header content.
 public struct SystemEntry: Identifiable, Equatable, Sendable {
@@ -49,13 +49,13 @@ public struct SystemEntry: Identifiable, Equatable, Sendable {
         case contextUsage
         /// `system.subtype: away_summary` — Claude Code's "you returned" recap.
         case recap
-        /// Plan-mode entry/exit/re-entry transition row.
+        /// Plan-mode entry/exit/re-entry transition entry.
         case planMode(phase: PlanModePhase, planFilePath: String?, planExists: Bool)
-        /// `attachment.type == "edited_text_file"` — external edit row.
+        /// `attachment.type == "edited_text_file"` — external edit entry.
         case editedTextFile(path: String)
         /// Forward-compat: unknown JSONL system subtype. The raw subtype
         /// string is preserved so the renderer can fall back to a
-        /// "System: <subtype>" row.
+        /// "System: <subtype>" entry.
         case other(String)
     }
 

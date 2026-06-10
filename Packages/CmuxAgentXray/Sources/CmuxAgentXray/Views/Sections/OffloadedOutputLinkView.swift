@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Inline link for a ``Section/offloadedOutput(_:)`` — surfaces an
-/// "↗ Open offloaded result · 29.3KB" affordance in the row body.
+/// "↗ Open offloaded result · 29.3KB" affordance in the entry body.
 /// Clicking opens the offloaded file in the detail tab via the
 /// `onOpen` closure.
 @available(macOS 15, *)

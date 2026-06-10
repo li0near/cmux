@@ -175,7 +175,7 @@ public struct TextSubEntry: Identifiable, Equatable, Sendable {
 
 /// One tool invocation inside an assistant turn. Body normally carries
 /// `[.text(input), .text(result)?]`. Sub-agent (Task / Agent tool)
-/// transcripts surface as separate top-level ``AgentEntry`` rows; the
+/// transcripts surface as separate top-level ``AgentEntry`` entries; the
 /// `.tool` variant is a leaf.
 public struct ToolEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
@@ -206,7 +206,7 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     /// Server name parsed from MCP tool names of the form
     /// `mcp__<server>__<tool>` (e.g. `"playwright"`). nil for built-in
     /// tools whose names don't carry the `mcp__` prefix. Drives the
-    /// per-tool server chip in the sub-row header.
+    /// per-tool server chip in the sub-entry header.
     public let mcpServer: String?
     /// `file_path` from the tool's input for tools that carry it
     /// (Read / Edit / Write / MultiEdit). Used by the detail-tab
@@ -268,7 +268,7 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     ///                              user line lands.
     ///
     /// Sub-agent (Task / Agent tool) transcripts surface as separate
-    /// top-level ``AgentEntry`` rows in the main transcript, NOT as
+    /// top-level ``AgentEntry`` entries in the main transcript, NOT as
     /// children of this tool entry.
 }
 

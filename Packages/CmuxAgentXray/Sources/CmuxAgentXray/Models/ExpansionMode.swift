@@ -11,7 +11,7 @@
 ///   (`isLockedToTurn && expansionMode == .autoExpand`), so the case
 ///   name carries no `Snap` suffix.
 ///
-/// Per-row manual expansion overrides win in both states.
+/// Per-entry manual expansion overrides win in both states.
 public enum ExpansionMode: String, Equatable, Sendable, CaseIterable {
     case allCollapsed
     case autoExpand

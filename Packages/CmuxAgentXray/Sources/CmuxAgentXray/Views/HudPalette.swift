@@ -53,7 +53,7 @@ public struct HudPalette: Sendable {
     }
 
     /// Soft background used behind expanded inline blocks so they
-    /// read as a contained section rather than blending into the row.
+    /// read as a contained section rather than blending into the entry.
     public var expandedBackground: Color {
         foreground.opacity(0.06)
     }

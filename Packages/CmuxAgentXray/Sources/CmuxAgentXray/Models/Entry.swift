@@ -6,7 +6,7 @@ public import Foundation
 /// - `.agent` — one assistant turn (top-level container variant).
 /// - `.system` — JSONL `type: "system"` line in any of its subtypes.
 /// - `.compact` — `type: "summary"` compact event.
-/// - `.synthesized` — cmux-invented row (branch link, PR link).
+/// - `.synthesized` — cmux-invented entry (branch link, PR link).
 /// - `.text` — assistant thinking / text sub-entry. Appears ONLY inside
 ///   ``AgentEntry/subEntries`` (and recursively inside abandoned
 ///   branch-link bodies). NEVER at top level — `Transcript.append`
@@ -97,7 +97,7 @@ public enum Entry: Identifiable, Equatable, Sendable {
     ///
     /// `.tool` is NOT a container variant — sub-agent (Task / Agent
     /// tool) transcripts will be modeled as top-level ``AgentEntry``
-    /// rows in a future commit, not as nested children of the
+    /// entries in a future commit, not as nested children of the
     /// originating tool entry.
     public var subEntries: [Entry] {
         get {

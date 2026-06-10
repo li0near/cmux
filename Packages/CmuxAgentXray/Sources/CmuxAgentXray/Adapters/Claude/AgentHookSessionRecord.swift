@@ -1,6 +1,6 @@
 public import Foundation
 
-/// In-memory mirror of one row in `~/.cmuxterm/<agent>-hook-sessions.json`,
+/// In-memory mirror of one record in `~/.cmuxterm/<agent>-hook-sessions.json`,
 /// written by the cmux CLI's hook handlers.
 ///
 /// Schema is shared between Claude and Codex hook stores — both write

@@ -22,7 +22,7 @@ public import Foundation
 /// Reads are ``entry(id:)`` (any depth) and ``entries`` (top-level
 /// projection — what the panel renders).
 ///
-/// **Index aliasing (post-G6).** ``index`` carries two kinds of rows:
+/// **Index aliasing (post-G6).** ``index`` carries two kinds of entries:
 /// real entries (written by ``append``) and **aliases** (written by
 /// ``registerAlias(lineUuid:path:)``). Aliases let JSONL line uuids
 /// that don't themselves produce a transcript entry — chained
@@ -32,7 +32,7 @@ public import Foundation
 /// containing entry's path so future children resolve in O(1) without
 /// re-walking the raw JSONL chain. Aliases share the same key space
 /// as real entries (EntryID), and ``slice``'s post-pass drops or
-/// shifts aliases identically to real-entry rows.
+/// shifts aliases identically to real entries.
 ///
 /// **The `internal(set) var subEntries` unlock.** ``AgentEntry`` and
 /// ``SynthesizedEntry`` declare `subEntries` as `internal(set) var`,
@@ -100,7 +100,7 @@ public struct Transcript: Sendable, Equatable {
     /// `path` is the containing entry's path (typically the parent's
     /// resolved path). Aliases share the same key space as real
     /// entries and are dropped or shifted by ``slice``'s post-pass
-    /// uniformly with real-entry rows.
+    /// uniformly with real entries.
     ///
     /// No-op if `lineUuid` is already in `index` (real append wins).
     internal mutating func registerAlias(lineUuid: EntryID, path: [Int]) {

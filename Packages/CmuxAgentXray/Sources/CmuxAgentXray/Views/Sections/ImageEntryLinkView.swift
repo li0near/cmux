@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Inline link for a ``Section/image(_:)`` — surfaces a clickable
-/// "↗ Image" affordance in the row body. Clicking opens the image
+/// "↗ Image" affordance in the entry body. Clicking opens the image
 /// in a real cmux preview panel via the host's
 /// `openImageInPanel(...)` short-circuit; the package never decodes
 /// or renders the bytes itself.
@@ -9,7 +9,7 @@ import SwiftUI
 /// Replaces the prior 80×80 inline thumbnail. The thumbnail's
 /// lazy-decode infrastructure was unnecessary cost — sessions with
 /// many user-pasted screenshots paid the decode for every visible
-/// row. With the link shape, no bytes are touched until the user
+/// entry. With the link shape, no bytes are touched until the user
 /// clicks.
 @available(macOS 15, *)
 struct ImageEntryLinkView: View {

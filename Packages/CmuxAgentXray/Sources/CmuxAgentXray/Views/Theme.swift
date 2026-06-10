@@ -22,14 +22,14 @@ public enum Theme {
 
     /// Inter-element gaps inside a single horizontal or vertical group.
     public enum Spacing {
-        /// Top-level row HStack: icon ↔ text gap (8pt).
+        /// Top-level entry HStack: icon ↔ text gap (8pt).
         public static let entryIconText: CGFloat = 8
-        /// Sub-row HStack: smaller gap (6pt).
+        /// Sub-entry HStack: smaller gap (6pt).
         public static let subEntryIconText: CGFloat = 6
         /// Inside-pill segment gap; "scroll:" / "snap" tight pairing (4pt).
         public static let tight: CGFloat = 4
         /// Internal vertical spacing between header and expanded body
-        /// inside a single row VStack (4pt).
+        /// inside a single entry VStack (4pt).
         public static let verticalStack: CGFloat = 4
     }
 
@@ -54,7 +54,7 @@ public enum Theme {
         public static let expandedBodyBlock: CGFloat = 8
         /// `LazyVStack(spacing:)` between consecutive entries (4pt).
         /// Composed at the parent — entries have intrinsic height so
-        /// this is the list's `spacing`, not a per-row padding.
+        /// this is the list's `spacing`, not a per-entry padding.
         public static let topLevelEntryGap: CGFloat = 4
     }
 
@@ -131,7 +131,7 @@ public enum Theme {
         public static let divider: Double = 0.15
         /// Secondary text, pill borders, link underline (0.55).
         public static let dim: Double = 0.55
-        /// Tertiary text on dim — sub-row line counts, tool summary (0.75).
+        /// Tertiary text on dim — sub-entry line counts, tool summary (0.75).
         public static let detail: Double = 0.75
     }
 

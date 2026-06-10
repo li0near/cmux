@@ -1,9 +1,9 @@
 public import Foundation
 
 /// Header data for every `Entry`. Replaces the older
-/// `name`/`summary`/per-row-icon scatter with one structured value.
+/// `name`/`summary`/per-entry-icon scatter with one structured value.
 ///
-/// Render contract: the renderer composes the header as a horizontal row:
+/// Render contract: the renderer composes the header as a horizontal arrangement:
 ///
 ///     [icon]  [name]  [label]  [title]  [trailing items…]  [timeMarker]
 ///
@@ -31,8 +31,8 @@ public struct Header: Equatable, Sendable {
     /// Trailing metadata items (status dots, word counts, custom
     /// pills). Rendered right-aligned just before the time marker.
     public let trailing: [TrailingItem]
-    /// Time-related marker for the row's right edge — wall-clock for
-    /// top-level entries, runtime duration for tool sub-rows. nil
+    /// Time-related marker for the entry's right edge — wall-clock for
+    /// top-level entries, runtime duration for tool sub-entries. nil
     /// hides it entirely.
     public let timeMarker: TimeMarker?
 

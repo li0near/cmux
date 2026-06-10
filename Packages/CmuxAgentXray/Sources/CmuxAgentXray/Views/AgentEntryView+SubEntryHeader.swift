@@ -72,7 +72,7 @@ extension AgentEntryView {
         .contentShape(Rectangle())
     }
 
-    /// Trailing-item rendering for sub-row headers. Sub-rows use the
+    /// Trailing-item rendering for sub-entry headers. Sub-entries use the
     /// dim meta font for every kind today; status dots / token pills
     /// are top-level-only and degrade to empty here.
     @ViewBuilder

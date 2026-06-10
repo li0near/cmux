@@ -127,7 +127,7 @@ private struct MetadataPill: View {
 /// Rounded-rect pill that toggles between the compact total
 /// ("32.9k tokens") and the per-bucket breakdown
 /// ("12.0k in · 1.5k out · 19.4k cr"). Local `@State` per pill
-/// instance — each AgentEntry's row carries its own toggle without
+/// instance — each AgentEntry's header carries its own toggle without
 /// pushing state up to the panel.
 @available(macOS 15, *)
 private struct TokenPillView: View {

@@ -1,6 +1,6 @@
 public import SwiftUI
 
-/// Subtle hover indicator. Applied to icon buttons and sub-row click
+/// Subtle hover indicator. Applied to icon buttons and sub-entry click
 /// targets — pills and bare text labels do **not** get this; their
 /// hover affordance is the cursor change alone.
 ///

@@ -124,7 +124,7 @@ public protocol AgentXrayHost: AnyObject {
     ///   - reuseExisting: When true, refocus an existing panel that
     ///     already points at the same canonical path instead of
     ///     duplicating. Combined with stable per-`(sourceEntryID,
-    ///     sectionIndex)` filenames, re-clicks of the same row
+    ///     sectionIndex)` filenames, re-clicks of the same entry
     ///     dedupe.
     /// - Returns: UUID of the opened (or refocused) panel, nil on
     ///   failure (no workspace, no available pane, etc.).

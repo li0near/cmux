@@ -1,5 +1,5 @@
 /// A request to surface one body section in a detail tab. Emitted by
-/// the row view when the inline cap is exceeded; consumed by
+/// the entry view when the inline cap is exceeded; consumed by
 /// `AgentXrayPanel.openDetail(request:)`, which resolves it against
 /// the live transcript into a `DetailContent` and asks the host to
 /// open a sibling tab.

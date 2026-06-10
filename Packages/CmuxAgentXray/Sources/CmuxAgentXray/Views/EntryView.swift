@@ -12,7 +12,7 @@ public import SwiftUI
 ///
 /// Post-G1.5: nested children live on the entry's `subEntries` field
 /// directly (not in `body.sections`). Container variants (`.agent` /
-/// `.tool` / `.synthesized.branchLink`) own their own sub-row
+/// `.tool` / `.synthesized.branchLink`) own their own sub-entry
 /// rendering — `AgentEntryView` walks `entry.subEntries` directly.
 /// `EntryView` no longer takes a `renderSubEntry` closure.
 @available(macOS 15, *)
@@ -80,7 +80,7 @@ public struct EntryView: View {
     }
 
     /// Variant-specific accent color override. nil = palette.primary.
-    /// Per-kind rules live in ``PaletteRole/forEntry(_:)`` so live-row
+    /// Per-kind rules live in ``PaletteRole/forEntry(_:)`` so live-entry
     /// and detail-header coloring share one source of truth.
     private var kindAccentColor: Color? {
         PaletteRole.forEntry(entry).map { palette.color(for: $0) }

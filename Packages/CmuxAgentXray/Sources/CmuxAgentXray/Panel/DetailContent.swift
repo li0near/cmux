@@ -1,7 +1,7 @@
 import Foundation
 
 /// Static content shown by an `AgentXrayPanel` when its `mode` is
-/// `.detail(content:)`. Created by the live panel when a row's
+/// `.detail(content:)`. Created by the live panel when an entry's
 /// `↗ Open detail` link is clicked because an expandable section
 /// overflowed the inline cap.
 ///
@@ -21,7 +21,7 @@ public struct DetailContent: Equatable, Sendable {
     /// (e.g. "from entry at 14:23:01 · 1.2k lines").
     public let subtitle: String?
     /// Source entry id — kept for cross-references / search and for
-    /// the host's per-row materialization cache key.
+    /// the host's per-entry materialization cache key.
     public let sourceEntryID: String
     /// Leading glyph in the detail-mode header. Resolver picks the
     /// canonical ``EntryIcon`` for the source variant; the view reads
@@ -158,7 +158,7 @@ extension DetailContent {
                 subtitle: subtitleFromTimestamp(timestamp),
                 sourceEntryID: c.id.stableString,
                 icon: EntryIcon.system,
-                // Match `EntryView.kindAccentColor`'s live-row mapping
+                // Match `EntryView.kindAccentColor`'s live-entry mapping
                 // for `.compact` (`palette.dim`).
                 accent: .dim,
                 source: .text(body: body, suggestedFilename: "system-output.txt")
@@ -340,7 +340,7 @@ extension DetailContent {
     ) -> DetailContent? {
         // Sub-agent transcripts (Task / Agent tools) are not currently
         // surfaced through this resolver — proper shape is top-level
-        // AgentEntry rows in the main transcript; that implementation
+        // AgentEntry entries in the main transcript; that implementation
         // is a follow-up. Until it lands, sidechain detail-tab opens
         // are not wired.
 

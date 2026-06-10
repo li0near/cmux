@@ -183,7 +183,7 @@ public struct TranscriptView: View {
 
     /// Top-level entry dispatcher. AgentEntry takes the specialized
     /// per-kind path; synthesized branch-link entries take a compact
-    /// sub-row style; everything else routes through the generic
+    /// sub-entry style; everything else routes through the generic
     /// `EntryView`. Both paths attach an anchor preference for
     /// viewport-top tracking.
     @ViewBuilder
@@ -216,7 +216,7 @@ public struct TranscriptView: View {
     }
 
     /// Per-kind dispatch for `SynthesizedEntry`. Branch links render as
-    /// a compact sub-row (predecessor parity, PARITY §3.15 / §5b);
+    /// a compact sub-entry (predecessor parity, PARITY §3.15 / §5b);
     /// PR links render via the generic `EntryView` since they're a
     /// header-only external link.
     @ViewBuilder
@@ -522,18 +522,18 @@ private struct EntryAnchorsKey: PreferenceKey {
     }
 }
 
-// MARK: - Branch-link sub-row
+// MARK: - Branch-link sub-entry
 
-/// Rewind / abandoned-branch link rendered as a compact sub-row
+/// Rewind / abandoned-branch link rendered as a compact sub-entry
 /// (predecessor parity per PARITY §3.15 / dogfood feedback). Layout
 /// mirrors the spike's `tangentLeading` chrome:
 ///
 ///     [↳] [branch] Rewind
 ///       └─ glyph in the gap between parent's icon column and name column
 ///          └─ branch icon aligns with the parent's NAME column (= where
-///             other sub-row icons would land if this were a true sub-row)
+///             other sub-entry icons would land if this were a true sub-entry)
 ///
-/// Post-G6 the row is a flat "Rewind" label — `rewindIndex` /
+/// Post-G6 the entry is a flat "Rewind" label — `rewindIndex` /
 /// `totalRewinds` / `entryCount` / `firstPromptPreview` are gone.
 /// Click → `onOpenDetail(.abandonedBranch(...))` — the abandoned-branch
 /// transcript opens in a sibling detail tab.

@@ -13,11 +13,11 @@ public import Observation
 ///   route from the live panel when an expandable section overflows the
 ///   inline cap. Detail panels open as sibling tabs in the same pane.
 ///
-/// **Snapshot-boundary policy**: this class is observable, but the row
+/// **Snapshot-boundary policy**: this class is observable, but the entry
 /// view layer (`EntryView`, `EntryHeaderView`, `EntryBodyView`) never
 /// holds a reference to it. The panel view projects observable state
 /// into immutable value snapshots (`ExpandableContent`, `HudPalette`,
-/// closure bundles) before passing them to `LazyVStack` rows.
+/// closure bundles) before passing them to `LazyVStack` entries.
 @MainActor
 @available(macOS 15, *)
 @Observable
@@ -63,7 +63,7 @@ public final class AgentXrayPanel {
     /// On flip: `applyModeFlip(from:to:)` runs an **asymmetric**
     /// policy. `.free → .snap` resets bulk state, bumps
     /// `layoutRevision` (forces a LazyVStack remount that drops stale
-    /// lazy-row geometry), and re-derives `entriesFilter`. `.snap →
+    /// lazy-entry geometry), and re-derives `entriesFilter`. `.snap →
     /// .free` only relaxes `entriesFilter` to `.all`; user-fiddled
     /// state is preserved.
     public var scrollMode: ScrollMode = .snap {
@@ -130,7 +130,7 @@ public final class AgentXrayPanel {
     /// Per-entry expansion state. The set of keys (`EntryID.stableString`
     /// or derived sub-id) the panel is currently rendering as expanded.
     /// Membership is the single source of truth — `currentExpanded
-    /// .contains(id)` is the per-row read in O(1), no fallback step.
+    /// .contains(id)` is the per-entry read in O(1), no fallback step.
     ///
     /// Default-expansion (branches yes, leaves no) is materialised at
     /// observation time by `autoExpandNewEntries()`: every newly

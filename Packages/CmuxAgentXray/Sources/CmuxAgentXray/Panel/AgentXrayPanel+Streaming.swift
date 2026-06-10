@@ -18,7 +18,7 @@ extension AgentXrayPanel {
         // New session → reset bulk-expansion state to defaults. The
         // persistent `expansionMode` pill state is preserved — only
         // the user's pill click changes it. Bump `layoutRevision` so
-        // the LazyVStack drops the previous session's stale lazy-row
+        // the LazyVStack drops the previous session's stale lazy-entry
         // geometry.
         cachedEntryCollection = nil
         currentExpanded.removeAll(keepingCapacity: false)

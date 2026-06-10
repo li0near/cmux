@@ -91,7 +91,7 @@ extension Array where Element == DiffHunk {
 /// Unified renderer for ``Section/code(_:)`` — paints both plain code
 /// (Read tool result body) and structured diff (Edit / MultiEdit /
 /// Write-update from `toolUseResult.structuredPatch`) with a
-/// line-number gutter, optional `+`/`-` prefix glyph, per-row
+/// line-number gutter, optional `+`/`-` prefix glyph, per-entry
 /// background tint by classification, and per-language syntax
 /// highlighting via `SyntaxHighlight` (highlight.js).
 ///
@@ -207,7 +207,7 @@ struct CodeBlockView: View {
 
     // MARK: - Per-classification styling
 
-    /// All four per-row visual fields for one classification, picked
+    /// All four per-entry visual fields for one classification, picked
     /// in a single switch so the renderer doesn't dispatch four times
     /// per row. `.plain` (Read content) and `.context` (diff context
     /// rows) share the same styling — neutral row, gray gutter — and

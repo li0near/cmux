@@ -5,7 +5,7 @@ import Foundation
 enum ClaudeLineRouting: Equatable {
     /// Drop the line entirely — session-orphan metadata, telemetry the
     /// builder consumes elsewhere, or sidechain lines (sub-agent
-    /// transcripts surface as separate top-level rows in a future
+    /// transcripts surface as separate top-level entries in a future
     /// commit; for now they're skipped wholesale).
     case skip
 
@@ -70,7 +70,7 @@ enum ClaudeSpecialKind: Equatable {
 ///      + `queue-operation` (post-G6 inline FIFO routing).
 ///   2. Sidechain check — `isSidechain: true` → `.skip` wholesale
 ///      (sub-agent transcripts will surface as top-level AgentEntry
-///      rows in a future commit; pre-G6's collect-and-attach pipeline
+///      entries in a future commit; pre-G6's collect-and-attach pipeline
 ///      is gone).
 ///   3. Per-`type` parser.
 ///   4. Unknown `type` — log in DEBUG, route to `.skip`.

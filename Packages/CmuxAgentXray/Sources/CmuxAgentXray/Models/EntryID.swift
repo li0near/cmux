@@ -6,7 +6,7 @@
 ///   JSONL strings cross into the domain model.
 /// - **Derived** — synthetic id for entries that have no JSONL
 ///   counterpart (thinking blocks projected from assistant content
-///   blocks, abstract `branchLink`/`prLink` synthesizer rows, queued
+///   blocks, abstract `branchLink`/`prLink` synthesizer entries, queued
 ///   pseudo-entries, etc.). The `parent` is the owning JSONL uuid;
 ///   the `kind` namespaces the derivation so siblings under the same
 ///   parent are unique.
@@ -41,7 +41,7 @@ public struct EntryID: Hashable, Sendable {
     }
 
     /// Canonical string representation. Used as a `Set<String>` key for
-    /// expansion state and as a SwiftUI `id(_:)` value at the row level.
+    /// expansion state and as a SwiftUI `id(_:)` value at the entry level.
     public var stableString: String {
         switch source {
         case .jsonl(let uuid):

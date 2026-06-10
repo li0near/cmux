@@ -4,7 +4,7 @@ import Foundation
 @available(macOS 15, *)
 extension AgentXrayPanel {
 
-    /// Called when an `EntryView` row triggers `↗ Open detail` because
+    /// Called when an `EntryView` entry triggers `↗ Open detail` because
     /// the requested expandable section exceeded the inline cap. Looks
     /// up the source entry in the live transcript (walking both
     /// top-level entries and each agent turn's sub-entries) and routes

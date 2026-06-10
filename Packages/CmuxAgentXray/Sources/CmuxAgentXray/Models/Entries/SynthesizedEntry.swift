@@ -39,10 +39,10 @@ public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
 
     public var timestamp: Date? { header.timeMarker?.clockDate }
 
-    /// Closed enum over the cmux-invented row kinds. New synthesized
-    /// rows land here.
+    /// Closed enum over the cmux-invented entry kinds. New synthesized
+    /// entries land here.
     public enum Kind: Equatable, Sendable {
-        /// Indented tree-style row at a divergence point. The full
+        /// Indented tree-style entry at a divergence point. The full
         /// abandoned-branch transcript travels on the parent
         /// ``SynthesizedEntry/subEntries`` field; the renderer walks
         /// it like any other transcript.
@@ -52,7 +52,7 @@ public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
         /// kind: "branchLink")`), making it unique across multiple
         /// rewinds to the same divergence point.
         case branchLink(branchRootUuid: String)
-        /// External PR link row. Carries the prNumber/url/repository so
+        /// External PR link entry. Carries the prNumber/url/repository so
         /// the renderer can format both title and external link target.
         case prLink(prNumber: Int, url: String, repository: String)
     }

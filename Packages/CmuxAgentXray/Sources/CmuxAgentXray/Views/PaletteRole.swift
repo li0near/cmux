@@ -4,7 +4,7 @@
 /// Lives in the Views layer next to ``HudPalette`` because color
 /// resolution is a view-layer concern. Two concrete consumers share the
 /// same enum:
-/// - ``EntryView`` (live transcript rows) — `kindAccentColor` reads
+/// - ``EntryView`` (live transcript entries) — `kindAccentColor` reads
 ///   `PaletteRole.forEntry(entry)?.color(in: palette)`.
 /// - ``DetailContent`` (detail-mode header) — carries `accent: PaletteRole`
 ///   set by the resolver per-arm; the detail view resolves via
@@ -12,7 +12,7 @@
 ///
 /// Adding a new role: add the case here, extend ``HudPalette/color(for:)``
 /// to map it, and update the relevant dispatch (``forEntry(_:)`` for
-/// live-row use; the resolver arms in `DetailContent.swift` for
+/// live-entry use; the resolver arms in `DetailContent.swift` for
 /// detail-header use).
 public enum PaletteRole: Equatable, Sendable {
     /// Default foreground (terminal text color).
@@ -31,7 +31,7 @@ public enum PaletteRole: Equatable, Sendable {
 
 extension PaletteRole {
     /// Per–top-level-Entry accent dispatch. Mirrors the rules originally
-    /// inlined in `EntryView.kindAccentColor` so live-row coloring and
+    /// inlined in `EntryView.kindAccentColor` so live-entry coloring and
     /// detail-mode coloring share one source of truth.
     ///
     /// Returns nil when the entry has no kind-specific accent (renderer

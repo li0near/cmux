@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Two display projections:
 /// - ``summarize(name:input:)`` — single-line summary used as
-///   `Header.title` for tool sub-rows. Per-tool heuristics for the
+///   `Header.title` for tool sub-entries. Per-tool heuristics for the
 ///   common shapes (Read/Edit/Write file_path, Bash command, Grep
 ///   pattern, Task description, etc.) with a priority-list fallback
 ///   for unknown tools.
@@ -115,7 +115,7 @@ enum ToolInputParser {
 
     /// Hard length cap with `…` ellipsis. Used for inline tool-input
     /// JSON rendering where unbounded object/array dumps would blow up
-    /// row height. Distinct concern from user-prompt preview, which
+    /// entry height. Distinct concern from user-prompt preview, which
     /// dynamically truncates at the view layer via
     /// `.truncationMode(.tail)`.
     static func truncated(_ s: String, max: Int) -> String {
