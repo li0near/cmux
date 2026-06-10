@@ -79,6 +79,11 @@ public struct RewindEntryView: View, Equatable {
                     Rectangle()
                         .frame(width: 1)
                         .foregroundStyle(palette.dim.opacity(0.6))
+                        // Center the gutter in the gap between this
+                        // entry's icon and its name (midpoint at
+                        // entryIconWidth + entryIconText/2 = 18pt
+                        // from the container's leading edge).
+                        .padding(.leading, Theme.Metric.entryIconWidth + Theme.Spacing.entryIconText / 2)
                 }
             }
         }

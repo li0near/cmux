@@ -122,12 +122,29 @@ public struct TranscriptView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
                             ForEach(Array(entries.enumerated()), id: \.element.id.stableString) { index, entry in
-                                if index > 0 {
-                                    boundaryDivider(id: dividerID(before: entry), palette: palette)
-                                }
                                 entryView(for: entry, palette: palette)
+                                    // Pre-entry scroll-target anchor as a
+                                    // .background overlay so it doesn't
+                                    // take a LazyVStack spacing slot — a
+                                    // sibling zero-height view would
+                                    // double the inter-entry gap from
+                                    // 4pt to 8pt.
+                                    .background(alignment: .top) {
+                                        if index > 0 {
+                                            Color.clear
+                                                .frame(width: 0, height: 0)
+                                                .id(dividerID(before: entry))
+                                        }
+                                    }
                             }
-                            boundaryDivider(id: tailBoundaryID(for: panel.entriesFilter), palette: palette)
+                            // Tail boundary stays as a regular sibling —
+                            // adds one 4pt slot below the last entry
+                            // (acceptable bottom padding, no
+                            // double-spacing problem since it has no
+                            // following child).
+                            Color.clear
+                                .frame(width: 0, height: 0)
+                                .id(tailBoundaryID(for: panel.entriesFilter))
                         }
                         .padding(.vertical, 6)
                         .id("cmux-agentxray-layout-\(panel.bulkState.layoutRevision)")
