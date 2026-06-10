@@ -226,7 +226,14 @@ public struct StatusBarView: View {
     private var rewindButton: some View {
         let visible = rewindVisibility == .link
         return iconButton(
-            systemName: EntryIcon.rewind.collapsed,
+            // Status-bar pill carries different visual information than
+            // the entry header glyph: it's a hide/show toggle indicator,
+            // not a "this is a rewind" marker. Keep the original branch
+            // fork glyph so the toggle reads as "branching state shown
+            // vs hidden" (icon meaning preserved across the entry-icon
+            // refresh that introduced the clock-badge variant for entry
+            // headers).
+            systemName: "arrow.triangle.branch",
             color: visible ? palette.cyan : palette.dim,
             action: onCycleRewindVisibility,
             disabled: false,
