@@ -125,7 +125,7 @@ public struct TranscriptView: View {
                                 if index > 0 {
                                     boundaryDivider(id: dividerID(before: entry), palette: palette)
                                 }
-                                entryRow(for: entry, palette: palette)
+                                entryView(for: entry, palette: palette)
                             }
                             boundaryDivider(id: tailBoundaryID(for: panel.entriesFilter), palette: palette)
                         }
@@ -187,7 +187,7 @@ public struct TranscriptView: View {
     /// `EntryView`. Both paths attach an anchor preference for
     /// viewport-top tracking.
     @ViewBuilder
-    private func entryRow(for entry: Entry, palette: HudPalette) -> some View {
+    private func entryView(for entry: Entry, palette: HudPalette) -> some View {
         let entryID = entry.id.stableString
         Group {
             switch entry {
@@ -202,7 +202,7 @@ public struct TranscriptView: View {
                     onOpenDetail: { panel.openDetail(request: $0) }
                 )
             case .synthesized(let syn):
-                synthesizedEntryRow(entry: syn, palette: palette)
+                synthesizedEntryView(entry: syn, palette: palette)
             default:
                 genericEntryView(entry: entry, palette: palette)
             }
@@ -220,7 +220,7 @@ public struct TranscriptView: View {
     /// PR links render via the generic `EntryView` since they're a
     /// header-only external link.
     @ViewBuilder
-    private func synthesizedEntryRow(entry: SynthesizedEntry, palette: HudPalette) -> some View {
+    private func synthesizedEntryView(entry: SynthesizedEntry, palette: HudPalette) -> some View {
         switch entry.kind {
         case .branchLink(let rootUUID):
             BranchLinkEntryRow(
@@ -478,7 +478,7 @@ public struct TranscriptView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Theme.Padding.topLevelEntryGap) {
                 ForEach(entries, id: \.id.stableString) { entry in
-                    detailEntryRow(entry: entry, palette: palette)
+                    detailEntryView(entry: entry, palette: palette)
                 }
             }
             .padding(.vertical, 6)
@@ -486,7 +486,7 @@ public struct TranscriptView: View {
         .scrollIndicators(.never)
     }
 
-    private func detailEntryRow(entry: Entry, palette: HudPalette) -> some View {
+    private func detailEntryView(entry: Entry, palette: HudPalette) -> some View {
         let computed = panel.computedCache.compute(for: entry, displayMode: .fullDetail)
         let entryID = entry.id.stableString
         return EntryView(
