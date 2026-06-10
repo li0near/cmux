@@ -9,7 +9,7 @@ public import SwiftUI
 /// terminal-foreground color directly. The palette lives in the View
 /// layer, NOT Models, since SwiftUI Color is a view-layer concept.
 @available(macOS 15, *)
-public struct HudPalette: Sendable {
+public struct HudPalette: Sendable, Equatable {
     public let foreground: Color
 
     public init(foreground: Color) {

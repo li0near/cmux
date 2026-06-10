@@ -17,10 +17,16 @@ public import SwiftUI
 /// stable closures — never an `@ObservedObject` / `@Bindable`
 /// reference. The parent panel view computes the expansion / streaming
 /// flags up front and passes them through; sub-entry expansion is
-/// projected via the `isSubEntryExpanded` lookup closure so child
-/// extensions don't need direct panel access either.
+/// projected via the ``AgentEntryActions/isSubEntryExpanded`` lookup
+/// closure so child extensions don't need direct panel access either.
+///
+/// **Equatable + `.equatable()`**: conforms `Equatable` (synthesized
+/// from value-typed stored properties; the closure-bearing
+/// ``AgentEntryActions`` field's `==` is intentionally `true`-always).
+/// Dispatch sites append `.equatable()` so SwiftUI skips body
+/// re-evaluation when value inputs haven't changed.
 @available(macOS 15, *)
-public struct AgentEntryView: View {
+public struct AgentEntryView: View, Equatable {
 
     public let entry: AgentEntry
     public let palette: HudPalette
@@ -29,37 +35,28 @@ public struct AgentEntryView: View {
     /// True when this is the trailing agent turn currently streaming —
     /// drives the header glyph's pulse animation.
     public let isStreaming: Bool
-    /// Lookup closure: given a sub-entry expansion key, report whether
-    /// it's currently in the expanded set. Used by per-kind extensions.
-    public let isSubEntryExpanded: (String) -> Bool
-    /// Bubble an expansion toggle up to the panel.
-    public let onToggleExpansion: (AgentXrayPanel.ExpansionToggle) -> Void
-    /// Bubble a detail-tab open request up to the panel.
-    public let onOpenDetail: (DetailRequest) -> Void
+    /// Bundled action closures; see ``AgentEntryActions``.
+    nonisolated public let actions: AgentEntryActions
 
     public init(
         entry: AgentEntry,
         palette: HudPalette,
         isExpanded: Bool,
         isStreaming: Bool,
-        isSubEntryExpanded: @escaping (String) -> Bool,
-        onToggleExpansion: @escaping (AgentXrayPanel.ExpansionToggle) -> Void,
-        onOpenDetail: @escaping (DetailRequest) -> Void
+        actions: AgentEntryActions
     ) {
         self.entry = entry
         self.palette = palette
         self.isExpanded = isExpanded
         self.isStreaming = isStreaming
-        self.isSubEntryExpanded = isSubEntryExpanded
-        self.onToggleExpansion = onToggleExpansion
-        self.onOpenDetail = onOpenDetail
+        self.actions = actions
     }
 
     public var body: some View {
         let entryID = entry.id.stableString
         VStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
             Button {
-                onToggleExpansion(.entry(id: entryID))
+                actions.onToggleExpansion(.entry(id: entryID))
             } label: {
                 EntryHeaderView(
                     header: entry.header,

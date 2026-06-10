@@ -14,7 +14,7 @@ extension AgentEntryView {
     @ViewBuilder
     func toolSection(tool: ToolEntry) -> some View {
         let key = tool.id.stableString
-        let isExpanded = isSubEntryExpanded(key)
+        let isExpanded = actions.isSubEntryExpanded(key)
         let isPending = tool.status == .pending
         /// Shared 3-state accent for icon + name. Predecessor coloured
         /// only the icon by status (name stayed primary), but per
@@ -31,7 +31,7 @@ extension AgentEntryView {
 
         VStack(alignment: .leading, spacing: 2) {
             Button {
-                onToggleExpansion(.tool(toolID: key))
+                actions.onToggleExpansion(.tool(toolID: key))
             } label: {
                 subEntryHeader(
                     icon: tool.header.icon,
@@ -62,7 +62,7 @@ extension AgentEntryView {
 
             if isExpanded {
                 cappedBody(tool.body) { sectionIndex in
-                    onOpenDetail(.bodySection(
+                    actions.onOpenDetail(.bodySection(
                         targetID: tool.id.stableString,
                         sectionIndex: sectionIndex
                     ))

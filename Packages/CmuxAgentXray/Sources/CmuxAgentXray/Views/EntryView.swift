@@ -6,17 +6,24 @@ public import SwiftUI
 /// agent-kind, status-dot trailing items for tools).
 ///
 /// **Snapshot-boundary policy:** this view holds only value-typed
-/// inputs (Entry, computed cache fields, palette token, two stable
-/// closures) — never an `@ObservedObject` reference. Callers from
-/// the panel layer are responsible for passing immutable snapshots.
+/// inputs (Entry, computed cache fields, palette token, bundled
+/// closures via ``EntryViewActions``) — never an `@ObservedObject`
+/// reference. Callers from the panel layer are responsible for
+/// passing immutable snapshots.
 ///
 /// Post-G1.5: nested children live on the entry's `subEntries` field
 /// directly (not in `body.sections`). Container variants (`.agent` /
 /// `.tool` / `.synthesized.branchLink`) own their own sub-entry
 /// rendering — `AgentEntryView` walks `entry.subEntries` directly.
 /// `EntryView` no longer takes a `renderSubEntry` closure.
+///
+/// **Equatable + `.equatable()`**: conforms `Equatable` (synthesized
+/// from value-typed stored properties; the closure-bearing
+/// ``EntryViewActions`` field's `==` is intentionally `true`-always).
+/// Dispatch sites append `.equatable()` so SwiftUI skips body
+/// re-evaluation when value inputs haven't changed.
 @available(macOS 15, *)
-public struct EntryView: View {
+public struct EntryView: View, Equatable {
 
     public let entry: Entry
     public let computed: EntryComputedCache.Computed
@@ -27,8 +34,8 @@ public struct EntryView: View {
     /// True when this entry is the streaming agent turn (drives the
     /// header glyph's pulse animation).
     public let isStreaming: Bool
-    public let onToggleExpansion: () -> Void
-    public let onOpenDetail: () -> Void
+    /// Bundled action closures; see ``EntryViewActions``.
+    nonisolated public let actions: EntryViewActions
 
     public init(
         entry: Entry,
@@ -37,8 +44,7 @@ public struct EntryView: View {
         displayMode: DisplayMode,
         isExpanded: Bool,
         isStreaming: Bool = false,
-        onToggleExpansion: @escaping () -> Void,
-        onOpenDetail: @escaping () -> Void
+        actions: EntryViewActions
     ) {
         self.entry = entry
         self.computed = computed
@@ -46,13 +52,12 @@ public struct EntryView: View {
         self.displayMode = displayMode
         self.isExpanded = isExpanded
         self.isStreaming = isStreaming
-        self.onToggleExpansion = onToggleExpansion
-        self.onOpenDetail = onOpenDetail
+        self.actions = actions
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
-            Button(action: onToggleExpansion) {
+            Button(action: actions.onToggleExpansion) {
                 EntryHeaderView(
                     header: entry.header,
                     palette: palette,
@@ -69,7 +74,7 @@ public struct EntryView: View {
                     computed: computed.sections,
                     palette: palette,
                     displayMode: displayMode,
-                    onOpenDetail: onOpenDetail
+                    onOpenDetail: actions.onOpenDetail
                 )
                 .padding(.leading, Theme.Indent.subEntry)
             }

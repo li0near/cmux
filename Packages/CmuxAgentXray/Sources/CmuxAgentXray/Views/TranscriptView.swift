@@ -197,10 +197,13 @@ public struct TranscriptView: View {
                     palette: palette,
                     isExpanded: panel.currentExpanded.contains(entryID),
                     isStreaming: panel.streamingEntryID == entryID,
-                    isSubEntryExpanded: { panel.currentExpanded.contains($0) },
-                    onToggleExpansion: { panel.toggleExpansion($0) },
-                    onOpenDetail: { panel.openDetail(request: $0) }
+                    actions: AgentEntryActions(
+                        isSubEntryExpanded: { panel.currentExpanded.contains($0) },
+                        onToggleExpansion: { panel.toggleExpansion($0) },
+                        onOpenDetail: { panel.openDetail(request: $0) }
+                    )
                 )
+                .equatable()
             case .synthesized(let syn):
                 synthesizedEntryView(entry: syn, palette: palette)
             default:
@@ -250,15 +253,18 @@ public struct TranscriptView: View {
             displayMode: .compact,
             isExpanded: panel.currentExpanded.contains(entryID),
             isStreaming: false,
-            onToggleExpansion: {
-                panel.toggleExpansion(.entry(id: entryID))
-            },
-            onOpenDetail: {
-                if let detailRequest {
-                    panel.openDetail(request: detailRequest)
+            actions: EntryViewActions(
+                onToggleExpansion: {
+                    panel.toggleExpansion(.entry(id: entryID))
+                },
+                onOpenDetail: {
+                    if let detailRequest {
+                        panel.openDetail(request: detailRequest)
+                    }
                 }
-            }
+            )
         )
+        .equatable()
         .id(entryID)
     }
 
@@ -496,9 +502,12 @@ public struct TranscriptView: View {
             displayMode: .fullDetail,
             isExpanded: true,
             isStreaming: false,
-            onToggleExpansion: {},
-            onOpenDetail: {}
+            actions: EntryViewActions(
+                onToggleExpansion: {},
+                onOpenDetail: {}
+            )
         )
+        .equatable()
         .id(entryID)
     }
 }

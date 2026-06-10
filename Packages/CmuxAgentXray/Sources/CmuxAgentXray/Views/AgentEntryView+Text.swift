@@ -12,7 +12,7 @@ extension AgentEntryView {
     @ViewBuilder
     func textSection(text: TextSubEntry) -> some View {
         let key = text.id.stableString
-        let isExpanded = isSubEntryExpanded(key)
+        let isExpanded = actions.isSubEntryExpanded(key)
         let trailing: [TrailingItem] = text.wordCount > 0
             ? [.wordCount("\(text.wordCount) words")]
             : []
@@ -23,7 +23,7 @@ extension AgentEntryView {
 
         VStack(alignment: .leading, spacing: 2) {
             Button {
-                onToggleExpansion(.text(subEntryID: key))
+                actions.onToggleExpansion(.text(subEntryID: key))
             } label: {
                 subEntryHeader(
                     icon: icon,
@@ -39,7 +39,7 @@ extension AgentEntryView {
 
             if isExpanded {
                 cappedBody(text.body) { sectionIndex in
-                    onOpenDetail(.bodySection(
+                    actions.onOpenDetail(.bodySection(
                         targetID: text.id.stableString,
                         sectionIndex: sectionIndex
                     ))
