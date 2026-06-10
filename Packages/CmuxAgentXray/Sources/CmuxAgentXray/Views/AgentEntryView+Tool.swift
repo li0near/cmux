@@ -68,6 +68,15 @@ extension AgentEntryView {
                     ))
                 }
                 .padding(.leading, Theme.Indent.nestedSubEntry)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .frame(width: 2)
+                        .foregroundStyle(palette.expandedBackground)
+                        // Gutter at the tool sub-entry's icon's right
+                        // edge: 22pt sub-entry indent + 14pt icon =
+                        // 36pt from the container's content edge.
+                        .padding(.leading, Theme.Indent.subEntry + Theme.Metric.entryIconWidth)
+                }
             }
         }
     }

@@ -81,13 +81,12 @@ public struct AgentEntryView: View, Equatable {
                 }
                 .overlay(alignment: .leading) {
                     Rectangle()
-                        .frame(width: 1)
-                        .foregroundStyle(palette.dim.opacity(0.6))
-                        // Center the gutter in the gap between this
-                        // entry's icon (x=0..14 from content edge) and
-                        // its name (x=22+): midpoint = (14 + 22) / 2 =
-                        // 18pt from the container's leading edge.
-                        .padding(.leading, Theme.Metric.entryIconWidth + Theme.Spacing.entryIconText / 2)
+                        .frame(width: 2)
+                        .foregroundStyle(palette.expandedBackground)
+                        // Gutter at the entry's icon's right edge —
+                        // offset = entryIconWidth from the container's
+                        // leading content edge.
+                        .padding(.leading, Theme.Metric.entryIconWidth)
                 }
             }
         }

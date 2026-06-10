@@ -62,13 +62,18 @@ public struct RewindEntryView: View, Equatable {
                 )
             }
             .buttonStyle(.plain)
+            // Header gets the standard top-level horizontal padding so
+            // its icon column aligns with outer top-level entries.
+            .padding(.horizontal, Theme.Padding.horizontal)
 
             if isExpanded {
                 // Universal-look spike: spacing 0 (children's own
-                // .padding(.vertical) provides the rhythm — same
-                // density as outer transcript). Vertical gutter on
-                // the body's leading edge marks the abandoned-branch
-                // boundary at the rewind's icon column.
+                // .padding provide rhythm). NO outer .padding(.horizontal)
+                // on the rewind container — children's own horizontal
+                // padding (.padding(.horizontal, 12)) fills the right
+                // edge so timestamps land at the same column as outer
+                // top-level entries. Body keeps its leading indent
+                // (Theme.Indent.subEntry = 22pt) for the rewind tier.
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(entry.subEntries, id: \.id.stableString) { sub in
                         actions.renderSubEntry(sub)
@@ -77,17 +82,15 @@ public struct RewindEntryView: View, Equatable {
                 .padding(.leading, Theme.Indent.subEntry)
                 .overlay(alignment: .leading) {
                     Rectangle()
-                        .frame(width: 1)
-                        .foregroundStyle(palette.dim.opacity(0.6))
-                        // Center the gutter in the gap between this
-                        // entry's icon and its name (midpoint at
-                        // entryIconWidth + entryIconText/2 = 18pt
-                        // from the container's leading edge).
-                        .padding(.leading, Theme.Metric.entryIconWidth + Theme.Spacing.entryIconText / 2)
+                        .frame(width: 2)
+                        .foregroundStyle(palette.expandedBackground)
+                        // Gutter at the rewind's icon's right edge —
+                        // offset = entryIconWidth from the container's
+                        // content edge.
+                        .padding(.leading, Theme.Metric.entryIconWidth)
                 }
             }
         }
-        .padding(.horizontal, Theme.Padding.horizontal)
         .id(entryID)
     }
 }

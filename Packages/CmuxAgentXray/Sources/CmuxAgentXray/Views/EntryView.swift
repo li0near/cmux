@@ -77,6 +77,12 @@ public struct EntryView: View, Equatable {
                     onOpenDetail: actions.onOpenDetail
                 )
                 .padding(.leading, Theme.Indent.subEntry)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .frame(width: 2)
+                        .foregroundStyle(palette.expandedBackground)
+                        .padding(.leading, Theme.Metric.entryIconWidth)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

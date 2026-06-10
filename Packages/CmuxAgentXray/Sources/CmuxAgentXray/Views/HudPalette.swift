@@ -112,11 +112,16 @@ public struct HudPalette: Sendable, Equatable {
     /// (light-green / light-red) so old/new blocks read as a hunk;
     /// non-diff styles share `expandedBackground` and stay rounded.
     public func colors(for style: TextStyle) -> (foreground: Color, background: Color) {
+        // Universal-look spike: text-style backgrounds are clear so
+        // body text content doesn't sit inside a gray block — visual
+        // grouping comes from the vertical gutter on the expanded
+        // container instead. Pills/links keep their own
+        // `palette.expandedBackground` chrome (separate code paths).
         switch style {
-        case .normal:        return (primary.opacity(0.85), expandedBackground)
-        case .thinking:      return (primary.opacity(0.85), expandedBackground)
-        case .error:         return (red, expandedBackground)
-        case .codeMonospace: return (primary.opacity(0.85), expandedBackground)
+        case .normal:        return (primary.opacity(0.85), .clear)
+        case .thinking:      return (primary.opacity(0.85), .clear)
+        case .error:         return (red, .clear)
+        case .codeMonospace: return (primary.opacity(0.85), .clear)
         }
     }
 }
