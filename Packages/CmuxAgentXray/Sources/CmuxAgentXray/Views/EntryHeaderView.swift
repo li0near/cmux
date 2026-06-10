@@ -64,7 +64,7 @@ struct EntryHeaderView: View {
                     .font(Theme.Entry.title)
                     .foregroundStyle(palette.primary)
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(.tail)
             }
             Spacer(minLength: Theme.Spacing.tight)
             ForEach(Array(header.trailing.enumerated()), id: \.offset) { _, item in
