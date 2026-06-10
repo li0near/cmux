@@ -120,31 +120,14 @@ public struct TranscriptView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
+                        LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(Array(entries.enumerated()), id: \.element.id.stableString) { index, entry in
+                                if index > 0 {
+                                    boundaryDivider(id: dividerID(before: entry), palette: palette)
+                                }
                                 entryView(for: entry, palette: palette)
-                                    // Pre-entry scroll-target anchor as a
-                                    // .background overlay so it doesn't
-                                    // take a LazyVStack spacing slot — a
-                                    // sibling zero-height view would
-                                    // double the inter-entry gap from
-                                    // 4pt to 8pt.
-                                    .background(alignment: .top) {
-                                        if index > 0 {
-                                            Color.clear
-                                                .frame(width: 0, height: 0)
-                                                .id(dividerID(before: entry))
-                                        }
-                                    }
                             }
-                            // Tail boundary stays as a regular sibling —
-                            // adds one 4pt slot below the last entry
-                            // (acceptable bottom padding, no
-                            // double-spacing problem since it has no
-                            // following child).
-                            Color.clear
-                                .frame(width: 0, height: 0)
-                                .id(tailBoundaryID(for: panel.entriesFilter))
+                            boundaryDivider(id: tailBoundaryID(for: panel.entriesFilter), palette: palette)
                         }
                         .padding(.vertical, 6)
                         .id("cmux-agentxray-layout-\(panel.bulkState.layoutRevision)")
@@ -326,14 +309,12 @@ public struct TranscriptView: View {
     }
 
     /// Visible turn-boundary divider (predecessor parity per
-    /// Universal-look spike: dividers are invisible (zero-height
-    /// transparent anchor) so the transcript reads as one continuous
-    /// rhythm — visual hierarchy comes from indent + emphasis, not
-    /// inter-row chrome. The `.id()` attachment is preserved so
-    /// `proxy.scrollTo(...)` targets still resolve.
+    /// PARITY §1.7 + dogfood feedback). 1pt SwiftUI `Divider()`
+    /// with foreground@0.06 background — visible-but-subtle hairline
+    /// that doubles as the `proxy.scrollTo(...)` target.
     private func boundaryDivider(id: String, palette: HudPalette) -> some View {
-        Color.clear
-            .frame(height: 0)
+        Divider()
+            .background(appearance.foregroundColor.opacity(Theme.Opacity.bgWash))
             .id(id)
     }
 

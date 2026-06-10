@@ -69,28 +69,13 @@ public struct AgentEntryView: View, Equatable {
             .buttonStyle(.plain)
 
             if isExpanded {
-                // Universal-look spike: wrap the sub-entry ForEach in a
-                // VStack so we can attach a vertical gutter overlay to
-                // mark the agent's expanded body. Gutter sits at the
-                // agent's icon column (panel_x = 12pt = the outer
-                // .padding(.horizontal, 12)'s inner edge).
-                VStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
-                    ForEach(entry.subEntries, id: \.id.stableString) { sub in
-                        subEntrySection(sub: sub)
-                    }
-                }
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .frame(width: 2)
-                        .foregroundStyle(palette.expandedBackground)
-                        // Gutter at the entry's icon's right edge —
-                        // offset = entryIconWidth from the container's
-                        // leading content edge.
-                        .padding(.leading, Theme.Metric.entryIconWidth)
+                ForEach(entry.subEntries, id: \.id.stableString) { sub in
+                    subEntrySection(sub: sub)
                 }
             }
         }
         .padding(.horizontal, Theme.Padding.horizontal)
+        .padding(.vertical, Theme.Spacing.verticalStack)
         .id(entryID)
     }
 

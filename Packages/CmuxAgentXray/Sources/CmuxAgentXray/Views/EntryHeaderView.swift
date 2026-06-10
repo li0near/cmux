@@ -110,9 +110,7 @@ private struct MetadataPill: View {
             .font(Theme.SubEntry.meta)
             .foregroundStyle(palette.dim)
             .padding(.horizontal, Theme.Padding.pillHorizontal)
-            // Universal-look spike: drop fixed Theme.Height.pill (20pt)
-            // so the pill sizes to its text — same row height as
-            // sub-entry plain-Text trailing items, no asymmetric heft.
+            .frame(height: Theme.Height.pill)
             .background(
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                     .fill(palette.expandedBackground)
@@ -143,8 +141,7 @@ private struct TokenPillView: View {
                 .font(Theme.SubEntry.meta)
                 .foregroundStyle(palette.dim)
                 .padding(.horizontal, Theme.Padding.pillHorizontal)
-                // Universal-look spike: drop fixed pill height; size
-                // to text. Matches MetadataPill's same change.
+                .frame(height: Theme.Height.pill)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                         .fill(palette.expandedBackground)
