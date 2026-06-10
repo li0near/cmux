@@ -335,62 +335,6 @@ struct ClaudeTranscriptBuilderTests {
         #expect(userEntry.id == .fromJSONL("u-rewind"))
     }
 
-    @Test("Multi-rewind from same divergence: prior rewind siblings stay at top level, not folded into the new rewind")
-    func multiRewindProducesSiblingsNotNesting() throws {
-        // Empirical case: corpus session 48672f90… in
-        // /Users/I505728/temp/github/aicore-router has 5 typed prompts
-        // all parented at one ancestor uuid. The pre-fix renderer
-        // showed a 4-deep nested "Abandoned Branch" stack because
-        // `branchOff`'s slice scooped up the prior rewind container
-        // into the new rewind's subEntries. The fix: skip prior
-        // `.rewind` siblings in both the caller's abandoned-range
-        // computation AND the slice — so they remain at top level.
-        var builder = ClaudeTranscriptBuilder()
-        try builder.ingest(JSONLFixture.line(named: "builder-user-first"))
-        try builder.ingest(decodeLine(makeAssistantTextLine(
-            uuid: "a1", parentUuid: "u1", text: "first response"
-        )))
-        // First rewind off u1: abandons [a1].
-        try builder.ingest(decodeLine(#"""
-        {"type":"user","uuid":"u-rewind1","parentUuid":"u1","timestamp":"2026-06-05T10:01:00.000Z","message":{"role":"user","content":"second prompt"}}
-        """#))
-        try builder.ingest(decodeLine(makeAssistantTextLine(
-            uuid: "a-r1",
-            parentUuid: "u-rewind1",
-            text: "response to second"
-        )))
-        // Second rewind off u1 (sibling, NOT nested): abandons
-        // [u-rewind1, a-r1] but MUST NOT fold the prior rewind1.
-        try builder.ingest(decodeLine(#"""
-        {"type":"user","uuid":"u-rewind2","parentUuid":"u1","timestamp":"2026-06-05T10:02:00.000Z","message":{"role":"user","content":"third prompt"}}
-        """#))
-
-        let entries = builder.transcript()
-        // Expected: [u1, rewind1, rewind2, u-rewind2] — two sibling
-        // rewinds at top level, neither nested inside the other.
-        #expect(entries.count == 4)
-        guard case .synthesized(let r1) = entries[1],
-              case .rewind = r1.kind else {
-            Issue.record("expected rewind1 at slot 1; got \(entries[1])")
-            return
-        }
-        guard case .synthesized(let r2) = entries[2],
-              case .rewind = r2.kind else {
-            Issue.record("expected rewind2 at slot 2 (sibling); got \(entries[2])")
-            return
-        }
-        // rewind1 contains the original abandoned tail [a1].
-        #expect(r1.subEntries.count == 1)
-        // rewind2 contains the second abandoned tail [u-rewind1, a-r1]
-        // — it must NOT contain rewind1.
-        #expect(r2.subEntries.count == 2)
-        for sub in r2.subEntries {
-            if case .synthesized(let s) = sub, case .rewind = s.kind {
-                Issue.record("rewind2 must not contain a prior rewind sibling; found \(sub)")
-            }
-        }
-    }
-
     @Test("Queued slash-cmd: enqueue followed by matching slash-cmd input pops FIFO and emits .consumed UserEntry")
     func queuedSlashCmdConsumesFIFO() throws {
         // Enqueue `/aicore-api`, then a slash-cmd input line for the

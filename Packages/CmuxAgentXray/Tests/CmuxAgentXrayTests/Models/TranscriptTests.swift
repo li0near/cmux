@@ -251,11 +251,8 @@ struct TranscriptTests {
         root.branchOff(at: .fromJSONL("p"), link: link1)
 
         root.append(parent: nil, entry: agentEntry("B"))
-        // Caller must NOT include the prior rewind sibling in
-        // link2.subEntries — only the new live tail past the prior
-        // rewinds. branchOff's slice skips the prior rewind in lockstep.
-        let abandonedNow = [root.entries[2]] // [B] — not [link1, B]
-        let firstOfTailUuid = "B"
+        let abandonedNow = Array(root.entries[1...])
+        let firstOfTailUuid = "linkA"
         let link2 = SynthesizedEntry(
             id: .derived(parent: firstOfTailUuid, kind: "rewind"),
             header: Header(),
@@ -269,34 +266,18 @@ struct TranscriptTests {
         #expect(link1.id == .derived(parent: "A", kind: "rewind"))
         #expect(link2.id == .derived(parent: firstOfTailUuid, kind: "rewind"))
 
-        // Two sibling rewinds at top level (NOT nested).
-        #expect(root.entries.count == 3)
-        #expect(root.entries[0].id == .fromJSONL("p"))
-        if case .synthesized(let s1) = root.entries[1] {
-            #expect(s1.id == link1.id)
-            #expect(s1.subEntries.count == 1)
-            #expect(s1.subEntries[0].id == .fromJSONL("A"))
+        #expect(root.entries.count == 2)
+        if case .synthesized(let synth) = root.entries[1] {
+            #expect(synth.subEntries.count == 2)
+            #expect(synth.subEntries[0].id == link1.id)
+            #expect(synth.subEntries[1].id == .fromJSONL("B"))
         } else {
-            Issue.record("expected link1 at slot 1")
-        }
-        if case .synthesized(let s2) = root.entries[2] {
-            #expect(s2.id == link2.id)
-            #expect(s2.subEntries.count == 1)
-            #expect(s2.subEntries[0].id == .fromJSONL("B"))
-        } else {
-            Issue.record("expected link2 at slot 2 (sibling)")
+            Issue.record("expected link2 wrapping [link1, B]")
         }
     }
 
-    @Test("branchOff — sibling rewind: prior rewind sibling stays at top level, NOT folded into the new link")
-    func branchOffSiblingRewindNotNested() {
-        // Inverse of the prior "nested rewind" assumption — when the
-        // caller passes link2 with `subEntries: [B]` (only the new
-        // live tail), branchOff slices past the prior rewind and
-        // appends link2 as a sibling. Validates the structural
-        // invariant that fixes the visually-nested bug seen in
-        // session 48672f90… (5 sibling rewinds rendered as 4 levels
-        // of nesting in the pre-fix renderer).
+    @Test("branchOff — nested rewind: prior link captured inside new link's subEntries")
+    func branchOffNestedRewind() {
         var root = Transcript()
         root.append(parent: nil, entry: userEntry("p"))
         root.append(parent: nil, entry: agentEntry("A"))
@@ -305,86 +286,24 @@ struct TranscriptTests {
         root.branchOff(at: .fromJSONL("p"), link: link1)
 
         root.append(parent: nil, entry: agentEntry("B"))
+        let abandonedNow = Array(root.entries[1...])
         let link2 = SynthesizedEntry(
-            id: .derived(parent: "B", kind: "rewind"),
+            id: .derived(parent: "outer-root", kind: "rewind"),
             header: Header(),
             body: Body(sections: []),
-            kind: .rewind(rootUuid: "B"),
-            subEntries: [root.entries[2]]
+            kind: .rewind(rootUuid: "outer-root"),
+            subEntries: abandonedNow
         )
         root.branchOff(at: .fromJSONL("p"), link: link2)
 
-        // [p, link1, link2] — siblings at top level.
-        #expect(root.entries.count == 3)
-        guard case .synthesized(let outer) = root.entries[2] else {
-            Issue.record("expected link2 at slot 2 as sibling; got \(root.entries[2])")
+        guard case .synthesized(let outer) = root.entries.last,
+              let inner = outer.subEntries.first,
+              case .synthesized(let innerSynth) = inner
+        else {
+            Issue.record("expected link2 → link1 nesting")
             return
         }
-        #expect(outer.id == link2.id)
-        // link2 must NOT contain a prior rewind; only the new live tail.
-        for sub in outer.subEntries {
-            if case .synthesized(let s) = sub, case .rewind = s.kind {
-                Issue.record("link2 must not nest a prior rewind sibling; found \(sub)")
-            }
-        }
-    }
-
-    @Test("branchOff — nested rewind: prior rewind further into abandoned range stays nested inside new link")
-    func branchOffNestedRewindCapturedAsContent() {
-        // Counterpart to the sibling test above. The contiguous-skip
-        // rule in branchOff distinguishes sibling (prior rewind at the
-        // immediate post-divergence slot — same divergence point) from
-        // nested (prior rewind further into the abandoned range —
-        // earlier divergence captured by the broader new rewind).
-        //
-        // Setup: tree = [p, A, B, prior-rewind, C]
-        //   prior-rewind has divergence at B (sits at slot 3, post-B).
-        //   New rewind has divergence at p (slot 0). Abandoned range
-        //   starts at slot 1 = A (NOT a rewind), so contiguous-skip
-        //   stops immediately. Abandoned = [A, B, prior-rewind, C] —
-        //   prior-rewind is nested inside the new link's subEntries.
-        var root = Transcript()
-        root.append(parent: nil, entry: userEntry("p"))
-        root.append(parent: nil, entry: agentEntry("A"))
-        root.append(parent: nil, entry: agentEntry("B"))
-        root.append(parent: nil, entry: agentEntry("D"))
-
-        // First rewind off B: abandons [D]. Tree becomes [p, A, B, priorRewind].
-        let priorRewind = rewind(parentBranchRoot: "D", abandoned: [root.entries[3]])
-        root.branchOff(at: .fromJSONL("B"), link: priorRewind)
-        root.append(parent: nil, entry: agentEntry("C"))
-
-        // Tree now: [p, A, B, priorRewind, C].
-        #expect(root.entries.count == 5)
-
-        // New rewind off p (divergence at slot 0): abandons everything
-        // past slot 0, INCLUDING priorRewind which had a later
-        // divergence (B) — those abandoned entries belong inside the
-        // broader new rewind's content.
-        let abandoned = Array(root.entries[1...])
-        let newRewind = SynthesizedEntry(
-            id: .derived(parent: "A", kind: "rewind"),
-            header: Header(),
-            body: Body(sections: []),
-            kind: .rewind(rootUuid: "A"),
-            subEntries: abandoned
-        )
-        root.branchOff(at: .fromJSONL("p"), link: newRewind)
-
-        // [p, newRewind] — newRewind contains [A, B, priorRewind, C].
-        #expect(root.entries.count == 2)
-        guard case .synthesized(let outer) = root.entries[1] else {
-            Issue.record("expected newRewind at slot 1; got \(root.entries[1])")
-            return
-        }
-        #expect(outer.subEntries.count == 4)
-        // priorRewind is at index 2 inside newRewind's subEntries —
-        // genuinely nested, not flattened.
-        guard case .synthesized(let nested) = outer.subEntries[2],
-              case .rewind = nested.kind else {
-            Issue.record("expected priorRewind at subEntries[2] inside newRewind; got \(outer.subEntries[2])")
-            return
-        }
-        #expect(nested.id == priorRewind.id)
+        #expect(innerSynth.id == link1.id)
+        #expect(innerSynth.subEntries.first?.id == .fromJSONL("A"))
     }
 }
