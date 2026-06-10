@@ -23,27 +23,18 @@ public struct ExpandableContent: Equatable, Sendable {
 }
 
 extension ExpandableContent {
-    /// Apply caps to a list of text blocks. `displayMode` of
-    /// `.fullDetail` skips truncation and returns the unfolded
-    /// content. `caps.alwaysLink` returns an empty inline body and
-    /// `overflow = true` so the renderer surfaces the link only.
+    /// Apply caps to a list of text blocks. `caps.alwaysLink` returns
+    /// an empty inline body and `overflow = true` so the renderer
+    /// surfaces the link only.
     public static func make(
         from blocks: [String],
-        caps: RenderSectionCaps,
-        displayMode: DisplayMode
+        caps: RenderSectionCaps
     ) -> ExpandableContent {
         let joined = blocks.joined(separator: "\n")
         let totalLines = joined.split(separator: "\n", omittingEmptySubsequences: false).count
 
         if caps.alwaysLink {
             return ExpandableContent(inlineBody: "", totalLines: totalLines, overflow: !joined.isEmpty)
-        }
-        if displayMode == .fullDetail {
-            return ExpandableContent(
-                inlineBody: joined,
-                totalLines: totalLines,
-                overflow: false
-            )
         }
 
         // Apply line cap first.

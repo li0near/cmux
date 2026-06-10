@@ -36,17 +36,14 @@ public final class EntryComputedCache {
     }
 
     /// Lightweight content fingerprint. Two entries with the same
-    /// signature have identical body content + display mode (per-cap
-    /// computation invariant). Hash combines section count + total
-    /// byte size + the display mode discriminator — collisions are
-    /// possible but practically negligible for transcript content
-    /// (real entries don't hash-collide).
+    /// signature have identical body content. Hash combines section
+    /// count + total byte size — collisions are possible but practically
+    /// negligible for transcript content (real entries don't hash-collide).
     public struct ContentSignature: Hashable, Sendable {
         public let sectionCount: Int
         public let totalBytes: Int
-        public let displayMode: DisplayMode
 
-        public init(entry: Entry, displayMode: DisplayMode) {
+        public init(entry: Entry) {
             self.sectionCount = entry.body.sections.count
             self.totalBytes = entry.body.sections.reduce(0) { sum, section in
                 switch section {
@@ -61,22 +58,19 @@ public final class EntryComputedCache {
                     return sum + toolName.utf8.count
                 case .offloadedOutput(let off):
                     return sum + off.path.utf8.count + off.sizeLabel.utf8.count
-                case .code(.plain(let text, let lang, _)):
-                    // Plain code: text bytes + language hint length.
-                    return sum + text.utf8.count + (lang?.utf8.count ?? 0)
-                case .code(.diff(let hunks, let lang)):
+                case .code(.plain(let text, _)):
+                    return sum + text.utf8.count
+                case .code(.diff(let hunks)):
                     // Sum each hunk line's UTF-8 byte count so two
                     // transcripts that differ only in hunk content
                     // produce distinct signatures (cache must not
                     // return stale Computed for a body whose only
                     // change is the diff content itself).
-                    return sum + (lang?.utf8.count ?? 0)
-                        + hunks.reduce(0) { hunkSum, hunk in
-                            hunkSum + hunk.lines.reduce(0) { $0 + $1.utf8.count }
-                        }
+                    return sum + hunks.reduce(0) { hunkSum, hunk in
+                        hunkSum + hunk.lines.reduce(0) { $0 + $1.utf8.count }
+                    }
                 }
             }
-            self.displayMode = displayMode
         }
     }
 
@@ -87,19 +81,15 @@ public final class EntryComputedCache {
 
     private var entries: [String: CacheEntry] = [:]
 
-    /// Compute (or return cached) display fields for `entry` under
-    /// `displayMode`. Idempotent — calling with the same id/content
-    /// returns the existing entry.
-    public func compute(
-        for entry: Entry,
-        displayMode: DisplayMode
-    ) -> Computed {
-        let signature = ContentSignature(entry: entry, displayMode: displayMode)
+    /// Compute (or return cached) display fields for `entry`. Idempotent
+    /// — calling with the same id/content returns the existing entry.
+    public func compute(for entry: Entry) -> Computed {
+        let signature = ContentSignature(entry: entry)
         let key = entry.id.stableString
         if let existing = entries[key], existing.signature == signature {
             return existing.computed
         }
-        let computed = build(entry: entry, displayMode: displayMode, signature: signature)
+        let computed = build(entry: entry, signature: signature)
         entries[key] = CacheEntry(signature: signature, computed: computed)
         return computed
     }
@@ -117,7 +107,6 @@ public final class EntryComputedCache {
 
     private func build(
         entry: Entry,
-        displayMode: DisplayMode,
         signature: ContentSignature
     ) -> Computed {
         var sections: [ExpandableContent] = []
@@ -128,8 +117,7 @@ public final class EntryComputedCache {
                 let caps = capsForBlock(entry: entry, section: section)
                 let content = ExpandableContent.make(
                     from: blocks,
-                    caps: caps,
-                    displayMode: displayMode
+                    caps: caps
                 )
                 sections.append(content)
                 let joined = blocks.joined(separator: "\n")
@@ -185,9 +173,11 @@ public final class EntryComputedCache {
         case .synthesized:
             return RenderCaps.caps(for: .systemBody)
         case .text, .tool:
-            // Sub-entry-only cases — never reach this top-level cap
-            // resolver. Renderer paths inside AgentEntryView use their
-            // own per-sub-entry caps.
+            // Sub-entry-only cases — these reach the cap resolver
+            // through the unified ``EntryView`` recursion when a
+            // sub-entry is rendered as a leaf body. Default to the
+            // standard system-body caps; per-kind tweaks can land
+            // here without changing the renderer.
             return RenderCaps.caps(for: .systemBody)
         }
     }

@@ -1,70 +1,72 @@
 import SwiftUI
 
-/// Unified header renderer. Consumes a `Header` value and renders a
-/// horizontal pill row:
+/// Unified header renderer for every entry — top-level and sub-entry
+/// alike. Consumes a ``Header`` value plus per-instance render hints
+/// (accent color, emphasis, chip, pulse, expansion state) and renders
+/// a horizontal pill row:
 ///
-///     [icon]  [name]  [label]  [title]  [trailing items…]  [timeMarker]
+///     [icon]  [name]  [label]  [chip?]  [title]  [trailing items…]  [timeMarker]
 ///
-/// Every Entry variant routes through this same view. Variant-specific
-/// effects (queued-pulse, streaming-pulse) ride on top via the
-/// `pulseIcon` and `kindAccentColor` parameters provided by `EntryView`'s
-/// dispatch — keeping this view itself shape-agnostic.
+/// Per-Entry-kind specifics (Claude orange for assistant turns, status
+/// accent for tools, semibold name for top-level kinds, magenta chip
+/// for Task tools) are decided at the dispatcher (``EntryView``) and
+/// passed in here as already-resolved values. The header itself stays
+/// shape-agnostic.
 @available(macOS 15, *)
 struct EntryHeaderView: View {
 
     let header: Header
     let palette: HudPalette
-    /// Pulse the icon glyph (queued / streaming state). Driven by the
-    /// renderer's external state, not by the Header itself — pulsing
-    /// is render-only and orthogonal to the header's data.
+    /// Foreground for the icon and the name. Caller resolves from
+    /// ``PaletteRole/forEntry(_:)`` against the palette.
+    let accent: Color
+    /// True → render the name with semibold weight (``Theme/Entry/nameEmphasis``).
+    /// False → regular weight (``Theme/Entry/nameRegular``).
+    let emphasized: Bool
+    /// Optional inline chip shown between `label` and `title`. Today
+    /// only the Task tool's `subagent_type` populates it.
+    let chip: HeaderChipDisplay?
+    /// Pulse the icon glyph (queued / streaming / pending state).
     let pulseIcon: Bool
-    /// Override color for the icon + name. Nil = palette.primary.
-    let kindAccentColor: Color?
-    /// Whether the header shows an expanded chevron rotation. Driven
-    /// by the dispatcher's `isExpanded` flag.
+    /// Whether the header shows an expanded chevron rotation. Drives
+    /// the ``EntryIcon/systemName(expanded:)`` lookup.
     let isExpanded: Bool
-
-    init(
-        header: Header,
-        palette: HudPalette,
-        pulseIcon: Bool = false,
-        kindAccentColor: Color? = nil,
-        isExpanded: Bool = false
-    ) {
-        self.header = header
-        self.palette = palette
-        self.pulseIcon = pulseIcon
-        self.kindAccentColor = kindAccentColor
-        self.isExpanded = isExpanded
-    }
 
     var body: some View {
         HStack(spacing: Theme.Spacing.entryIconText) {
             if let icon = header.icon {
-                let symbol = icon.systemName(expanded: isExpanded)
-                Image(systemName: symbol)
+                Image(systemName: icon.systemName(expanded: isExpanded))
                     .font(Theme.Entry.icon)
-                    .foregroundStyle(kindAccentColor ?? palette.primary)
+                    .foregroundStyle(accent)
+                    .frame(width: Theme.Metric.entryIconWidth, alignment: .leading)
                     .symbolEffect(.pulse, options: .repeating, isActive: pulseIcon)
             }
             if let name = header.name {
                 Text(name)
-                    .font(Theme.Entry.name)
-                    .foregroundStyle(kindAccentColor ?? palette.primary)
+                    .font(emphasized ? Theme.Entry.nameEmphasis : Theme.Entry.nameRegular)
+                    .foregroundStyle(accent)
+                    .lineLimit(1)
             }
             if let label = header.label {
                 Text(label)
                     .font(Theme.Entry.meta)
                     .foregroundStyle(palette.dim)
+                    .lineLimit(1)
+            }
+            if let chip {
+                Text(chip.text)
+                    .font(Theme.Entry.title)
+                    .foregroundStyle(chip.color)
+                    .lineLimit(1)
             }
             if let title = header.title {
                 Text(title)
                     .font(Theme.Entry.title)
                     .foregroundStyle(palette.primary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
+                    .truncationMode(.middle)
             }
-            Spacer(minLength: Theme.Spacing.entryIconText)
+            Spacer(minLength: Theme.Spacing.tight)
             ForEach(Array(header.trailing.enumerated()), id: \.offset) { _, item in
                 trailingItemView(item)
             }
@@ -95,11 +97,19 @@ struct EntryHeaderView: View {
     }
 }
 
-// MARK: - Inlined pill helper
+/// Per-render chip parameters resolved by the caller. The chip's
+/// `Color` is resolved against the host palette upstream so the
+/// header stays unaware of palette dispatch.
+@available(macOS 15, *)
+struct HeaderChipDisplay: Equatable {
+    let text: String
+    let color: Color
+}
+
+// MARK: - Inlined pill helpers
 
 /// Rounded-rect pill used for header trailing metadata (token counts,
-/// word counts, durations, custom labels). Folded inline in
-/// `EntryHeaderView.swift` because the header is the only consumer.
+/// word counts, durations, custom labels). Sizes to text content.
 @available(macOS 15, *)
 private struct MetadataPill: View {
     let text: String
@@ -107,22 +117,15 @@ private struct MetadataPill: View {
 
     var body: some View {
         Text(text)
-            .font(Theme.SubEntry.meta)
+            .font(Theme.Entry.meta)
             .foregroundStyle(palette.dim)
             .padding(.horizontal, Theme.Padding.pillHorizontal)
-            .frame(height: Theme.Height.pill)
             .background(
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                     .fill(palette.expandedBackground)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
-                    .stroke(palette.dim.opacity(Theme.Opacity.dim), lineWidth: Theme.Stroke.pill)
-            )
     }
 }
-
-// MARK: - Token pill (tap-to-toggle total / breakdown)
 
 /// Rounded-rect pill that toggles between the compact total
 /// ("32.9k tokens") and the per-bucket breakdown
@@ -138,21 +141,17 @@ private struct TokenPillView: View {
     var body: some View {
         Button(action: { expanded.toggle() }) {
             Text(expanded ? breakdownLabel : compactLabel)
-                .font(Theme.SubEntry.meta)
+                .font(Theme.Entry.meta)
                 .foregroundStyle(palette.dim)
                 .padding(.horizontal, Theme.Padding.pillHorizontal)
-                .frame(height: Theme.Height.pill)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                         .fill(palette.expandedBackground)
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
-                        .stroke(palette.dim.opacity(Theme.Opacity.dim), lineWidth: Theme.Stroke.pill)
-                )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hoverHighlight(palette: palette, style: .stroke)
     }
 
     private var compactLabel: String {

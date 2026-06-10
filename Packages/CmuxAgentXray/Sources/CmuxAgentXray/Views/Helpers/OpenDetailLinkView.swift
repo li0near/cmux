@@ -12,7 +12,7 @@ struct OpenDetailLinkView: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: "arrow.up.right.square")
+                Image(systemName: "arrow.up.right")
                     .font(.system(size: 11))
                 Text("Open detail · \(totalLines) lines")
                     .font(.system(size: 11, design: .monospaced))

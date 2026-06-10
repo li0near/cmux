@@ -30,9 +30,9 @@ public enum PaletteRole: Equatable, Sendable {
 }
 
 extension PaletteRole {
-    /// Per–top-level-Entry accent dispatch. Mirrors the rules originally
-    /// inlined in `EntryView.kindAccentColor` so live-entry coloring and
-    /// detail-mode coloring share one source of truth.
+    /// Per-Entry accent dispatch. The unified renderer reads this for
+    /// every entry — top-level and sub-entry alike — so live-entry
+    /// coloring and detail-mode coloring share one source of truth.
     ///
     /// Returns nil when the entry has no kind-specific accent (renderer
     /// falls back to `palette.primary`).
@@ -65,10 +65,15 @@ extension PaletteRole {
             case .rewind: return .dim
             case .prLink:     return .blue
             }
-        case .text, .tool:
-            // Sub-entry-only cases — never appear at top level. Renderer
-            // falls back to palette.primary.
-            return nil
+        case .text:
+            // Assistant text + thinking sub-entries inherit Claude's accent.
+            return .claude
+        case .tool(let t):
+            switch t.status {
+            case .error:   return .red
+            case .pending: return .yellow
+            case .ok:      return .green
+            }
         }
     }
 }

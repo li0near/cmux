@@ -168,7 +168,8 @@ extension DetailContent {
             switch s.kind {
             case .rewind:
                 // Rewind entries render their abandoned-branch transcript
-                // inline via ``RewindEntryView``; no detail-tab path.
+                // inline via the unified ``EntryView`` recursion; no
+                // detail-tab path.
                 return nil
             case .prLink:
                 return nil
@@ -388,13 +389,13 @@ extension DetailContent {
             let body: String
             let filename: String
             switch content {
-            case .diff(let hunks, _):
+            case .diff(let hunks):
                 body = FenceWrap.diff.apply(to: serializeUnifiedDiff(
                     hunks: hunks,
                     filePath: tool.inputFilePath ?? tool.toolName
                 ))
                 filename = "tool-result.diff.md"
-            case .plain(let text, _, _):
+            case .plain(let text, _):
                 body = text
                 filename = (tool.inputFilePath as NSString?)?.lastPathComponent
                     ?? "tool-result.txt"

@@ -2,29 +2,30 @@ import SwiftUI
 
 /// Unified body renderer. Walks `body.sections` and renders each as
 /// an inline gray-background text block (with `TextStyle` applied),
-/// an inline image link, a tool-reference chip, or an offloaded-output
-/// link.
+/// an inline image link, a tool-reference chip, an offloaded-output
+/// link, or a code block (Read tool body / Edit-shape diff hunks).
 ///
 /// Nested children (sub-agent transcripts, abandoned-branch entries,
-/// agent turn sub-entries) are NO LONGER a body concern post-G1.5 —
-/// they live on the entry's top-level `subEntries` field. Container
-/// variants (`.agent`, `.synthesized`, `.tool`) project them through
-/// `Entry.subEntries`; renderers walk that directly outside this view.
+/// agent turn sub-entries) live on the entry's top-level `subEntries`
+/// field, not in `body.sections` — ``EntryView`` walks those directly
+/// via ``ExpansionShape/children(_:)`` and never reaches this view for
+/// them.
 ///
-/// Caps are pre-applied via `EntryComputedCache.compute(...)` — this
-/// view consumes the cached `[ExpandableContent]` rather than running
-/// truncation per body pass.
+/// Caps are pre-applied via ``EntryComputedCache/compute(for:)`` —
+/// this view consumes the cached `[ExpandableContent]` rather than
+/// running truncation per body pass.
 @available(macOS 15, *)
 struct EntryBodyView: View {
 
     let entryBody: Body
     let computed: [ExpandableContent]
     let palette: HudPalette
-    let displayMode: DisplayMode
-    let onOpenDetail: () -> Void
+    /// Detail-tab open callback. Receives the section index so the
+    /// caller can construct the right `DetailRequest.bodySection(...)`.
+    let onOpenDetail: (Int) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 3) {
             ForEach(Array(entryBody.sections.enumerated()), id: \.offset) { index, section in
                 sectionView(section, computedIndex: index)
             }
@@ -36,28 +37,30 @@ struct EntryBodyView: View {
         switch section {
         case .text(_, let style):
             let content = computedIndex < computed.count ? computed[computedIndex] : .empty
-            textSection(content: content, style: style)
+            textSection(content: content, style: style, sectionIndex: computedIndex)
         case .image:
-            ImageEntryLinkView(palette: palette, action: onOpenDetail)
+            ImageEntryLinkView(palette: palette) { onOpenDetail(computedIndex) }
         case .toolReference(let toolName):
             ToolReferenceChipView(toolName: toolName, palette: palette)
         case .offloadedOutput(let off):
-            OffloadedOutputLinkView(offloaded: off, palette: palette, action: onOpenDetail)
+            OffloadedOutputLinkView(offloaded: off, palette: palette) {
+                onOpenDetail(computedIndex)
+            }
         case .code(let content):
             CodeBlockView(
                 content: content,
                 palette: palette,
-                onOpenDetail: onOpenDetail
+                onOpenDetail: { onOpenDetail(computedIndex) }
             )
         }
     }
 
     @ViewBuilder
-    private func textSection(content: ExpandableContent, style: TextStyle) -> some View {
+    private func textSection(content: ExpandableContent, style: TextStyle, sectionIndex: Int) -> some View {
         if !content.inlineBody.isEmpty {
             let colors = palette.colors(for: style)
             Text(content.inlineBody)
-                .font(Theme.SubEntry.title)
+                .font(Theme.Entry.title)
                 .foregroundStyle(colors.foreground)
                 .italic(style == .thinking)
                 .textSelection(.enabled)
@@ -69,7 +72,7 @@ struct EntryBodyView: View {
             OpenDetailLinkView(
                 totalLines: content.totalLines,
                 palette: palette,
-                action: onOpenDetail
+                action: { onOpenDetail(sectionIndex) }
             )
         }
     }

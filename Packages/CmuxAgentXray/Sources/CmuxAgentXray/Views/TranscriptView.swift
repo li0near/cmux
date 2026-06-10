@@ -14,7 +14,7 @@ public import SwiftUI
 ///     └──────────────────────────────────────────────────────────┘
 ///
 /// Per-entry chrome lives on the entry views themselves (no shared
-/// modifier). Sub-entry indent: `Theme.Indent.subEntry` (22pt).
+/// modifier). Sub-entry indent: `Theme.Indent.unit` (22pt).
 @available(macOS 15, *)
 public struct TranscriptView: View {
 
@@ -120,16 +120,29 @@ public struct TranscriptView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(entries.enumerated()), id: \.element.id.stableString) { index, entry in
-                                if index > 0 {
-                                    boundaryDivider(id: dividerID(before: entry), palette: palette)
-                                }
+                        LazyVStack(alignment: .leading, spacing: Theme.Padding.entryGap) {
+                            ForEach(entries, id: \.id.stableString) { entry in
                                 entryView(for: entry, palette: palette)
+                                    .background(alignment: .top) {
+                                        // Zero-height scroll anchor for
+                                        // turn-boundary navigation. Lives
+                                        // OUTSIDE LazyVStack's child stream
+                                        // so it doesn't consume an
+                                        // `entryGap` worth of spacing.
+                                        Color.clear
+                                            .frame(height: 0)
+                                            .id(dividerID(before: entry))
+                                    }
                             }
-                            boundaryDivider(id: tailBoundaryID(for: panel.entriesFilter), palette: palette)
+                            // Tail anchor — single trailing zero-height view
+                            // at the end of the list. No `entryGap` bug
+                            // since there's no following sibling.
+                            Color.clear
+                                .frame(height: 0)
+                                .id(tailBoundaryID(for: panel.entriesFilter))
                         }
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, Theme.Padding.transcriptOuter)
+                        .padding(.vertical, Theme.Padding.transcriptOuter)
                         .id("cmux-agentxray-layout-\(panel.bulkState.layoutRevision)")
                     }
                     .defaultScrollAnchor(.bottom, for: .initialOffset)
@@ -190,35 +203,26 @@ public struct TranscriptView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Top-level entry dispatcher. AgentEntry takes the specialized
-    /// per-kind path; synthesized branch-link entries take a compact
-    /// sub-entry style; everything else routes through the generic
-    /// `EntryView`. Both paths attach an anchor preference for
-    /// viewport-top tracking.
+    /// Top-level entry dispatcher. Every entry — agent, synthesized
+    /// rewind, prLink, user, system, compact — routes through the
+    /// unified recursive ``EntryView`` at depth 0. Per-Entry-kind
+    /// specifics (accent, emphasis, pulse, magenta chip) live inside
+    /// the view via ``Entry/isEmphasized``,
+    /// ``PaletteRole/forEntry(_:)``, and the ``Entry/expansionShape``
+    /// dispatch.
     @ViewBuilder
     private func entryView(for entry: Entry, palette: HudPalette) -> some View {
         let entryID = entry.id.stableString
-        Group {
-            switch entry {
-            case .agent(let agent):
-                AgentEntryView(
-                    entry: agent,
-                    palette: palette,
-                    isExpanded: panel.currentExpanded.contains(entryID),
-                    isStreaming: panel.streamingEntryID == entryID,
-                    actions: AgentEntryActions(
-                        isSubEntryExpanded: { panel.currentExpanded.contains($0) },
-                        onToggleExpansion: { panel.toggleExpansion($0) },
-                        onOpenDetail: { panel.openDetail(request: $0) }
-                    )
-                )
-                .equatable()
-            case .synthesized(let syn):
-                synthesizedEntryView(entry: syn, palette: palette)
-            default:
-                genericEntryView(entry: entry, palette: palette)
-            }
-        }
+        EntryView(
+            entry: entry,
+            depth: 0,
+            palette: palette,
+            isExpanded: panel.currentExpanded.contains(entryID),
+            isStreaming: panel.streamingEntryID == entryID,
+            computed: panel.computedCache.compute(for: entry),
+            actions: makeLiveActions()
+        )
+        .equatable()
         .transformAnchorPreference(
             key: EntryAnchorsKey.self,
             value: .bounds
@@ -227,70 +231,25 @@ public struct TranscriptView: View {
         }
     }
 
-    /// Per-kind dispatch for `SynthesizedEntry`. Rewind entries render
-    /// as a container that inline-expands its abandoned-branch
-    /// transcript; PR links render via the generic `EntryView` since
-    /// they're a header-only external link.
-    @ViewBuilder
-    private func synthesizedEntryView(entry: SynthesizedEntry, palette: HudPalette) -> some View {
-        switch entry.kind {
-        case .rewind:
-            let entryID = entry.id.stableString
-            RewindEntryView(
-                entry: entry,
-                palette: palette,
-                isExpanded: panel.currentExpanded.contains(entryID),
-                actions: RewindEntryActions(
-                    isSubEntryExpanded: { panel.currentExpanded.contains($0) },
-                    onToggleExpansion: { panel.toggleExpansion($0) },
-                    onOpenDetail: { panel.openDetail(request: $0) },
-                    renderSubEntry: { sub in
-                        AnyView(entryView(for: sub, palette: palette))
-                    }
-                )
-            )
-            .equatable()
-        case .prLink:
-            genericEntryView(entry: .synthesized(entry), palette: palette)
-        }
-    }
-
-    /// Generic dispatcher for non-agent entries (User, System, Compact,
-    /// Synthesized.prLink). Goes through the unified `EntryView`, with
-    /// the per-kind detail-open handler wired through
-    /// ``defaultDetailRequest(for:)``.
-    private func genericEntryView(entry: Entry, palette: HudPalette) -> some View {
-        let computed = panel.computedCache.compute(for: entry, displayMode: .compact)
-        let entryID = entry.id.stableString
-        let detailRequest = defaultDetailRequest(for: entry)
-        return EntryView(
-            entry: entry,
-            computed: computed,
-            palette: palette,
-            displayMode: .compact,
-            isExpanded: panel.currentExpanded.contains(entryID),
-            isStreaming: false,
-            actions: EntryViewActions(
-                onToggleExpansion: {
-                    panel.toggleExpansion(.entry(id: entryID))
-                },
-                onOpenDetail: {
-                    if let detailRequest {
-                        panel.openDetail(request: detailRequest)
-                    }
-                }
-            )
+    /// Live-transcript ``EntryActions``. `isExpanded` reads the panel's
+    /// shared expanded set so child Entries (sub-entries / abandoned
+    /// branch tail) inherit the same wiring.
+    private func makeLiveActions() -> EntryActions {
+        EntryActions(
+            isExpanded: { panel.currentExpanded.contains($0) },
+            onToggleExpansion: { panel.toggleExpansion($0) },
+            onOpenDetail: { panel.openDetail(request: $0) },
+            computed: { panel.computedCache.compute(for: $0) }
         )
-        .equatable()
-        .id(entryID)
     }
 
     /// Default detail-tab routing for entries whose body has a single
     /// section the renderer treats as the canonical "open detail"
-    /// surface. Tools / text sub-entries route per-section from inside
-    /// `AgentEntryView+*` instead. Rewinds render their abandoned
-    /// transcript inline via ``RewindEntryView`` and never produce a
-    /// detail request. Returns nil for entries with no such surface.
+    /// surface. The unified ``EntryView`` body path calls
+    /// ``EntryActions/onOpenDetail`` with a pre-wrapped per-section
+    /// request, so this helper is no longer consulted at render time —
+    /// retained for any future external callers that want a default
+    /// open-target lookup.
     private func defaultDetailRequest(for entry: Entry) -> DetailRequest? {
         let id = entry.id.stableString
         switch entry {
@@ -298,24 +257,12 @@ public struct TranscriptView: View {
             return .bodySection(targetID: id, sectionIndex: 0)
         case .synthesized(let s):
             switch s.kind {
-            case .rewind:
-                return nil
-            case .prLink:
+            case .rewind, .prLink:
                 return nil
             }
         case .agent, .text, .tool:
             return nil
         }
-    }
-
-    /// Visible turn-boundary divider (predecessor parity per
-    /// PARITY §1.7 + dogfood feedback). 1pt SwiftUI `Divider()`
-    /// with foreground@0.06 background — visible-but-subtle hairline
-    /// that doubles as the `proxy.scrollTo(...)` target.
-    private func boundaryDivider(id: String, palette: HudPalette) -> some View {
-        Divider()
-            .background(appearance.foregroundColor.opacity(Theme.Opacity.bgWash))
-            .id(id)
     }
 
     /// Pick the divider id placed BEFORE `entry`. User entries get
@@ -400,7 +347,7 @@ public struct TranscriptView: View {
     private func emptyTranscriptView(palette: HudPalette) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(emptyHeader)
-                .font(Theme.Entry.name)
+                .font(Theme.Entry.nameEmphasis)
                 .foregroundStyle(palette.primary)
             Text(emptyDetail)
                 .font(Theme.Entry.title)
@@ -500,7 +447,7 @@ public struct TranscriptView: View {
     /// the open-detail link is a no-op (no nested detail tabs).
     private func detailEntriesList(entries: [Entry], palette: HudPalette) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: Theme.Padding.topLevelEntryGap) {
+            LazyVStack(alignment: .leading, spacing: Theme.Padding.entryGap) {
                 ForEach(entries, id: \.id.stableString) { entry in
                     detailEntryView(entry: entry, palette: palette)
                 }
@@ -511,22 +458,33 @@ public struct TranscriptView: View {
     }
 
     private func detailEntryView(entry: Entry, palette: HudPalette) -> some View {
-        let computed = panel.computedCache.compute(for: entry, displayMode: .fullDetail)
         let entryID = entry.id.stableString
         return EntryView(
             entry: entry,
-            computed: computed,
+            depth: 0,
             palette: palette,
-            displayMode: .fullDetail,
             isExpanded: true,
             isStreaming: false,
-            actions: EntryViewActions(
-                onToggleExpansion: {},
-                onOpenDetail: {}
-            )
+            computed: panel.computedCache.compute(for: entry),
+            actions: detailActions()
         )
         .equatable()
         .id(entryID)
+    }
+
+    /// Detail-tab ``EntryActions``. `isExpanded` returns true
+    /// unconditionally so abandoned-branch sub-entries materialize
+    /// expanded — they're not in the panel's `currentExpanded` set
+    /// (their ids were never observed by `autoExpandNewEntries`), and
+    /// the detail tab shows the full structure inline. `onOpenDetail`
+    /// is a no-op (no nested detail tabs).
+    private func detailActions() -> EntryActions {
+        EntryActions(
+            isExpanded: { _ in true },
+            onToggleExpansion: { _ in },
+            onOpenDetail: { _ in },
+            computed: { panel.computedCache.compute(for: $0) }
+        )
     }
 }
 

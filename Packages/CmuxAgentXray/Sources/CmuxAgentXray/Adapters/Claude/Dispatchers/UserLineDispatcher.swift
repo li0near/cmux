@@ -83,7 +83,7 @@ enum UserLineDispatcher {
     /// supersedes the prior next-line lookup that required an
     /// `isMeta:true` `"Base directory for this skill:"` follow-up,
     /// which missed plugin-shaped skills (e.g. `/simplify`,
-    /// `/claude-hud:configure`) whose metadata doesn't include it.
+    /// `/plugin:configure`) whose metadata doesn't include it.
     private static func isSkillShaped(_ line: ClaudeJSONLLine) -> Bool {
         guard line.type == "user" else { return false }
         let trimmed = (line.message?.content?.firstText() ?? "")

@@ -51,13 +51,12 @@ struct ClaudeTranscriptBuilderReadTests {
         """#
         let agent = try buildAgent(assistantLines: [toolUseJSON, toolResultJSON])
         let tool = try #require(firstTool(in: agent))
-        guard case .code(.plain(let text, let language, let lineNumberStart)) = tool.body.sections.last else {
+        guard case .code(.plain(let text, let lineNumberStart)) = tool.body.sections.last else {
             Issue.record("Expected .code(.plain) result section; got \(tool.body.sections)")
             return
         }
         // Numbers stripped; offset captured as 10.
         #expect(text == "let x = 1\nlet y = 2")
-        #expect(language == "swift")
         #expect(lineNumberStart == 10)
     }
 

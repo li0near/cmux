@@ -1030,10 +1030,9 @@ struct ClaudeTranscriptBuilder {
            let payload = ClaudeToolUseResult.from(line.toolUseResult),
            let hunks = payload.structuredPatch,
            !hunks.isEmpty {
-            let language = LanguagePicker.language(forFilePath: existing.inputFilePath)
-            update.resultSections = [.code(.diff(hunks: hunks, language: language))]
+            update.resultSections = [.code(.diff(hunks: hunks))]
         } else if Self.isReadShape(existing.toolName),
-                  let path = existing.inputFilePath {
+                  existing.inputFilePath != nil {
             // Read tool: file content arrives as plain `.text` after
             // `OffloadedOutputParser.promote(_:)` has already swapped
             // any `<persisted-output>` wrapper into `.offloadedOutput`.
@@ -1045,13 +1044,11 @@ struct ClaudeTranscriptBuilder {
             // Status envelopes (e.g. "File does not exist") fall
             // through unchanged — the section stays `.text` and renders
             // as plain prose in a gray box.
-            let language = LanguagePicker.language(forFilePath: path)
             update.resultSections = update.resultSections.map { section in
                 if case .text(let blocks, _) = section,
                    let parsed = Self.parseReadLineNumbers(blocks.joined(separator: "\n")) {
                     return .code(.plain(
                         text: parsed.text,
-                        language: language,
                         lineNumberStart: parsed.lineNumberStart
                     ))
                 }

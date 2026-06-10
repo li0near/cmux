@@ -38,7 +38,7 @@ public struct RemoteAttachPromptView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(headerText)
-                .font(Theme.Entry.name)
+                .font(Theme.Entry.nameEmphasis)
                 .foregroundStyle(palette.primary)
             Text(detailText)
                 .font(Theme.Entry.title)

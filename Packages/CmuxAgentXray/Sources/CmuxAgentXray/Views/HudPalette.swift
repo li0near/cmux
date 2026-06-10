@@ -11,45 +11,23 @@ public import SwiftUI
 @available(macOS 15, *)
 public struct HudPalette: Sendable, Equatable {
     public let foreground: Color
+    /// When true, every per-kind accent (`primary`, `cyan`, `yellow`,
+    /// `green`, `magenta`, `red`, `blue`, `claude`) collapses to
+    /// ``dim``. Used by the abandoned-branch (rewind) subtree: pass
+    /// ``dimmed`` to every descendant via the recursion's `palette:`
+    /// argument and the entire subtree renders in one inert color
+    /// without touching any leaf view. Idempotent — `palette.dimmed.dimmed`
+    /// equals `palette.dimmed`, so nested rewinds compose without
+    /// compounding.
+    public let allColorsDimmed: Bool
 
-    public init(foreground: Color) {
+    public init(foreground: Color, allColorsDimmed: Bool = false) {
         self.foreground = foreground
+        self.allColorsDimmed = allColorsDimmed
     }
 
     public var dim: Color {
         foreground.opacity(0.55)
-    }
-
-    public var primary: Color {
-        foreground
-    }
-
-    public var cyan: Color {
-        Self.fixed(red: 0x33, green: 0xCB, blue: 0xCC)
-    }
-
-    public var yellow: Color {
-        Self.fixed(red: 0xE3, green: 0xB3, blue: 0x41)
-    }
-
-    public var green: Color {
-        Self.fixed(red: 0x6E, green: 0xC2, blue: 0x4D)
-    }
-
-    public var magenta: Color {
-        Self.fixed(red: 0xC8, green: 0x70, blue: 0xE5)
-    }
-
-    public var red: Color {
-        Self.fixed(red: 0xE5, green: 0x6F, blue: 0x6F)
-    }
-
-    public var blue: Color {
-        Self.fixed(red: 0x7D, green: 0xA9, blue: 0xCC)
-    }
-
-    public var claude: Color {
-        Self.fixed(red: 0xE7, green: 0x8C, blue: 0x4D)
     }
 
     /// Soft background used behind expanded inline blocks so they
@@ -58,23 +36,29 @@ public struct HudPalette: Sendable, Equatable {
         foreground.opacity(0.06)
     }
 
-    /// Per-line background for `+` rows in unified-diff hunks. Resolved
-    /// at draw time from `colorScheme`. Light: GitHub Primer `green.0`
-    /// (#dafbe1); Dark: `#2ea043` @ 15% (`bgColor.success.muted`).
-    public func diffAddedBackground(colorScheme: ColorScheme) -> Color {
-        colorScheme == .dark
-            ? Color(.sRGB, red: 46.0/255, green: 160.0/255, blue: 67.0/255, opacity: 0.15)
-            : Color(.sRGB, red: 0xDA/255.0, green: 0xFB/255.0, blue: 0xE1/255.0, opacity: 1.0)
+    /// A variant where every per-kind accent collapses to ``dim``.
+    /// Idempotent: calling `.dimmed` on an already-dimmed palette
+    /// returns the same dimmed palette (no compounding).
+    public var dimmed: HudPalette {
+        allColorsDimmed
+            ? self
+            : HudPalette(foreground: foreground, allColorsDimmed: true)
     }
 
-    /// Per-line background for `-` rows in unified-diff hunks. Light:
-    /// GitHub Primer `red.0` (#ffebe9); Dark: `#f85149` @ 10%
-    /// (`bgColor.danger.muted`).
-    public func diffRemovedBackground(colorScheme: ColorScheme) -> Color {
-        colorScheme == .dark
-            ? Color(.sRGB, red: 248.0/255, green: 81.0/255, blue: 73.0/255, opacity: 0.10)
-            : Color(.sRGB, red: 0xFF/255.0, green: 0xEB/255.0, blue: 0xE9/255.0, opacity: 1.0)
-    }
+    // MARK: - Per-kind accent accessors
+
+    /// Every named accent routes through ``color(for:)`` so the
+    /// ``allColorsDimmed`` short-circuit lives in a single place.
+    /// Adding a new accent requires one switch arm there — never
+    /// remember the dimmed branch separately.
+    public var primary: Color { color(for: .primary) }
+    public var cyan:    Color { color(for: .cyan) }
+    public var yellow:  Color { color(for: .yellow) }
+    public var green:   Color { color(for: .green) }
+    public var magenta: Color { color(for: .magenta) }
+    public var red:     Color { color(for: .red) }
+    public var blue:    Color { color(for: .blue) }
+    public var claude:  Color { color(for: .claude) }
 
     private static func fixed(red: Int, green: Int, blue: Int) -> Color {
         Color(
@@ -90,46 +74,37 @@ public struct HudPalette: Sendable, Equatable {
     /// SwiftUI `Color` against this palette. Lets DetailContent and
     /// other Models/Panel types carry semantic accent intent without
     /// depending on SwiftUI.
+    ///
+    /// **Single dim short-circuit lives here.** When
+    /// ``allColorsDimmed`` is true, every role except ``PaletteRole/dim``
+    /// itself returns ``dim`` — that's how the abandoned-branch fade
+    /// flattens accents to one inert color across the whole subtree.
     public func color(for role: PaletteRole) -> Color {
+        if allColorsDimmed { return dim }
         switch role {
-        case .primary: return primary
+        case .primary: return foreground
         case .dim:     return dim
-        case .cyan:    return cyan
-        case .yellow:  return yellow
-        case .green:   return green
-        case .magenta: return magenta
-        case .red:     return red
-        case .blue:    return blue
-        case .claude:  return claude
+        case .cyan:    return Self.fixed(red: 0x33, green: 0xCB, blue: 0xCC)
+        case .yellow:  return Self.fixed(red: 0xE3, green: 0xB3, blue: 0x41)
+        case .green:   return Self.fixed(red: 0x6E, green: 0xC2, blue: 0x4D)
+        case .magenta: return Self.fixed(red: 0xC8, green: 0x70, blue: 0xE5)
+        case .red:     return Self.fixed(red: 0xE5, green: 0x6F, blue: 0x6F)
+        case .blue:    return Self.fixed(red: 0x7D, green: 0xA9, blue: 0xCC)
+        case .claude:  return Self.fixed(red: 0xE7, green: 0x8C, blue: 0x4D)
         }
     }
 
     /// Resolve a ``TextStyle`` to its foreground + background rendering
-    /// pair. Single source of truth for inline-row rendering
-    /// (`AgentEntryView+CappedBody`, `EntryBodyView`); eliminates the
-    /// pre-Phase-D divergence where two view files mapped `.thinking`
-    /// to two different colors. Diff styles get a tinted background
-    /// (light-green / light-red) so old/new blocks read as a hunk;
-    /// non-diff styles share `expandedBackground` and stay rounded.
+    /// pair. Single source of truth for inline-row rendering. All
+    /// styles share the same ``expandedBackground`` gray bg textbox so
+    /// every text section reads as one consistent contained block;
+    /// only the foreground varies per style.
     public func colors(for style: TextStyle) -> (foreground: Color, background: Color) {
         switch style {
-        case .normal:        return (primary.opacity(0.85), expandedBackground)
-        case .thinking:      return (primary.opacity(0.85), expandedBackground)
-        case .error:         return (red, expandedBackground)
-        case .codeMonospace: return (primary.opacity(0.85), expandedBackground)
+        case .normal, .thinking, .codeMonospace:
+            return (primary.opacity(0.85), expandedBackground)
+        case .error:
+            return (red, expandedBackground)
         }
     }
-}
-
-/// Glyph vocabulary lifted from claude-hud — single-character
-/// indicators that remain readable in monospaced terminal contexts.
-public enum HudGlyph {
-    public static let runningCircle = "◐"
-    public static let completedCheck = "✓"
-    public static let activeDot = "●"
-    public static let toolArrow = "▸"
-    public static let dividerLight = "─"
-    public static let blockFull = "█"
-    public static let blockEmpty = "░"
-    public static let errorCross = "✗"
 }

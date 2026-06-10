@@ -5,30 +5,10 @@ extension AgentXrayPanel {
 
     // MARK: - Per-entry expansion toggle
 
-    /// Identifies the expansion key the user toggled.
-    public enum ExpansionToggle: Equatable, Sendable {
-        /// Top-level entry header (one entry per agent turn / user prompt).
-        case entry(id: String)
-        /// Agent turn's text sub-entry (thinking or assistant) — keyed
-        /// by the sub-entry's stable id. Multiple per turn; each
-        /// toggles independently.
-        case text(subEntryID: String)
-        /// Tool sub-entry inside an agent turn (mirrored JSONL id).
-        case tool(toolID: String)
-
-        /// Lookup key into `currentExpanded`. Every case uses the
-        /// underlying id directly.
-        public var key: String {
-            switch self {
-            case .entry(let id),
-                 .tool(let id),
-                 .text(let id):
-                return id
-            }
-        }
-    }
-
-    /// Flip the entry's set membership in `currentExpanded`.
+    /// Flip the entry's set membership in `currentExpanded`. The same
+    /// id key is used for every entry kind (top-level entries, agent
+    /// sub-entries, abandoned-branch children) — `currentExpanded` is
+    /// one shared `Set<String>`.
     ///
     /// Note: when the user manually collapses a branch via its header
     /// chevron, the branch's sub-entries stay in `currentExpanded` as
@@ -37,10 +17,9 @@ extension AgentXrayPanel {
     /// branch restores them. The pill enabledness check (`canCollapse`)
     /// ignores inert sub-entries by intersecting against
     /// `topLevelEntryIDs`.
-    public func toggleExpansion(_ toggle: ExpansionToggle) {
-        let key = toggle.key
-        if !currentExpanded.insert(key).inserted {
-            currentExpanded.remove(key)
+    public func toggleExpansion(_ id: String) {
+        if !currentExpanded.insert(id).inserted {
+            currentExpanded.remove(id)
         }
     }
 

@@ -23,7 +23,7 @@ struct ImageEntryLinkView: View {
                 Image(systemName: "photo")
                     .font(.system(size: 11))
                 Text(label)
-                    .font(Theme.SubEntry.title)
+                    .font(Theme.Entry.title)
             }
             .foregroundStyle(palette.cyan)
             .padding(.horizontal, 6)

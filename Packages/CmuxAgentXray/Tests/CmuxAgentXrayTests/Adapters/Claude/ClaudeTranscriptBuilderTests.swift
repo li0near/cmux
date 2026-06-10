@@ -498,7 +498,7 @@ struct ClaudeTranscriptBuilderTests {
         #expect(tool.status == .ok)
         // Body has exactly one section: the diff hunks.
         #expect(tool.body.sections.count == 1)
-        guard case .code(.diff(let hunks, _)) = tool.body.sections.first else {
+        guard case .code(.diff(let hunks)) = tool.body.sections.first else {
             Issue.record("Expected .code(.diff) section; got \(tool.body.sections)")
             return
         }

@@ -6,22 +6,18 @@ import SwiftUI
 ///
 /// `.hunkHeader` rows carry the `@@ -X,Y +A,B @@` separator text and
 /// don't count against the cap's line-row budget. `.line` rows carry
-/// classified line content (per-line bg picked from
+/// classified line content (per-line foreground picked from
 /// ``CodeRow/Classification``) plus an optional line number for the
-/// gutter (nil for the rare wrap continuation cases).
-///
-/// Plain code rows (Read-tool file content) classify as `.plain`;
-/// diff rows classify per the hunk's `' '`/`-`/`+` prefix.
+/// inline prefix.
 struct CodeRow: Equatable, Sendable {
     enum Classification: Equatable, Sendable {
-        /// Read-tool file content — neutral row, no glyph, gutter gets
-        /// the standard expanded-body gray bg.
+        /// Read-tool file content — neutral row, code text in primary.
         case plain
-        /// Diff context line — gutter gets gray, code area transparent.
+        /// Diff context line — code text in primary.
         case context
-        /// Diff added line — full-row green tint.
+        /// Diff added line — code text in green.
         case added
-        /// Diff removed line — full-row red tint.
+        /// Diff removed line — code text in red.
         case removed
     }
 
@@ -88,32 +84,31 @@ extension Array where Element == DiffHunk {
     }
 }
 
-/// Unified renderer for ``Section/code(_:)`` — paints both plain code
+/// Flat row renderer for ``Section/code(_:)`` — paints both plain code
 /// (Read tool result body) and structured diff (Edit / MultiEdit /
-/// Write-update from `toolUseResult.structuredPatch`) with a
-/// line-number gutter, optional `+`/`-` prefix glyph, per-entry
-/// background tint by classification, and per-language syntax
-/// highlighting via `SyntaxHighlight` (highlight.js).
+/// Write-update from `toolUseResult.structuredPatch`) as monospace
+/// rows inside one ``HudPalette/expandedBackground`` gray textbox,
+/// matching every other text section in the body.
+///
+/// **No syntax highlighting, no per-row colored backgrounds, no
+/// separate gutter column.** Each `.line` row is one
+/// `Text(AttributedString)` composed of a dim line-number prefix + the
+/// classification glyph + the code text colored per classification:
+/// green `+` for added, red `-` for removed, dim ` ` for context /
+/// plain. Hunk-header rows render as a separate dim full-width
+/// `@@ -X,Y +A,B @@` row.
 ///
 /// Cap policy mirrors ``RenderCaps/standard`` — at most 30 inline line
 /// rows (hunk-header rows excluded from the count) and 3 KiB of
 /// joined line text. When either threshold trips, the view shows the
 /// leading rows up to the cap and emits an ``OpenDetailLinkView`` for
-/// the remainder; the detail tab serializes the full content
-/// (`.diff` rebuilds unified-diff text; `.plain` opens the file's
-/// basename via cmux's panel pipeline).
-///
-/// Lifecycle: stateless; pure render from `CodeContent`. Section
-/// equality is structural per the custom ``Section/==(_:_:)`` so
-/// SwiftUI re-renders only when content actually changes.
+/// the remainder; the detail tab serializes the full content.
 @available(macOS 15, *)
 struct CodeBlockView: View {
 
     let content: CodeContent
     let palette: HudPalette
     let onOpenDetail: () -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let cap = computeCap(rows: rowsFor(content: content))
@@ -123,7 +118,9 @@ struct CodeBlockView: View {
                     rowView(row, maxDigits: cap.maxLineNumberDigits)
                 }
             }
-            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Padding.expandedBodyBlock)
+            .background(Rectangle().fill(palette.expandedBackground))
             if cap.overflow {
                 OpenDetailLinkView(
                     totalLines: cap.totalLines,
@@ -142,7 +139,7 @@ struct CodeBlockView: View {
     /// delegate to ``Array/toCodeRows()``.
     private func rowsFor(content: CodeContent) -> [CodeRow] {
         switch content {
-        case .plain(let text, _, let lineNumberStart):
+        case .plain(let text, let lineNumberStart):
             let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
             return lines.enumerated().map { idx, slice in
                 CodeRow(kind: .line(
@@ -151,17 +148,8 @@ struct CodeBlockView: View {
                     classification: .plain
                 ))
             }
-        case .diff(let hunks, _):
+        case .diff(let hunks):
             return hunks.toCodeRows()
-        }
-    }
-
-    /// Language hint for `SyntaxHighlight.attributed(...)` — extracted
-    /// from whichever `CodeContent` arm we got.
-    private var language: String? {
-        switch content {
-        case .plain(_, let lang, _), .diff(_, let lang):
-            return lang
         }
     }
 
@@ -170,134 +158,70 @@ struct CodeBlockView: View {
         switch row.kind {
         case .hunkHeader(let text):
             Text(text)
-                .font(Theme.SubEntry.title)
+                .font(Theme.Entry.title)
                 .foregroundStyle(palette.dim)
-                .padding(.horizontal, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
         case .line(let text, let lineNumber, let classification):
-            let style = lineStyle(for: classification)
-            HStack(alignment: .top, spacing: 0) {
-                HStack(alignment: .firstTextBaseline, spacing: 0) {
-                    Text(formatLineNumber(lineNumber, width: maxDigits))
-                        .font(Theme.SubEntry.title)
-                        .foregroundStyle(style.gutterFg)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .padding(.trailing, 6)
-                    Text(style.glyph)
-                        .font(Theme.SubEntry.title)
-                        .foregroundStyle(style.gutterFg)
-                        .frame(width: 12, alignment: .center)
-                }
-                .padding(.leading, 6)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .background(Rectangle().fill(style.gutterBg))
-                Text(highlightedText(text))
-                    .font(Theme.SubEntry.title)
-                    .textSelection(.enabled)
-                    .padding(.leading, 6)
-                    .padding(.trailing, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Rectangle().fill(style.codeBg))
-            }
+            Text(rowAttributedString(
+                text: text,
+                lineNumber: lineNumber,
+                classification: classification,
+                maxDigits: maxDigits
+            ))
+            .font(Theme.Entry.title)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
         }
     }
 
-    // MARK: - Per-classification styling
-
-    /// All four per-entry visual fields for one classification, picked
-    /// in a single switch so the renderer doesn't dispatch four times
-    /// per row. `.plain` (Read content) and `.context` (diff context
-    /// rows) share the same styling — neutral row, gray gutter — and
-    /// their distinction is preserved only because the projection
-    /// layer cares about it (e.g. for future per-classification
-    /// behavior tweaks).
-    private struct LineStyle {
-        let codeBg: Color
-        let gutterBg: Color
-        let gutterFg: Color
+    /// Compose one row as an `AttributedString`. For `.plain` /
+    /// `.context` rows the leading line-number prefix renders dim and
+    /// the code text renders primary; for `.added` / `.removed` rows
+    /// the entire row (line number + glyph + code text) renders in the
+    /// classification color so the diff color extends the full width.
+    private func rowAttributedString(
+        text: String,
+        lineNumber: Int?,
+        classification: CodeRow.Classification,
+        maxDigits: Int
+    ) -> AttributedString {
+        let lineNumFg: Color
+        let codeFg: Color
         let glyph: String
-    }
-
-    private func lineStyle(for classification: CodeRow.Classification) -> LineStyle {
         switch classification {
         case .plain, .context:
-            return LineStyle(
-                codeBg: .clear,
-                gutterBg: palette.expandedBackground,
-                gutterFg: palette.dim,
-                glyph: " "
-            )
+            lineNumFg = palette.dim
+            codeFg = palette.primary.opacity(0.85)
+            glyph = " "
         case .added:
-            let bg = palette.diffAddedBackground(colorScheme: colorScheme)
-            return LineStyle(
-                codeBg: bg,
-                gutterBg: bg,
-                gutterFg: palette.green,
-                glyph: "+"
-            )
+            lineNumFg = palette.green
+            codeFg = palette.green
+            glyph = "+"
         case .removed:
-            let bg = palette.diffRemovedBackground(colorScheme: colorScheme)
-            return LineStyle(
-                codeBg: bg,
-                gutterBg: bg,
-                gutterFg: palette.red,
-                glyph: "-"
-            )
+            lineNumFg = palette.red
+            codeFg = palette.red
+            glyph = "-"
         }
-    }
 
-    // MARK: - Text rendering helpers
+        var prefix = AttributedString(formatLineNumber(lineNumber, width: maxDigits) + " ")
+        prefix.foregroundColor = lineNumFg
+        var glyphSpan = AttributedString("\(glyph) ")
+        glyphSpan.foregroundColor = codeFg
+        var codeSpan = AttributedString(text)
+        codeSpan.foregroundColor = codeFg
+        var out = AttributedString()
+        out.append(prefix)
+        out.append(glyphSpan)
+        out.append(codeSpan)
+        return out
+    }
 
     /// Right-aligned, blank-padded to `width` so every row's number
     /// column is identical pixel width (font is monospaced).
     private func formatLineNumber(_ n: Int?, width: Int) -> String {
         let padded = n.map { String($0) } ?? ""
         return String(repeating: " ", count: max(0, width - padded.count)) + padded
-    }
-
-    /// Try to syntax-highlight the line text against the section's
-    /// language hint. Falls back to plain text when language is unknown
-    /// or the highlighter rejects the input. ZWSP injection layered on
-    /// top to keep char-level wrap (SwiftUI Text's word-wrap engine
-    /// silently drops the `NSParagraphStyle.lineBreakMode =
-    /// .byCharWrapping` paragraph attribute when bridged through
-    /// `AttributedString`; ZWSP is the only working approach).
-    private func highlightedText(_ text: String) -> AttributedString {
-        let font = NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular)
-        if let attr = SyntaxHighlight.attributed(
-            text,
-            language: language,
-            font: font,
-            colorScheme: colorScheme
-        ) {
-            return charWrap(attr)
-        }
-        return charWrap(AttributedString(text))
-    }
-
-    /// Insert a ZWSP between every character of an `AttributedString`,
-    /// preserving each character's foreground attribute. Slow but
-    /// called per visible row only.
-    private func charWrap(_ attr: AttributedString) -> AttributedString {
-        var out = AttributedString()
-        var first = true
-        for run in attr.runs {
-            for ch in attr[run.range].characters {
-                if !first {
-                    var sep = AttributedString("\u{200B}")
-                    if let fg = run.foregroundColor { sep.foregroundColor = fg }
-                    out.append(sep)
-                }
-                first = false
-                var single = AttributedString(String(ch))
-                if let fg = run.foregroundColor { single.foregroundColor = fg }
-                out.append(single)
-            }
-        }
-        return out
     }
 
     // MARK: - Cap
@@ -310,11 +234,9 @@ struct CodeBlockView: View {
     }
 
     /// Truncate the projected row stream to the inline cap. The
-    /// 30-line / 3-KiB threshold mirrors ``RenderCaps/standard``; the
-    /// cache layer treats `.code` as `.empty` so this view owns the
-    /// cap decision at render time. Hunk-header rows are kept along
-    /// with their following lines (they don't contribute to the line
-    /// count or byte budget).
+    /// 30-line / 3-KiB threshold mirrors ``RenderCaps/standard``;
+    /// hunk-header rows are kept along with their following lines
+    /// (they don't contribute to the line count or byte budget).
     private func computeCap(rows: [CodeRow]) -> CapResult {
         let lineCap = 30
         let byteCap = 3 * 1024
@@ -350,10 +272,8 @@ struct CodeBlockView: View {
         }
         // Compute the gutter's column width from VISIBLE rows only —
         // a Read of a 200-line file with cap at row 30 should size
-        // the gutter to fit the largest visible number (e.g. 30,
-        // 2 digits), not the off-screen file's last line (200, 3
-        // digits). Off-screen content would over-pad the visible
-        // gutter for no benefit.
+        // the prefix to fit the largest visible number, not the
+        // off-screen file's last line.
         var maxLineNumber = 0
         for row in visible {
             if case .line(_, let lineNumber, _) = row.kind, let n = lineNumber {

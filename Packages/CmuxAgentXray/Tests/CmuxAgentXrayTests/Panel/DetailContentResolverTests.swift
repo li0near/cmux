@@ -120,8 +120,8 @@ struct DetailContentResolverTests {
     @Test("Synthesized rewind → no detail request (renders inline)")
     func rewindHasNoDetailRequest() {
         // Rewind entries render their abandoned-branch transcript inline
-        // via RewindEntryView; the resolver returns nil so no detail tab
-        // opens.
+        // via the unified EntryView recursion; the resolver returns nil
+        // so no detail tab opens.
         let abandoned: [Entry] = [
             userEntry(id: "u-abandoned", body: .text(["old prompt"]))
         ]
@@ -273,7 +273,7 @@ struct DetailContentResolverTests {
         )
         let body = Body(sections: [
             .text(["{...}"], style: .normal),
-            .code(.diff(hunks: [hunk], language: "swift"))
+            .code(.diff(hunks: [hunk]))
         ])
         let sub = toolSub(
             id: "edit1",

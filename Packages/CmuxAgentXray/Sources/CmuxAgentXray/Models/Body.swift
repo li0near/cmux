@@ -79,29 +79,20 @@ public enum Section: Sendable {
 /// can rebuild the unified-diff text losslessly.
 public enum CodeContent: Sendable {
     /// File-content-shaped code (e.g. Read tool result body). Renders
-    /// as line-numbered rows starting at `lineNumberStart`,
-    /// syntax-highlighted by `language` when set. Status envelopes
-    /// (e.g. "File does not exist") never reach this case — the
-    /// builder leaves them as `Section.text(...)` so they render as
+    /// as plain monospace lines starting at `lineNumberStart`. Status
+    /// envelopes (e.g. "File does not exist") never reach this case —
+    /// the builder leaves them as `Section.text(...)` so they render as
     /// plain prose in a gray box.
-    case plain(text: String, language: String?, lineNumberStart: Int)
-    /// Structured git-diff hunks. Renders as line-numbered rows with
-    /// per-line classification (context / added / removed) and full-row
-    /// red/green tints. The hunks survive the model layer untouched so
-    /// the detail-tab path (`serializeUnifiedDiff`) can reconstruct the
+    case plain(text: String, lineNumberStart: Int)
+    /// Structured git-diff hunks. Renders as monospace lines prefixed
+    /// with `+` / `-` / ` ` glyphs colored green / red / dim. The hunks
+    /// survive the model layer untouched so the detail-tab path
+    /// (`serializeUnifiedDiff`) can reconstruct the
     /// `--- a/X / +++ b/X / @@ ...` shape.
-    case diff(hunks: [DiffHunk], language: String?)
+    case diff(hunks: [DiffHunk])
 }
 
 extension CodeContent {
-    /// Language hint shared by both inner cases.
-    fileprivate var language: String? {
-        switch self {
-        case .plain(_, let lang, _), .diff(_, let lang):
-            return lang
-        }
-    }
-
     /// Total UTF-8 byte count across all this section's text content
     /// (the single string for `.plain`, every hunk line for `.diff`).
     /// Used by ``Section/==(_:_:)`` as the structural-signature
@@ -112,9 +103,9 @@ extension CodeContent {
     /// the other.
     fileprivate var totalBytes: Int {
         switch self {
-        case .plain(let text, _, _):
+        case .plain(let text, _):
             return text.utf8.count
-        case .diff(let hunks, _):
+        case .diff(let hunks):
             return hunks.reduce(0) { $0 + $1.lines.reduce(0) { $0 + $1.utf8.count } }
         }
     }
@@ -142,10 +133,10 @@ extension Section: Equatable {
         case (.offloadedOutput(let l), .offloadedOutput(let r)):
             return l == r
         case (.code(let l), .code(let r)):
-            // Same shape as `.text`'s arm: total UTF-8 bytes + language.
+            // Same shape as `.text`'s arm: total UTF-8 bytes only.
             // `.plain` and `.diff` reduce to the same fingerprint
             // formula here — see the rationale on `CodeContent`.
-            return l.totalBytes == r.totalBytes && l.language == r.language
+            return l.totalBytes == r.totalBytes
         case (.text, _), (.image, _), (.toolReference, _),
              (.offloadedOutput, _), (.code, _):
             return false
@@ -326,7 +317,7 @@ extension Body {
             switch section {
             case .text(let blocks, _):
                 parts.append(contentsOf: blocks)
-            case .code(.plain(let text, _, _)):
+            case .code(.plain(let text, _)):
                 parts.append(text)
             case .code(.diff), .image, .toolReference, .offloadedOutput:
                 continue

@@ -77,7 +77,7 @@ public struct StatusBarView: View {
 
     public var body: some View {
         HStack(spacing: Theme.Spacing.entryIconText) {
-            Text(glyph)
+            Image(systemName: "circle.fill")
                 .font(Theme.StatusBar.icon)
                 .foregroundStyle(glyphColor)
             Text(title)
@@ -96,7 +96,7 @@ public struct StatusBarView: View {
                 .help(changeTooltip)
             }
             Spacer(minLength: Theme.Spacing.entryIconText)
-            HStack(spacing: Theme.Spacing.subEntryIconText) {
+            HStack(spacing: 0) {
                 scrollModePill
                 rewindButton
                 expansionButton
@@ -105,7 +105,8 @@ public struct StatusBarView: View {
             }
         }
         .frame(height: Theme.Height.statusBar)
-        .padding(.horizontal, Theme.Padding.horizontal)
+        .padding(.leading, Theme.Padding.statusBar)
+        .padding(.trailing, Theme.Padding.statusBar)
     }
 
     private var changeText: String {
@@ -139,13 +140,6 @@ public struct StatusBarView: View {
             return .yellow
         case .streaming:
             return .green
-        }
-    }
-
-    private var glyph: String {
-        switch colorState {
-        case .red, .yellow: return HudGlyph.activeDot
-        case .green:        return HudGlyph.runningCircle
         }
     }
 
@@ -288,10 +282,11 @@ public struct StatusBarView: View {
                 .font(Theme.StatusBar.icon)
                 .foregroundStyle(color)
                 .frame(width: Theme.Height.iconButton, height: Theme.Height.iconButton)
+                .frame(width: Theme.Height.iconButtonHit, height: Theme.Height.iconButtonHit)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(disabled)
-        .hoverHighlight(palette: palette, tooltip: tooltip)
+        .hoverHighlight(palette: palette, accent: color, style: .stroke, tooltip: tooltip)
     }
 }

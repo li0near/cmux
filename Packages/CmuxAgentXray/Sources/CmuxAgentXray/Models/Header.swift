@@ -73,8 +73,8 @@ public enum TrailingItem: Equatable, Sendable {
     case tokenPill(AgentEntry.TokenUsage)
 }
 
-/// Color discriminator for a `statusDot` trailing item. Mirrors
-/// claude-devtools' three-state pending / ok / error convention.
+/// Color discriminator for a `statusDot` trailing item. Three-state
+/// pending / ok / error convention.
 public enum StatusDotKind: Equatable, Sendable {
     case pending, ok, error
 }
