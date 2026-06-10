@@ -36,6 +36,10 @@ public enum Theme {
         /// Internal vertical spacing between header and expanded body
         /// inside a single entry VStack (4pt).
         public static let verticalStack: CGFloat = 4
+        /// Vertical gap between consecutive sections inside a body
+        /// (3pt — slightly tighter than ``verticalStack`` so the body
+        /// reads as one block rather than a column of paragraphs).
+        public static let sectionGap: CGFloat = 3
     }
 
     // MARK: - Layout — Padding
@@ -141,11 +145,9 @@ public enum Theme {
 
     // MARK: - Layout — Opacity
 
-    /// Four discrete opacity levels — every other variant collapses into
-    /// one of these.
+    /// Discrete opacity levels — every other variant collapses into one
+    /// of these.
     public enum Opacity {
-        /// Expanded body gray-block fill (0.06 — barely-perceptible wash).
-        public static let bgWash: Double = 0.06
         /// Hover-highlight foreground tint (0.10 — translucent lighter
         /// spot, theme-adaptive via the palette's foreground color).
         public static let hoverTint: Double = 0.10
@@ -156,8 +158,17 @@ public enum Theme {
         public static let gutter: Double = 0.35
         /// Secondary text, pill borders, link underline (0.55).
         public static let dim: Double = 0.55
-        /// Tertiary text on dim — sub-entry line counts, tool summary (0.75).
-        public static let detail: Double = 0.75
+    }
+
+    // MARK: - Animation timing
+
+    /// Animation durations (seconds). All UI fades / state-change
+    /// transitions in this package read from this group so timing
+    /// stays consistent.
+    public enum Timing {
+        /// Quick fade — hover affordance, gutter brighten, button
+        /// state changes (0.12s).
+        public static let quick: Double = 0.12
     }
 
     // MARK: - Typography — Status bar

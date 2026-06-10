@@ -227,7 +227,7 @@ private struct GutterRail: View {
             .frame(width: Theme.Stroke.gutter)
             .frame(width: Theme.Indent.unit, alignment: .center)
             .contentShape(Rectangle())
-            .animation(.easeOut(duration: 0.12), value: hovering)
+            .animation(.easeOut(duration: Theme.Timing.quick), value: hovering)
             .onHover { hovering = $0 }
             .onTapGesture(perform: onTap)
     }

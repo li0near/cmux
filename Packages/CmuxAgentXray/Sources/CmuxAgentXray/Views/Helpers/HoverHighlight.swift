@@ -4,6 +4,7 @@ public import SwiftUI
 /// ``stroke`` draws a thin ring. Pills use ``stroke`` so the visible
 /// chrome stays focused on the pill itself; row-level click targets
 /// use ``fill`` so the whole row reads as the affordance.
+@available(macOS 15, *)
 public enum HoverEffectStyle: Sendable {
     case fill
     case stroke
@@ -69,7 +70,7 @@ public struct HoverHighlight: ViewModifier {
             RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                 .fill(effectColor)
                 .opacity(showsEffect ? Theme.Opacity.hoverTint : 0)
-                .animation(.easeOut(duration: 0.12), value: showsEffect)
+                .animation(.easeOut(duration: Theme.Timing.quick), value: showsEffect)
         }
     }
 
@@ -79,7 +80,7 @@ public struct HoverHighlight: ViewModifier {
             RoundedRectangle(cornerRadius: Theme.CornerRadius.pill)
                 .strokeBorder(effectColor, lineWidth: 1)
                 .opacity(showsEffect ? 1 : 0)
-                .animation(.easeOut(duration: 0.12), value: showsEffect)
+                .animation(.easeOut(duration: Theme.Timing.quick), value: showsEffect)
         }
     }
 

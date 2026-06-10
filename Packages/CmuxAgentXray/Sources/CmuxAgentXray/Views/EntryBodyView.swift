@@ -25,7 +25,7 @@ struct EntryBodyView: View {
     let onOpenDetail: (Int) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sectionGap) {
             ForEach(Array(entryBody.sections.enumerated()), id: \.offset) { index, section in
                 sectionView(section, computedIndex: index)
             }
