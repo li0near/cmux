@@ -49,29 +49,13 @@ body {
 /* AgentX-ray hand-rolled diff table (DiffHTMLRenderer). Detail-tab
    diff body emits a `<table class="diff-table">` instead of a
    ```diff fenced block — full-row bg + line-number gutter without
-   the highlight.js diff-lang's display:block trailing-newline issue.
-
-   Overrides: github-markdown.css applies `display: block` +
-   `width: max-content` + `border-top` on every <tr> to its default
-   `.markdown-body table` rule. We force `display: table` + full
-   width + no row borders so the diff renders as a single full-width
-   block, not a narrow scroll-container with spreadsheet-style row
-   separators. */
+   the highlight.js diff-lang's display:block trailing-newline issue. */
 .markdown-body table.diff-table {
-  display: table !important;
-  width: 100% !important;
-  max-width: 100% !important;
+  width: 100%;
   border-collapse: collapse;
-  border-spacing: 0;
-  margin: 0 0 16px 0;
+  margin: 0;
   font: 12.5px/1.5 SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
   background: var(--bgColor-default);
-  table-layout: fixed;
-}
-.markdown-body table.diff-table tr {
-  background: transparent !important;
-  border: 0 !important;
-  border-top: 0 !important;
 }
 .markdown-body table.diff-table caption.diff-caption {
   caption-side: top;
@@ -84,12 +68,12 @@ body {
 }
 .markdown-body table.diff-table td {
   padding: 0 6px;
-  border: 0 !important;
+  border: 0;
   vertical-align: top;
+  white-space: pre;
 }
 .markdown-body table.diff-table td.diff-num {
   width: 1%;
-  white-space: nowrap;
   text-align: right;
   color: var(--fgColor-muted);
   user-select: none;
@@ -98,25 +82,24 @@ body {
 }
 .markdown-body table.diff-table td.diff-glyph {
   width: 1%;
-  white-space: nowrap;
   text-align: center;
   user-select: none;
   color: var(--fgColor-muted);
 }
 .markdown-body table.diff-table td.diff-code {
-  width: auto;
+  width: 100%;
   padding-right: 12px;
   white-space: pre-wrap;
   word-break: break-all;
 }
 .markdown-body table.diff-table tr.diff-add {
-  background: #dafbe1 !important;
+  background: #dafbe1;
 }
 .markdown-body table.diff-table tr.diff-add td.diff-glyph {
   color: #1a7f37;
 }
 .markdown-body table.diff-table tr.diff-rem {
-  background: #ffebe9 !important;
+  background: #ffebe9;
 }
 .markdown-body table.diff-table tr.diff-rem td.diff-glyph {
   color: #cf222e;
@@ -125,16 +108,16 @@ body {
   padding: 4px 12px;
   color: var(--fgColor-accent);
   background: var(--bgColor-muted);
-  border-top: 1px solid var(--borderColor-default) !important;
-  border-bottom: 1px solid var(--borderColor-default) !important;
+  border-top: 1px solid var(--borderColor-default);
+  border-bottom: 1px solid var(--borderColor-default);
   user-select: none;
 }
 @media (prefers-color-scheme: dark) {
   .markdown-body table.diff-table tr.diff-add {
-    background: rgba(46, 160, 67, 0.15) !important;
+    background: rgba(46, 160, 67, 0.15);
   }
   .markdown-body table.diff-table tr.diff-rem {
-    background: rgba(248, 81, 73, 0.10) !important;
+    background: rgba(248, 81, 73, 0.10);
   }
 }
 .markdown-body pre {
