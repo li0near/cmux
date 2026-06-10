@@ -338,23 +338,35 @@ public struct Transcript: Sendable, Equatable {
     ///
     /// **Behavior.**
     /// - If `divergencePoint` is not at top-level, no-op.
-    /// - If the abandoned range is empty (no entries past divergence),
+    /// - Skips past any prior `.rewind` synthesized entries at the
+    ///   divergence point's successor slots — they are sibling rewinds
+    ///   (already-abandoned attempts at this same parent) and stay as
+    ///   siblings; only the live tail past them is folded.
+    /// - If the live tail is empty (no entries past prior rewinds),
     ///   no-op.
-    /// - Otherwise: replaces `entries[(divIdx+1)..<count]` with
+    /// - Otherwise: replaces `entries[(firstLiveSlot)..<count]` with
     ///   `[.synthesized(link)]` via ``slice(from:length:replacingWith:)``.
     ///   The displaced entries' index slots are re-pathed from their
     ///   old top-level paths (`[k]`) to their new nested paths under
-    ///   the link (`[divIdx+1, k - (divIdx+1)]`).
-    /// - If the displaced range contained a prior branch link, that
-    ///   prior link is captured inside the new link's `subEntries`
-    ///   verbatim (caller built it that way) — nested rewinds work
-    ///   for free without folding logic.
+    ///   the link (`[firstLiveSlot, k - firstLiveSlot]`).
+    /// - **Caller must NOT include prior rewind siblings in
+    ///   `link.subEntries`** — those stay at top level. The caller's
+    ///   abandoned-range computation skips them in lockstep.
     public mutating func branchOff(at divergencePoint: EntryID, link: SynthesizedEntry) {
         guard let divPath = index[divergencePoint], divPath.count == 1 else { return }
-        let firstAbandonedSlot = divPath[0] + 1
-        guard firstAbandonedSlot < entries.count else { return }
-        let firstAbandoned = entries[firstAbandonedSlot]
-        let length = entries.count - firstAbandonedSlot
+        // Skip prior .rewind siblings; they remain at top level.
+        var firstLiveSlot = divPath[0] + 1
+        while firstLiveSlot < entries.count {
+            if case .synthesized(let s) = entries[firstLiveSlot],
+               case .rewind = s.kind {
+                firstLiveSlot += 1
+                continue
+            }
+            break
+        }
+        guard firstLiveSlot < entries.count else { return }
+        let firstAbandoned = entries[firstLiveSlot]
+        let length = entries.count - firstLiveSlot
         slice(from: firstAbandoned.id, length: length, replacingWith: .synthesized(link))
     }
 }

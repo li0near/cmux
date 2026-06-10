@@ -267,10 +267,25 @@ struct ClaudeTranscriptBuilder {
         else { return }
         let parentId = EntryID.fromJSONL(parentJSONL)
         guard let parentPath = ctx.root.path(of: parentId),
-              parentPath.count == 1,
-              ctx.root.entries.count > parentPath[0] + 1
+              parentPath.count == 1
         else { return }
-        let abandoned = Array(ctx.root.entries[(parentPath[0] + 1)...])
+        // Skip prior `.rewind` siblings at the same divergence point —
+        // they were folded by earlier rewinds and stay as siblings, not
+        // re-folded into the new rewind. Without this, multi-rewind off
+        // the same parent produces visually-nested branches (one rewind
+        // wraps the previous, ad infinitum), since `branchOff`'s slice
+        // would scoop them up into the new link's subEntries.
+        var firstLiveTailSlot = parentPath[0] + 1
+        while firstLiveTailSlot < ctx.root.entries.count {
+            if case .synthesized(let s) = ctx.root.entries[firstLiveTailSlot],
+               case .rewind = s.kind {
+                firstLiveTailSlot += 1
+                continue
+            }
+            break
+        }
+        guard firstLiveTailSlot < ctx.root.entries.count else { return }
+        let abandoned = Array(ctx.root.entries[firstLiveTailSlot...])
         guard let firstAbandoned = abandoned.first else { return }
         let firstUuid = firstAbandoned.id.stableString
         let link = SynthesizedEntry(
