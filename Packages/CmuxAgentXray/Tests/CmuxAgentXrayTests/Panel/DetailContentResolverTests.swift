@@ -260,7 +260,7 @@ struct DetailContentResolverTests {
         #expect(content?.source == .text(body: expected, suggestedFilename: "tool-result.diff.md"))
     }
 
-    @Test("Tool result .diffHunks → tool-result.diff.md (serialized + diff-fenced)")
+    @Test("Tool result .code(.diff) → tool-result.diff.md as HTML table (DiffHTMLRenderer)")
     func toolResultDiffHunks() {
         let hunk = DiffHunk(
             oldStart: 10,
@@ -287,18 +287,23 @@ struct DetailContentResolverTests {
         let entry = agentEntry(subEntries: [sub])
         let request = DetailRequest.bodySection(targetID: "edit1", sectionIndex: 1)
         let content = DetailContent.resolve(request: request, entry: entry)
-        let expected = """
-        ```diff
-        --- a/\("/abs/foo.swift")
-        +++ b/\("/abs/foo.swift")
-        @@ -10,3 +10,3 @@
-         context line
-        -let x = 1
-        +let x = 2
-         trailing
-        ```
-        """
-        #expect(content?.source == .text(body: expected, suggestedFilename: "tool-result.diff.md"))
+        guard case .text(let html, let suggestedFilename) = content?.source else {
+            Issue.record("Expected .text source; got \(String(describing: content?.source))")
+            return
+        }
+        #expect(suggestedFilename == "tool-result.diff.md")
+        // HTML structural assertions — full structural match is brittle
+        // (CSS classes can churn). Verify the chunk shape that drives
+        // the markdown panel's render: table + per-classification rows
+        // + line numbers + correct file path in caption.
+        #expect(html.contains("<table class=\"diff-table\""))
+        #expect(html.contains("<caption class=\"diff-caption\">/abs/foo.swift</caption>"))
+        #expect(html.contains("@@ -10,3 +10,3 @@"))
+        #expect(html.contains("class=\"diff-context\""))
+        #expect(html.contains("class=\"diff-rem\""))
+        #expect(html.contains("class=\"diff-add\""))
+        #expect(html.contains("let x = 1"))
+        #expect(html.contains("let x = 2"))
     }
 
     @Test("Tool result with markdown ≥2 H3 → tool-result.md (no wrap)")

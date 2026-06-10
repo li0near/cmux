@@ -396,11 +396,18 @@ extension DetailContent {
             let body: String
             let filename: String
             switch content {
-            case .diff(let hunks, _):
-                body = FenceWrap.diff.apply(to: serializeUnifiedDiff(
+            case .diff(let hunks, let language):
+                // Hand-rolled HTML table inside the markdown body —
+                // sidesteps highlight.js's `diff` lang (no full-row bg,
+                // double-spacing under `display: block`) and lets cmux's
+                // MarkdownPanel render line numbers + per-row tints via
+                // a `<table>`. Markdown allows raw HTML blocks; the
+                // shell.html stylesheet styles the table classes.
+                body = DiffHTMLRenderer.render(
                     hunks: hunks,
-                    filePath: tool.inputFilePath ?? tool.toolName
-                ))
+                    filePath: tool.inputFilePath ?? tool.toolName,
+                    language: language
+                )
                 filename = "tool-result.diff.md"
             case .plain(let text, _, _):
                 body = text
@@ -596,27 +603,6 @@ extension DetailContent {
         }
     }
 
-    /// Serialize `[DiffHunk]` back into a unified-diff string with
-    /// `--- a/<path>` / `+++ b/<path>` headers and one `@@ -X,Y +A,B @@`
-    /// header per hunk. The hunks' `lines` are already prefix-embedded
-    /// (` ` / `-` / `+`), so we emit them verbatim.
-    private static func serializeUnifiedDiff(
-        hunks: [DiffHunk],
-        filePath: String
-    ) -> String {
-        var out: [String] = []
-        out.append("--- a/\(filePath)")
-        out.append("+++ b/\(filePath)")
-        for hunk in hunks {
-            out.append(
-                "@@ -\(hunk.oldStart),\(hunk.oldLines) +\(hunk.newStart),\(hunk.newLines) @@"
-            )
-            for line in hunk.lines {
-                out.append(line)
-            }
-        }
-        return out.joined(separator: "\n")
-    }
 }
 
 // MARK: - Tool sub-entry lookup
