@@ -309,12 +309,14 @@ public struct TranscriptView: View {
     }
 
     /// Visible turn-boundary divider (predecessor parity per
-    /// PARITY §1.7 + dogfood feedback). 1pt SwiftUI `Divider()`
-    /// with foreground@0.06 background — visible-but-subtle hairline
-    /// that doubles as the `proxy.scrollTo(...)` target.
+    /// Universal-look spike: dividers are invisible (zero-height
+    /// transparent anchor) so the transcript reads as one continuous
+    /// rhythm — visual hierarchy comes from indent + emphasis, not
+    /// inter-row chrome. The `.id()` attachment is preserved so
+    /// `proxy.scrollTo(...)` targets still resolve.
     private func boundaryDivider(id: String, palette: HudPalette) -> some View {
-        Divider()
-            .background(appearance.foregroundColor.opacity(Theme.Opacity.bgWash))
+        Color.clear
+            .frame(height: 0)
             .id(id)
     }
 

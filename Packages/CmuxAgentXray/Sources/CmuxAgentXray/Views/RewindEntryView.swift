@@ -64,12 +64,22 @@ public struct RewindEntryView: View, Equatable {
             .buttonStyle(.plain)
 
             if isExpanded {
-                LazyVStack(alignment: .leading, spacing: Theme.Padding.topLevelEntryGap) {
+                // Universal-look spike: spacing 0 (children's own
+                // .padding(.vertical) provides the rhythm — same
+                // density as outer transcript). Vertical gutter on
+                // the body's leading edge marks the abandoned-branch
+                // boundary at the rewind's icon column.
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(entry.subEntries, id: \.id.stableString) { sub in
                         actions.renderSubEntry(sub)
                     }
                 }
                 .padding(.leading, Theme.Indent.subEntry)
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .frame(width: 1)
+                        .foregroundStyle(palette.dim.opacity(0.4))
+                }
             }
         }
         .padding(.horizontal, Theme.Padding.horizontal)

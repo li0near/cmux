@@ -65,8 +65,10 @@ public enum Theme {
         /// SF Symbol visual width for a top-level entry header icon (14pt).
         /// Determines `Indent.subEntry` derivation.
         public static let entryIconWidth: CGFloat = 14
-        /// SF Symbol visual width for a sub-entry icon (12pt).
-        public static let subEntryIconWidth: CGFloat = 12
+        /// SF Symbol visual width for a sub-entry icon. Universal-look
+        /// spike: matches ``entryIconWidth`` so depth-driven indent
+        /// math is uniform across levels.
+        public static let subEntryIconWidth: CGFloat = 14
         /// Status-dot diameter for the trailing tool-status indicator (6pt).
         public static let statusDot: CGFloat = 6
     }
@@ -163,22 +165,27 @@ public enum Theme {
 
     // MARK: - Typography — Sub-entry
 
-    /// Fonts for sub-entries (thinking / tool / assistantText). Header
-    /// text slots (`name`, `title`) sit at 11.5pt — a half-point under
-    /// ``Entry``'s 12pt to read as a quieter continuation of the parent
-    /// entry while still maintaining visual weight; the smaller ``meta``
-    /// (10pt trailing pills / durations) and ``icon`` (11pt glyph)
-    /// preserve the proportions distinguishing sub-entries from
-    /// top-level entries.
+    /// Fonts for sub-entries (thinking / tool / assistantText / rewind
+    /// abandoned children) and any non-emphasized header. Universal-look
+    /// spike: SAME sizes as ``Entry`` so multi-level nesting reads as
+    /// one consistent rhythm; the only typographic distinction between
+    /// first-level and deeper entries is name WEIGHT (``Entry/name`` is
+    /// `.semibold`; ``SubEntry/name`` is regular). Body inline content
+    /// (code blocks, capped text, tool-ref chips, OpenDetailLink) reuses
+    /// these tokens — they're the "header" path's typography, but body
+    /// content still pulls from these same sizes for now (visual
+    /// hierarchy comes from indent + emphasis, not size).
     public enum SubEntry {
-        public static let name = Font.system(size: 11.5, design: .monospaced)
-        /// Title slot — same role as ``Entry/title`` for sub-entries. 11.5pt
-        /// mono no weight; dim color distinguishes it from the
-        /// accent-colored name.
-        public static let title = Font.system(size: 11.5, design: .monospaced)
-        /// Line counts, tool durations (10.5pt).
-        public static let meta = Font.system(size: 10.5, design: .monospaced)
-        public static let icon = Font.system(size: 11)
+        public static let name = Font.system(size: 12, design: .monospaced)
+        /// Title slot — same role as ``Entry/title`` for sub-entries.
+        /// Same SIZE as ``Entry/title`` (12pt mono); dim color
+        /// distinguishes it from the accent-colored name.
+        public static let title = Font.system(size: 12, design: .monospaced)
+        /// Trailing meta (line counts, tool durations) — matches
+        /// ``Entry/meta`` (11pt) for the universal-look spike.
+        public static let meta = Font.system(size: 11, design: .monospaced)
+        /// Glyph — matches ``Entry/icon`` (12pt).
+        public static let icon = Font.system(size: 12)
     }
 
     // MARK: - Typography — Detail panel
