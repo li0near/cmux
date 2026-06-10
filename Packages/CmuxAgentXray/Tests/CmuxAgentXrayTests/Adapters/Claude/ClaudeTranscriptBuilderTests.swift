@@ -295,13 +295,12 @@ struct ClaudeTranscriptBuilderTests {
         #expect(blocks.joined(separator: "\n") == "expected result text")
     }
 
-    @Test("Rewind: user prompt re-parenting attaches a rewind to the divergence-point entry's branches")
+    @Test("Rewind: user prompt re-parenting to mid-tree node folds abandoned tail into rewind")
     func rewindFoldsAbandonedTail() throws {
         // u1 → a1 (assistant) → u-rewind whose parentUuid points back
         // at u1. The dispatcher detects rewind (u1's tail past slot 0
-        // has trailing entries) and slices [a1] off top-level, then
-        // attaches the rewind to u1's `branches`. Top-level becomes
-        // [u1, u-rewind]; u1.branches has the rewind link.
+        // has trailing entries) and slices the tail into a synthesized
+        // .rewind at top-level slot 1.
         var builder = ClaudeTranscriptBuilder()
         try builder.ingest(JSONLFixture.line(named: "builder-user-first"))
         try builder.ingest(decodeLine(makeAssistantTextLine(
@@ -310,23 +309,17 @@ struct ClaudeTranscriptBuilderTests {
         try builder.ingest(JSONLFixture.line(named: "builder-user-rewind"))
 
         let entries = builder.transcript()
-        // [u1, u-rewind] — top-level keeps live conversation only.
-        #expect(entries.count == 2)
-        // u1 is at slot 0 with the rewind attached as a branch.
-        guard case .user(let firstUser) = entries[0] else {
-            Issue.record("expected u1 at slot 0; got \(entries[0])")
-            return
-        }
-        #expect(firstUser.id == .fromJSONL("u1"))
-        #expect(firstUser.branches.count == 1)
-        let link = firstUser.branches[0]
-        if case .rewind = link.kind {} else {
-            Issue.record("expected .rewind kind on link; got \(link.kind)")
+        // [u1, rewind (with a1 nested), u-rewind]
+        #expect(entries.count == 3)
+        guard case .synthesized(let link) = entries[1],
+              case .rewind = link.kind else {
+            Issue.record("expected rewind at slot 1; got \(entries[1])")
             return
         }
         // The abandoned AgentEntry@a1 should be inside the link.
         #expect(link.subEntries.count == 1)
-        // Header carries the "Abandoned Branch" name + count label.
+        // Header carries the new "Abandoned Branch" name + a count
+        // label that matches subEntries.count.
         #expect(link.header.name == "Abandoned Branch")
         #expect(link.header.label == "1 entries")
         guard case .agent(let abandoned) = link.subEntries[0] else {
@@ -334,9 +327,9 @@ struct ClaudeTranscriptBuilderTests {
             return
         }
         #expect(abandoned.id == .fromJSONL("a1"))
-        // The new prompt is at top-level slot 1.
-        guard case .user(let userEntry) = entries[1] else {
-            Issue.record("expected new UserEntry at slot 1; got \(entries[1])")
+        // The new prompt is at slot 2.
+        guard case .user(let userEntry) = entries[2] else {
+            Issue.record("expected new UserEntry at slot 2; got \(entries[2])")
             return
         }
         #expect(userEntry.id == .fromJSONL("u-rewind"))

@@ -14,22 +14,17 @@ public struct SystemEntry: Identifiable, Equatable, Sendable {
     public let header: Header
     public let body: Body
     public let subType: SubType
-    /// Abandoned-branch rewinds whose divergence point is this entry.
-    /// See ``Entry/branches``.
-    public internal(set) var branches: [SynthesizedEntry]
 
     public init(
         id: EntryID,
         header: Header,
         body: Body,
-        subType: SubType,
-        branches: [SynthesizedEntry] = []
+        subType: SubType
     ) {
         self.id = id
         self.header = header
         self.body = body
         self.subType = subType
-        self.branches = branches
     }
 
     public var timestamp: Date? { header.timeMarker?.clockDate }

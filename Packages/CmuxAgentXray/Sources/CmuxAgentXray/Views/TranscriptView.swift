@@ -245,21 +245,7 @@ public struct TranscriptView: View {
                     onToggleExpansion: { panel.toggleExpansion($0) },
                     onOpenDetail: { panel.openDetail(request: $0) },
                     renderSubEntry: { sub in
-                        // Lift branches inside the abandoned subtree
-                        // too, so deeply nested rewinds (rewind whose
-                        // abandoned content itself contains a prior
-                        // rewind on its parent's branches) surface as
-                        // visual peers within the outer rewind's
-                        // expanded body — the same lift rule the main
-                        // transcript applies via ``visibleEntries``.
-                        AnyView(
-                            VStack(alignment: .leading, spacing: 0) {
-                                entryView(for: sub, palette: palette)
-                                ForEach(sub.branches, id: \.id.stableString) { branch in
-                                    entryView(for: .synthesized(branch), palette: palette)
-                                }
-                            }
-                        )
+                        AnyView(entryView(for: sub, palette: palette))
                     }
                 )
             )
@@ -357,27 +343,14 @@ public struct TranscriptView: View {
                 anchoredUserIDs: panel.anchoredUserEntryIDs
             )
         }
-        // Lift each entry's `branches` to top-level visual peers right
-        // after the entry. The data model keeps rewinds off the live
-        // `Transcript.entries` array (so slice/branchOff stay simple)
-        // while the rendered list still shows them as always-visible
-        // affordances next to their divergence point.
-        var flat: [Entry] = []
-        flat.reserveCapacity(postFilter.count)
-        for entry in postFilter {
-            flat.append(entry)
-            for branch in entry.branches {
-                flat.append(.synthesized(branch))
-            }
-        }
         if panel.rewindVisibility == .hide {
-            return flat.filter { entry in
+            return postFilter.filter { entry in
                 if case .synthesized(let s) = entry,
                    case .rewind = s.kind { return false }
                 return true
             }
         }
-        return flat
+        return postFilter
     }
 
     // MARK: - Scroll routing

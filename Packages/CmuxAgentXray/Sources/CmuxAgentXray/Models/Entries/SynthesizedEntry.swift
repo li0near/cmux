@@ -23,26 +23,18 @@ public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
     /// ``AgentEntry/subEntries`` — see that field's doc.
     public internal(set) var subEntries: [Entry]
 
-    /// Abandoned-branch rewinds whose divergence point is this entry.
-    /// See ``Entry/branches``. Rare on synthesized entries (a rewind
-    /// dangling off another rewind isn't typical) but the field exists
-    /// uniformly for symmetry.
-    public internal(set) var branches: [SynthesizedEntry]
-
     public init(
         id: EntryID,
         header: Header,
         body: Body,
         kind: Kind,
-        subEntries: [Entry] = [],
-        branches: [SynthesizedEntry] = []
+        subEntries: [Entry] = []
     ) {
         self.id = id
         self.header = header
         self.body = body
         self.kind = kind
         self.subEntries = subEntries
-        self.branches = branches
     }
 
     public var timestamp: Date? { header.timeMarker?.clockDate }

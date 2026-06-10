@@ -195,9 +195,9 @@ struct TranscriptTests {
         #expect(root.entry(id: .fromJSONL("u2"))?.id == .fromJSONL("u2"))
     }
 
-    // MARK: - branchOff (slice live tail + attach to parent's branches)
+    // MARK: - branchOff (thin wrapper over slice)
 
-    @Test("branchOff — slices live tail past divergence and attaches link to parent's branches")
+    @Test("branchOff — slices tail past divergence into the link")
     func branchOffBasicTail() {
         var root = Transcript()
         root.append(parent: nil, entry: userEntry("p1"))
@@ -209,16 +209,16 @@ struct TranscriptTests {
 
         root.branchOff(at: .fromJSONL("p1"), link: link)
 
-        // Top-level keeps only the live conversation; the rewind hangs
-        // off p1's `branches` field.
-        #expect(root.entries.count == 1)
+        #expect(root.entries.count == 2)
         #expect(root.entries[0].id == .fromJSONL("p1"))
-        #expect(root.entries[0].branches.count == 1)
-        let attached = root.entries[0].branches[0]
-        #expect(attached.id == .derived(parent: "a1", kind: "rewind"))
-        #expect(attached.subEntries.count == 2)
-        #expect(attached.subEntries[0].id == .fromJSONL("a1"))
-        #expect(attached.subEntries[1].id == .fromJSONL("a2"))
+        if case .synthesized(let synth) = root.entries[1] {
+            #expect(synth.id == .derived(parent: "a1", kind: "rewind"))
+            #expect(synth.subEntries.count == 2)
+            #expect(synth.subEntries[0].id == .fromJSONL("a1"))
+            #expect(synth.subEntries[1].id == .fromJSONL("a2"))
+        } else {
+            Issue.record("expected synthesized branch-link at index 1")
+        }
     }
 
     @Test("branchOff — empty tail past divergence is a no-op")
@@ -229,7 +229,6 @@ struct TranscriptTests {
         root.branchOff(at: .fromJSONL("p1"), link: link)
         #expect(root.entries.count == 1)
         #expect(root.entries[0].id == .fromJSONL("p1"))
-        #expect(root.entries[0].branches.isEmpty)
     }
 
     @Test("branchOff — unknown divergence point is a no-op")
@@ -242,83 +241,69 @@ struct TranscriptTests {
         #expect(root.entries.count == 2)
     }
 
-    @Test("branchOff — multi-rewind to same parent: each new rewind appends to parent.branches as a sibling")
-    func branchOffMultiRewindAppendsSibling() {
+    @Test("branchOff — multi-rewind to same parent yields distinct link ids")
+    func branchOffMultiRewindCollisionFree() {
         var root = Transcript()
         root.append(parent: nil, entry: userEntry("p"))
         root.append(parent: nil, entry: agentEntry("A"))
 
         let link1 = rewind(parentBranchRoot: "A", abandoned: [root.entries[1]])
         root.branchOff(at: .fromJSONL("p"), link: link1)
-        // After first rewind: top-level = [p]; p.branches = [link1].
-        #expect(root.entries.count == 1)
-        #expect(root.entries[0].branches.count == 1)
 
-        // Continue with new live content on top of p.
         root.append(parent: nil, entry: agentEntry("B"))
-        // Top-level = [p, B]; p.branches still has [link1].
-
-        // Second rewind off p: only the new live tail [B] is abandoned.
-        // Caller must not include the prior rewind sibling in
-        // `link2.subEntries` — branches preserve it independently.
+        let abandonedNow = Array(root.entries[1...])
+        let firstOfTailUuid = "linkA"
         let link2 = SynthesizedEntry(
-            id: .derived(parent: "B", kind: "rewind"),
+            id: .derived(parent: firstOfTailUuid, kind: "rewind"),
             header: Header(),
             body: Body(sections: []),
-            kind: .rewind(rootUuid: "B"),
-            subEntries: [root.entries[1]]
+            kind: .rewind(rootUuid: firstOfTailUuid),
+            subEntries: abandonedNow
         )
         root.branchOff(at: .fromJSONL("p"), link: link2)
 
-        // After second rewind: top-level = [p]; p.branches = [link1, link2].
-        // The two rewinds coexist as siblings on p.
-        #expect(root.entries.count == 1)
-        #expect(root.entries[0].id == .fromJSONL("p"))
-        #expect(root.entries[0].branches.count == 2)
-        #expect(root.entries[0].branches[0].id == link1.id)
-        #expect(root.entries[0].branches[1].id == link2.id)
         #expect(link1.id != link2.id)
+        #expect(link1.id == .derived(parent: "A", kind: "rewind"))
+        #expect(link2.id == .derived(parent: firstOfTailUuid, kind: "rewind"))
+
+        #expect(root.entries.count == 2)
+        if case .synthesized(let synth) = root.entries[1] {
+            #expect(synth.subEntries.count == 2)
+            #expect(synth.subEntries[0].id == link1.id)
+            #expect(synth.subEntries[1].id == .fromJSONL("B"))
+        } else {
+            Issue.record("expected link2 wrapping [link1, B]")
+        }
     }
 
-    @Test("branchOff — nested rewind: outer rewind captures parent containing inner rewind in its branches")
+    @Test("branchOff — nested rewind: prior link captured inside new link's subEntries")
     func branchOffNestedRewind() {
-        // Setup: p, A, B where A had an inner rewind attached to its
-        // branches. Outer rewind off p abandons [A, B]; A's branches
-        // ride along inside link2.subEntries[0].branches.
         var root = Transcript()
         root.append(parent: nil, entry: userEntry("p"))
         root.append(parent: nil, entry: agentEntry("A"))
+
+        let link1 = rewind(parentBranchRoot: "A", abandoned: [root.entries[1]])
+        root.branchOff(at: .fromJSONL("p"), link: link1)
+
         root.append(parent: nil, entry: agentEntry("B"))
-
-        // Inner rewind attached to A's branches (e.g. divergence at A).
-        // Construct directly on A rather than via branchOff to keep the
-        // setup linear.
-        let innerRewindLink = rewind(parentBranchRoot: "inner-tail", abandoned: [])
-        root.mutate(id: .fromJSONL("A")) { entry in
-            entry.branches.append(innerRewindLink)
-        }
-
-        // Outer rewind off p abandons [A, B]. A's branches travel on
-        // A as a value field — the outer rewind's subEntries[0] is A
-        // with its branches intact.
-        let abandoned = Array(root.entries[1...])
-        let outerLink = SynthesizedEntry(
-            id: .derived(parent: "A", kind: "rewind"),
+        let abandonedNow = Array(root.entries[1...])
+        let link2 = SynthesizedEntry(
+            id: .derived(parent: "outer-root", kind: "rewind"),
             header: Header(),
             body: Body(sections: []),
-            kind: .rewind(rootUuid: "A"),
-            subEntries: abandoned
+            kind: .rewind(rootUuid: "outer-root"),
+            subEntries: abandonedNow
         )
-        root.branchOff(at: .fromJSONL("p"), link: outerLink)
+        root.branchOff(at: .fromJSONL("p"), link: link2)
 
-        // Top-level = [p]; p.branches = [outerLink].
-        #expect(root.entries.count == 1)
-        #expect(root.entries[0].branches.count == 1)
-        let outer = root.entries[0].branches[0]
-        // outer.subEntries[0] is A with its inner branch preserved.
-        #expect(outer.subEntries.count == 2)
-        #expect(outer.subEntries[0].id == .fromJSONL("A"))
-        #expect(outer.subEntries[0].branches.count == 1)
-        #expect(outer.subEntries[0].branches[0].id == innerRewindLink.id)
+        guard case .synthesized(let outer) = root.entries.last,
+              let inner = outer.subEntries.first,
+              case .synthesized(let innerSynth) = inner
+        else {
+            Issue.record("expected link2 → link1 nesting")
+            return
+        }
+        #expect(innerSynth.id == link1.id)
+        #expect(innerSynth.subEntries.first?.id == .fromJSONL("A"))
     }
 }
