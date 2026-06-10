@@ -71,7 +71,7 @@ public struct EntryView: View {
                     displayMode: displayMode,
                     onOpenDetail: onOpenDetail
                 )
-                .padding(.leading, Theme.Indent.subRow)
+                .padding(.leading, Theme.Indent.subEntry)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

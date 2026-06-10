@@ -14,7 +14,7 @@ public import SwiftUI
 ///     └──────────────────────────────────────────────────────────┘
 ///
 /// Per-entry chrome lives on the entry views themselves (no shared
-/// modifier). Sub-entry indent: `Theme.Indent.subRow` (22pt).
+/// modifier). Sub-entry indent: `Theme.Indent.subEntry` (22pt).
 @available(macOS 15, *)
 public struct TranscriptView: View {
 
@@ -376,10 +376,10 @@ public struct TranscriptView: View {
     private func emptyTranscriptView(palette: HudPalette) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(emptyHeader)
-                .font(Theme.Row.name)
+                .font(Theme.Entry.name)
                 .foregroundStyle(palette.primary)
             Text(emptyDetail)
-                .font(Theme.Row.title)
+                .font(Theme.Entry.title)
                 .foregroundStyle(palette.dim)
         }
         .padding(.horizontal, 16)
@@ -432,7 +432,7 @@ public struct TranscriptView: View {
         let palette = HudPalette(foreground: appearance.foregroundColor)
         let accent = palette.color(for: content.accent)
         return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: Theme.Spacing.rowIconText) {
+            HStack(alignment: .top, spacing: Theme.Spacing.entryIconText) {
                 Image(systemName: content.icon.collapsed)
                     .font(Theme.DetailPanel.heading)
                     .foregroundStyle(accent)
@@ -544,25 +544,25 @@ private struct BranchLinkEntryRow: View {
 
     var body: some View {
         Button(action: onOpenDetail) {
-            HStack(spacing: Theme.Spacing.rowIconText) {
+            HStack(spacing: Theme.Spacing.entryIconText) {
                 // Tangent leading: reserve the parent's icon-column
                 // width and overlay `↳` at the trailing edge with a
                 // half-spacing offset so it lands in the gap between
                 // the parent's icon and name columns.
                 Color.clear
-                    .frame(width: Theme.Metric.rowIconWidth, height: 12)
+                    .frame(width: Theme.Metric.entryIconWidth, height: 12)
                     .overlay(alignment: .trailing) {
                         Text("↳")
-                            .font(Theme.SubRow.title)
+                            .font(Theme.SubEntry.title)
                             .foregroundStyle(palette.dim)
                             .fixedSize()
-                            .offset(x: Theme.Spacing.rowIconText / 2)
+                            .offset(x: Theme.Spacing.entryIconText / 2)
                     }
                 Image(systemName: EntryIcon.branchLink.collapsed)
-                    .font(Theme.SubRow.icon)
+                    .font(Theme.SubEntry.icon)
                     .foregroundStyle(palette.dim)
                 Text(titleText)
-                    .font(Theme.SubRow.title)
+                    .font(Theme.SubEntry.title)
                     .foregroundStyle(palette.dim)
                     .underline(true, color: palette.dim.opacity(Theme.Opacity.dim))
                     .lineLimit(1)

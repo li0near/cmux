@@ -6,13 +6,13 @@ extension AgentEntryView {
     /// Unified header chrome for every agent sub-entry kind (thinking,
     /// tool, assistant text). One row of:
     ///
-    ///     [icon (subRowIconWidth, iconColor)]
-    ///     [name (Theme.SubRow.name, nameAccent)]
-    ///     [label? (Theme.SubRow.meta, dim)] -- secondary text (e.g. MCP tool name when name is the server)
+    ///     [icon (subEntryIconWidth, iconColor)]
+    ///     [name (Theme.SubEntry.name, nameAccent)]
+    ///     [label? (Theme.SubEntry.meta, dim)] -- secondary text (e.g. MCP tool name when name is the server)
     ///     [extras] -- caller-supplied (e.g. tool's magenta chip)
-    ///     [title? (Theme.SubRow.title, dim, middle-truncated)]
+    ///     [title? (Theme.SubEntry.title, dim, middle-truncated)]
     ///     [Spacer]
-    ///     [trailing pills (Theme.SubRow.meta, dim)]
+    ///     [trailing pills (Theme.SubEntry.meta, dim)]
     ///     [timeMarker (e.g. "X ms" for tools)]
     ///
     /// Sub-entries thus render uniformly regardless of kind. The
@@ -32,27 +32,27 @@ extension AgentEntryView {
         timeMarker: TimeMarker? = nil,
         @ViewBuilder extras: () -> Extras = { EmptyView() }
     ) -> some View {
-        HStack(spacing: Theme.Spacing.subRowIconText) {
+        HStack(spacing: Theme.Spacing.subEntryIconText) {
             if let icon {
                 Image(systemName: icon.systemName(expanded: isExpanded))
-                    .font(Theme.SubRow.icon)
+                    .font(Theme.SubEntry.icon)
                     .foregroundStyle(iconColor)
-                    .frame(width: Theme.Metric.subRowIconWidth)
+                    .frame(width: Theme.Metric.subEntryIconWidth)
             }
             Text(name)
-                .font(Theme.SubRow.name)
+                .font(Theme.SubEntry.name)
                 .foregroundStyle(nameAccent)
                 .lineLimit(1)
             if let label, !label.isEmpty {
                 Text(label)
-                    .font(Theme.SubRow.meta)
+                    .font(Theme.SubEntry.meta)
                     .foregroundStyle(palette.dim)
                     .lineLimit(1)
             }
             extras()
             if let title, !title.isEmpty {
                 Text(title)
-                    .font(Theme.SubRow.title)
+                    .font(Theme.SubEntry.title)
                     .foregroundStyle(palette.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -63,11 +63,11 @@ extension AgentEntryView {
             }
             if let timeMarker {
                 Text(timeMarker.displayString)
-                    .font(Theme.SubRow.meta)
+                    .font(Theme.SubEntry.meta)
                     .foregroundStyle(palette.dim)
             }
         }
-        .padding(.leading, Theme.Indent.subRow)
+        .padding(.leading, Theme.Indent.subEntry)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -82,7 +82,7 @@ extension AgentEntryView {
              .wordCount(let s),
              .pill(let s):
             Text(s)
-                .font(Theme.SubRow.meta)
+                .font(Theme.SubEntry.meta)
                 .foregroundStyle(palette.dim)
         case .statusDot, .tokenPill:
             EmptyView()

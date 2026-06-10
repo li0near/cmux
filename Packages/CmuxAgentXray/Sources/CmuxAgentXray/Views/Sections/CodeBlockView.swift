@@ -170,7 +170,7 @@ struct CodeBlockView: View {
         switch row.kind {
         case .hunkHeader(let text):
             Text(text)
-                .font(Theme.SubRow.title)
+                .font(Theme.SubEntry.title)
                 .foregroundStyle(palette.dim)
                 .padding(.horizontal, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -180,12 +180,12 @@ struct CodeBlockView: View {
             HStack(alignment: .top, spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text(formatLineNumber(lineNumber, width: maxDigits))
-                        .font(Theme.SubRow.title)
+                        .font(Theme.SubEntry.title)
                         .foregroundStyle(style.gutterFg)
                         .fixedSize(horizontal: true, vertical: false)
                         .padding(.trailing, 6)
                     Text(style.glyph)
-                        .font(Theme.SubRow.title)
+                        .font(Theme.SubEntry.title)
                         .foregroundStyle(style.gutterFg)
                         .frame(width: 12, alignment: .center)
                 }
@@ -193,7 +193,7 @@ struct CodeBlockView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
                 .background(Rectangle().fill(style.gutterBg))
                 Text(highlightedText(text))
-                    .font(Theme.SubRow.title)
+                    .font(Theme.SubEntry.title)
                     .textSelection(.enabled)
                     .padding(.leading, 6)
                     .padding(.trailing, 6)

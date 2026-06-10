@@ -39,38 +39,38 @@ struct EntryHeaderView: View {
     }
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.rowIconText) {
+        HStack(spacing: Theme.Spacing.entryIconText) {
             if let icon = header.icon {
                 let symbol = icon.systemName(expanded: isExpanded)
                 Image(systemName: symbol)
-                    .font(Theme.Row.icon)
+                    .font(Theme.Entry.icon)
                     .foregroundStyle(kindAccentColor ?? palette.primary)
                     .symbolEffect(.pulse, options: .repeating, isActive: pulseIcon)
             }
             if let name = header.name {
                 Text(name)
-                    .font(Theme.Row.name)
+                    .font(Theme.Entry.name)
                     .foregroundStyle(kindAccentColor ?? palette.primary)
             }
             if let label = header.label {
                 Text(label)
-                    .font(Theme.Row.meta)
+                    .font(Theme.Entry.meta)
                     .foregroundStyle(palette.dim)
             }
             if let title = header.title {
                 Text(title)
-                    .font(Theme.Row.title)
+                    .font(Theme.Entry.title)
                     .foregroundStyle(palette.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            Spacer(minLength: Theme.Spacing.rowIconText)
+            Spacer(minLength: Theme.Spacing.entryIconText)
             ForEach(Array(header.trailing.enumerated()), id: \.offset) { _, item in
                 trailingItemView(item)
             }
             if let marker = header.timeMarker {
                 Text(marker.displayString)
-                    .font(Theme.Row.meta)
+                    .font(Theme.Entry.meta)
                     .foregroundStyle(palette.dim)
             }
         }
@@ -83,7 +83,7 @@ struct EntryHeaderView: View {
         switch item {
         case .text(let s):
             Text(s)
-                .font(Theme.Row.meta)
+                .font(Theme.Entry.meta)
                 .foregroundStyle(palette.dim)
         case .pill(let s), .wordCount(let s):
             MetadataPill(text: s, palette: palette)
@@ -107,7 +107,7 @@ private struct MetadataPill: View {
 
     var body: some View {
         Text(text)
-            .font(Theme.SubRow.meta)
+            .font(Theme.SubEntry.meta)
             .foregroundStyle(palette.dim)
             .padding(.horizontal, Theme.Padding.pillHorizontal)
             .frame(height: Theme.Height.pill)
@@ -138,7 +138,7 @@ private struct TokenPillView: View {
     var body: some View {
         Button(action: { expanded.toggle() }) {
             Text(expanded ? breakdownLabel : compactLabel)
-                .font(Theme.SubRow.meta)
+                .font(Theme.SubEntry.meta)
                 .foregroundStyle(palette.dim)
                 .padding(.horizontal, Theme.Padding.pillHorizontal)
                 .frame(height: Theme.Height.pill)

@@ -45,7 +45,7 @@ extension AgentEntryView {
                     extras: {
                         if let chip = tool.subagentType, !chip.isEmpty {
                             Text(chip)
-                                .font(Theme.SubRow.title)
+                                .font(Theme.SubEntry.title)
                                 .foregroundStyle(palette.magenta)
                                 .lineLimit(1)
                         }
@@ -67,7 +67,7 @@ extension AgentEntryView {
                         sectionIndex: sectionIndex
                     ))
                 }
-                .padding(.leading, Theme.Indent.nestedSubRow)
+                .padding(.leading, Theme.Indent.nestedSubEntry)
             }
         }
     }

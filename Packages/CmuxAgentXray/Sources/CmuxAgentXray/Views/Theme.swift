@@ -5,10 +5,10 @@ public import SwiftUI
 /// inside an outer enum to avoid colliding with SwiftUI's `Layout`
 /// protocol while keeping call sites short:
 ///
-///     Theme.Spacing.rowIconText        // 8pt
+///     Theme.Spacing.entryIconText        // 8pt
 ///     Theme.Opacity.dim                // 0.55
-///     Theme.Row.name                   // 12pt semibold mono
-///     Theme.SubRow.icon                // 11pt mono
+///     Theme.Entry.name                   // 12pt semibold mono
+///     Theme.SubEntry.icon                // 11pt mono
 ///
 /// Layout / Typography distinction is documentation-only — see the
 /// `// MARK:` headers below — and does not show up at call sites.
@@ -23,9 +23,9 @@ public enum Theme {
     /// Inter-element gaps inside a single horizontal or vertical group.
     public enum Spacing {
         /// Top-level row HStack: icon ↔ text gap (8pt).
-        public static let rowIconText: CGFloat = 8
+        public static let entryIconText: CGFloat = 8
         /// Sub-row HStack: smaller gap (6pt).
-        public static let subRowIconText: CGFloat = 6
+        public static let subEntryIconText: CGFloat = 6
         /// Inside-pill segment gap; "scroll:" / "snap" tight pairing (4pt).
         public static let tight: CGFloat = 4
         /// Internal vertical spacing between header and expanded body
@@ -63,10 +63,10 @@ public enum Theme {
     /// Fixed visual metrics that pin element widths.
     public enum Metric {
         /// SF Symbol visual width for a top-level entry header icon (14pt).
-        /// Determines `Indent.subRow` derivation.
-        public static let rowIconWidth: CGFloat = 14
+        /// Determines `Indent.subEntry` derivation.
+        public static let entryIconWidth: CGFloat = 14
         /// SF Symbol visual width for a sub-entry icon (12pt).
-        public static let subRowIconWidth: CGFloat = 12
+        public static let subEntryIconWidth: CGFloat = 12
         /// Status-dot diameter for the trailing tool-status indicator (6pt).
         public static let statusDot: CGFloat = 6
     }
@@ -74,16 +74,16 @@ public enum Theme {
     // MARK: - Layout — Indent
 
     /// Indent levels for nested rendering. Derived so the icon column
-    /// alignment stays correct if `Metric.rowIconWidth` changes.
+    /// alignment stays correct if `Metric.entryIconWidth` changes.
     public enum Indent {
-        /// Sub-row icon aligns with the parent entry's first text
-        /// character: `rowIconWidth + rowIconText` = 22pt.
-        public static let subRow: CGFloat = Metric.rowIconWidth + Spacing.rowIconText
-        /// Nested content (tool input/result inside the tool sub-row)
-        /// aligns just past the row's icon column:
-        /// `subRow + rowIconWidth` = 36pt. Predecessor parity:
+        /// Sub-entry icon aligns with the parent entry's first text
+        /// character: `entryIconWidth + entryIconText` = 22pt.
+        public static let subEntry: CGFloat = Metric.entryIconWidth + Spacing.entryIconText
+        /// Nested content (tool input/result inside the tool sub-entry)
+        /// aligns just past the sub-entry's icon column:
+        /// `subEntry + entryIconWidth` = 36pt. Predecessor parity:
         /// formula `expandedIndent + iconColumnWidth`.
-        public static let nestedSubRow: CGFloat = Indent.subRow + Metric.rowIconWidth
+        public static let nestedSubEntry: CGFloat = Indent.subEntry + Metric.entryIconWidth
     }
 
     // MARK: - Layout — Height
@@ -145,10 +145,10 @@ public enum Theme {
         public static let icon = Font.system(size: 11)
     }
 
-    // MARK: - Typography — Top-level entry row
+    // MARK: - Typography — Top-level entry
 
     /// Fonts for top-level entries (one entry per agent turn / user prompt).
-    public enum Row {
+    public enum Entry {
         public static let name = Font.system(size: 12, weight: .semibold, design: .monospaced)
         /// Title slot — dynamic content text rendered after the name
         /// (`Header.title`: file path, command name, recap title,
@@ -161,18 +161,18 @@ public enum Theme {
         public static let icon = Font.system(size: 12)
     }
 
-    // MARK: - Typography — Sub-entry row
+    // MARK: - Typography — Sub-entry
 
     /// Fonts for sub-entries (thinking / tool / assistantText). Header
     /// text slots (`name`, `title`) sit at 11.5pt — a half-point under
-    /// ``Row``'s 12pt to read as a quieter continuation of the parent
-    /// row while still maintaining visual weight; the smaller ``meta``
+    /// ``Entry``'s 12pt to read as a quieter continuation of the parent
+    /// entry while still maintaining visual weight; the smaller ``meta``
     /// (10pt trailing pills / durations) and ``icon`` (11pt glyph)
-    /// preserve the proportions distinguishing sub-rows from top-level
-    /// rows.
-    public enum SubRow {
+    /// preserve the proportions distinguishing sub-entries from
+    /// top-level entries.
+    public enum SubEntry {
         public static let name = Font.system(size: 11.5, design: .monospaced)
-        /// Title slot — same role as ``Row/title`` for sub-rows. 11.5pt
+        /// Title slot — same role as ``Entry/title`` for sub-entries. 11.5pt
         /// mono no weight; dim color distinguishes it from the
         /// accent-colored name.
         public static let title = Font.system(size: 11.5, design: .monospaced)

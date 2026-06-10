@@ -23,11 +23,11 @@ struct ToolReferenceChipView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(palette.dim)
             Text(parsed.bareToolName)
-                .font(Theme.SubRow.title)
+                .font(Theme.SubEntry.title)
                 .foregroundStyle(palette.primary)
             if let server = parsed.mcpServer {
                 Text(server)
-                    .font(Theme.SubRow.meta)
+                    .font(Theme.SubEntry.meta)
                     .foregroundStyle(palette.cyan)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)

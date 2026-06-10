@@ -57,7 +57,7 @@ struct EntryBodyView: View {
         if !content.inlineBody.isEmpty {
             let colors = palette.colors(for: style)
             Text(content.inlineBody)
-                .font(Theme.SubRow.title)
+                .font(Theme.SubEntry.title)
                 .foregroundStyle(colors.foreground)
                 .italic(style == .thinking)
                 .textSelection(.enabled)

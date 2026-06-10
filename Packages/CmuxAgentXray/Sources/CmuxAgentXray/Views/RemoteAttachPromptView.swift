@@ -38,17 +38,17 @@ public struct RemoteAttachPromptView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(headerText)
-                .font(Theme.Row.name)
+                .font(Theme.Entry.name)
                 .foregroundStyle(palette.primary)
             Text(detailText)
-                .font(Theme.Row.title)
+                .font(Theme.Entry.title)
                 .foregroundStyle(palette.dim)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
                 TextField(placeholderText, text: $draftSessionID)
                     .textFieldStyle(.roundedBorder)
-                    .font(Theme.Row.title)
+                    .font(Theme.Entry.title)
                     .focused($inputFocused)
                     .disabled(panel.remoteAttachInFlight)
                     .onSubmit { submit() }

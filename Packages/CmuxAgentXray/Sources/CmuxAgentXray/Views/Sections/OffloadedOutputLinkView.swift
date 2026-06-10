@@ -17,7 +17,7 @@ struct OffloadedOutputLinkView: View {
                 Image(systemName: "arrow.up.forward.square")
                     .font(.system(size: 11))
                 Text(label)
-                    .font(Theme.SubRow.title)
+                    .font(Theme.SubEntry.title)
             }
             .foregroundStyle(palette.cyan)
             .padding(.horizontal, 6)

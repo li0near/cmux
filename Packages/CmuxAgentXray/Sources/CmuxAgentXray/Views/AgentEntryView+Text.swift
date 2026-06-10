@@ -44,7 +44,7 @@ extension AgentEntryView {
                         sectionIndex: sectionIndex
                     ))
                 }
-                .padding(.leading, Theme.Indent.nestedSubRow)
+                .padding(.leading, Theme.Indent.nestedSubEntry)
             }
         }
     }

@@ -76,7 +76,7 @@ public struct StatusBarView: View {
     }
 
     public var body: some View {
-        HStack(spacing: Theme.Spacing.rowIconText) {
+        HStack(spacing: Theme.Spacing.entryIconText) {
             Text(glyph)
                 .font(Theme.StatusBar.icon)
                 .foregroundStyle(glyphColor)
@@ -95,8 +95,8 @@ public struct StatusBarView: View {
                 .buttonStyle(.plain)
                 .help(changeTooltip)
             }
-            Spacer(minLength: Theme.Spacing.rowIconText)
-            HStack(spacing: Theme.Spacing.subRowIconText) {
+            Spacer(minLength: Theme.Spacing.entryIconText)
+            HStack(spacing: Theme.Spacing.subEntryIconText) {
                 scrollModePill
                 rewindButton
                 expansionButton
