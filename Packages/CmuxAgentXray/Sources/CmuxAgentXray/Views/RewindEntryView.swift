@@ -78,12 +78,11 @@ public struct RewindEntryView: View, Equatable {
                 .overlay(alignment: .leading) {
                     Rectangle()
                         .frame(width: 1)
-                        .foregroundStyle(palette.dim.opacity(0.4))
+                        .foregroundStyle(palette.dim.opacity(0.6))
                 }
             }
         }
         .padding(.horizontal, Theme.Padding.horizontal)
-        .padding(.vertical, Theme.Spacing.verticalStack)
         .id(entryID)
     }
 }

@@ -120,7 +120,7 @@ public struct TranscriptView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
+                        LazyVStack(alignment: .leading, spacing: Theme.Spacing.verticalStack) {
                             ForEach(Array(entries.enumerated()), id: \.element.id.stableString) { index, entry in
                                 if index > 0 {
                                     boundaryDivider(id: dividerID(before: entry), palette: palette)
