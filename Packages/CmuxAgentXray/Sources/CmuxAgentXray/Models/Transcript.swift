@@ -349,6 +349,25 @@ public struct Transcript: Sendable, Equatable {
     ///   prior link is captured inside the new link's `subEntries`
     ///   verbatim (caller built it that way) — nested rewinds work
     ///   for free without folding logic.
+    /// - **Post-slice index advance.** After the slice lands the new
+    ///   rewind at slot `divIdx + 1`, the divergence-point's own index
+    ///   entry is advanced from `[divIdx]` to `[divIdx + 1]`. Future
+    ///   rewinds at the SAME divergence point then see
+    ///   `parentPath = [divIdx + 1]` (pointing past the prior rewind),
+    ///   so the live tail naturally starts at `divIdx + 2` —
+    ///   no scan-and-skip logic needed. Sibling rewinds at the same
+    ///   divergence land as visual peers at slots `divIdx+1`,
+    ///   `divIdx+2`, …; nested rewinds (different divergence whose
+    ///   abandoned range captures a later inner rewind) still work
+    ///   because their divergence is at an earlier slot whose advance
+    ///   targets the broader live tail.
+    /// - **Trade-off**: lookups via `entry(id: divergencePoint)` after
+    ///   the rewind return the new rewind, not the original divergence
+    ///   parent. Production callers don't query the divergence parent
+    ///   by id post-rewind — once a turn produces a divergence, no
+    ///   future code path looks it up by id (the only `entry(id:)`
+    ///   production caller is tool_result resolution, keyed on tool
+    ///   ids).
     public mutating func branchOff(at divergencePoint: EntryID, link: SynthesizedEntry) {
         guard let divPath = index[divergencePoint], divPath.count == 1 else { return }
         let firstAbandonedSlot = divPath[0] + 1
@@ -356,5 +375,8 @@ public struct Transcript: Sendable, Equatable {
         let firstAbandoned = entries[firstAbandonedSlot]
         let length = entries.count - firstAbandonedSlot
         slice(from: firstAbandoned.id, length: length, replacingWith: .synthesized(link))
+        // Advance the divergence-point's index by 1 so future rewinds
+        // / appends targeting the same divergence land past this rewind.
+        index[divergencePoint] = [firstAbandonedSlot]
     }
 }

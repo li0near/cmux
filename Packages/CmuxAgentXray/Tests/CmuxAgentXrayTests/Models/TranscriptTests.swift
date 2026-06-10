@@ -241,69 +241,135 @@ struct TranscriptTests {
         #expect(root.entries.count == 2)
     }
 
-    @Test("branchOff — multi-rewind to same parent yields distinct link ids")
-    func branchOffMultiRewindCollisionFree() {
+    @Test("branchOff — multi-rewind to same parent yields sibling links at top level (with index-advance edge cases)")
+    func branchOffMultiRewindSiblings() {
+        // Multi-rewind off the same divergence: each rewind advances
+        // the divergence-point's index past itself, so the next
+        // rewind's `parentPath` resolves to the slot just after the
+        // prior rewind. Result: sibling rewinds at top level, not
+        // nested. Matches the empirical Claude Code shape: session
+        // 48672f90… in /Users/I505728/temp/github/aicore-router has
+        // 5 typed prompts at one anchor uuid, which produced 4-deep
+        // visual nesting in the pre-fix renderer.
+        //
+        // This test covers four edge cases of the index-advance trick
+        // in one fixture:
+        //   1. Two siblings (the basic case).
+        //   2. Four siblings (validates repeated invocation).
+        //   3. `entry(id:)` for non-divergence entries still resolves
+        //      after advance (live entries' index integrity).
+        //   4. Slicing a live continuation entry by its own id still
+        //      works after advance (downstream slice consistency).
         var root = Transcript()
-        root.append(parent: nil, entry: userEntry("p"))
-        root.append(parent: nil, entry: agentEntry("A"))
+        root.append(parent: nil, entry: userEntry("p"))   // slot 0
 
-        let link1 = rewind(parentBranchRoot: "A", abandoned: [root.entries[1]])
-        root.branchOff(at: .fromJSONL("p"), link: link1)
-
-        root.append(parent: nil, entry: agentEntry("B"))
-        let abandonedNow = Array(root.entries[1...])
-        let firstOfTailUuid = "linkA"
-        let link2 = SynthesizedEntry(
-            id: .derived(parent: firstOfTailUuid, kind: "rewind"),
-            header: Header(),
-            body: Body(sections: []),
-            kind: .rewind(rootUuid: firstOfTailUuid),
-            subEntries: abandonedNow
-        )
-        root.branchOff(at: .fromJSONL("p"), link: link2)
-
-        #expect(link1.id != link2.id)
-        #expect(link1.id == .derived(parent: "A", kind: "rewind"))
-        #expect(link2.id == .derived(parent: firstOfTailUuid, kind: "rewind"))
-
-        #expect(root.entries.count == 2)
-        if case .synthesized(let synth) = root.entries[1] {
-            #expect(synth.subEntries.count == 2)
-            #expect(synth.subEntries[0].id == link1.id)
-            #expect(synth.subEntries[1].id == .fromJSONL("B"))
-        } else {
-            Issue.record("expected link2 wrapping [link1, B]")
+        var linkIDs: [EntryID] = []
+        for i in 1...4 {
+            let agentUuid = "A\(i)"
+            root.append(parent: nil, entry: agentEntry(agentUuid))
+            // detectAndApplyRewind-style: compute abandoned via the
+            // current `parentPath(of: p)` (advances each round).
+            let parentPath = root.path(of: .fromJSONL("p"))!
+            let abandoned = Array(root.entries[(parentPath[0] + 1)...])
+            #expect(abandoned.count == 1, "round \(i): expected only \(agentUuid) in live tail; got \(abandoned.count)")
+            #expect(abandoned[0].id == .fromJSONL(agentUuid))
+            let link = SynthesizedEntry(
+                id: .derived(parent: agentUuid, kind: "rewind"),
+                header: Header(),
+                body: Body(sections: []),
+                kind: .rewind(rootUuid: agentUuid),
+                subEntries: abandoned
+            )
+            root.branchOff(at: .fromJSONL("p"), link: link)
+            linkIDs.append(link.id)
         }
+
+        // Edge case 1+2: [p, link1, link2, link3, link4] — 4 sibling
+        // rewinds, none nested inside another, each with exactly its
+        // one abandoned A_i.
+        #expect(root.entries.count == 5)
+        // Verify ids and abandoned-content match per slot.
+        for (i, expectedID) in linkIDs.enumerated() {
+            guard case .synthesized(let s) = root.entries[i + 1] else {
+                Issue.record("slot \(i + 1): expected .synthesized rewind")
+                continue
+            }
+            #expect(s.id == expectedID, "slot \(i + 1): wrong link id")
+            #expect(s.subEntries.count == 1)
+            #expect(s.subEntries[0].id == .fromJSONL("A\(i + 1)"))
+            // Edge case 3: link itself still resolves by id.
+            #expect(root.entry(id: expectedID)?.id == expectedID)
+        }
+        // Distinct ids across siblings (no collision under the
+        // `.derived(parent:, kind:)` scheme).
+        #expect(Set(linkIDs).count == linkIDs.count)
+
+        // Edge case 4: slicing a live continuation entry past the
+        // siblings stays consistent after multiple advances.
+        root.append(parent: nil, entry: agentEntry("B"))   // appended at slot 5
+        #expect(root.entry(id: .fromJSONL("B"))?.id == .fromJSONL("B"))
+        root.slice(from: .fromJSONL("B"), length: 1, replacingWith: nil)
+        #expect(root.entry(id: .fromJSONL("B")) == nil)
+        #expect(root.entries.count == 5)
     }
 
-    @Test("branchOff — nested rewind: prior link captured inside new link's subEntries")
-    func branchOffNestedRewind() {
+    @Test("branchOff — nested rewind: prior rewind further into abandoned range stays nested inside the new link")
+    func branchOffNestedRewindCapturedAsContent() {
+        // Counterpart to the sibling test. When a broader rewind has
+        // its divergence at an EARLIER slot than a prior rewind's
+        // divergence, the prior rewind sits in the broader abandoned
+        // range and rides along inside the new link's subEntries —
+        // genuinely nested. The index-advance only matters for the
+        // PRIOR rewind's own divergence point; the new (earlier)
+        // divergence has its own un-advanced path.
+        //
+        // Setup: tree = [p, A, B, D]
+        //   First rewind off B: abandons [D]. Tree → [p, A, B, link1].
+        //   B's index advances from [2] to [3].
+        //   Append C live. Tree → [p, A, B, link1, C].
+        //   Second rewind off p (divergence at slot 0): abandons
+        //   everything from slot 1 onward — INCLUDING link1 and C.
+        //   That captures link1 nested inside the new link.
         var root = Transcript()
         root.append(parent: nil, entry: userEntry("p"))
         root.append(parent: nil, entry: agentEntry("A"))
-
-        let link1 = rewind(parentBranchRoot: "A", abandoned: [root.entries[1]])
-        root.branchOff(at: .fromJSONL("p"), link: link1)
-
         root.append(parent: nil, entry: agentEntry("B"))
-        let abandonedNow = Array(root.entries[1...])
-        let link2 = SynthesizedEntry(
-            id: .derived(parent: "outer-root", kind: "rewind"),
+        root.append(parent: nil, entry: agentEntry("D"))
+
+        let link1 = rewind(parentBranchRoot: "D", abandoned: [root.entries[3]])
+        root.branchOff(at: .fromJSONL("B"), link: link1)
+        root.append(parent: nil, entry: agentEntry("C"))
+
+        // Tree now: [p, A, B, link1, C]. p's index hasn't been
+        // advanced (only B's was).
+        #expect(root.entries.count == 5)
+
+        let parentPath = root.path(of: .fromJSONL("p"))!
+        let abandonedNow = Array(root.entries[(parentPath[0] + 1)...])
+        let outerLink = SynthesizedEntry(
+            id: .derived(parent: "A", kind: "rewind"),
             header: Header(),
             body: Body(sections: []),
-            kind: .rewind(rootUuid: "outer-root"),
+            kind: .rewind(rootUuid: "A"),
             subEntries: abandonedNow
         )
-        root.branchOff(at: .fromJSONL("p"), link: link2)
+        root.branchOff(at: .fromJSONL("p"), link: outerLink)
 
-        guard case .synthesized(let outer) = root.entries.last,
-              let inner = outer.subEntries.first,
-              case .synthesized(let innerSynth) = inner
-        else {
-            Issue.record("expected link2 → link1 nesting")
+        // [p, outerLink]. outerLink contains [A, B, link1, C].
+        #expect(root.entries.count == 2)
+        guard case .synthesized(let outer) = root.entries[1] else {
+            Issue.record("expected outerLink at slot 1; got \(root.entries[1])")
             return
         }
-        #expect(innerSynth.id == link1.id)
-        #expect(innerSynth.subEntries.first?.id == .fromJSONL("A"))
+        #expect(outer.subEntries.count == 4)
+        // link1 sits at index 2 inside outer.subEntries — genuinely
+        // nested, not flattened.
+        guard case .synthesized(let nested) = outer.subEntries[2],
+              case .rewind = nested.kind else {
+            Issue.record("expected link1 nested at outer.subEntries[2]; got \(outer.subEntries[2])")
+            return
+        }
+        #expect(nested.id == link1.id)
     }
 }
+
