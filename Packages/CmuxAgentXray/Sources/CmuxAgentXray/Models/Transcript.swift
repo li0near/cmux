@@ -315,11 +315,14 @@ public struct Transcript: Sendable, Equatable {
         }
     }
 
-    // MARK: - branchOff (thin wrapper over slice)
+    // MARK: - branchOff (slice live tail + attach rewind to parent's branches)
 
-    /// Slice the tail past `divergencePoint` into a synthesized branch
-    /// link, replacing those entries with `[link]` at the divergence
-    /// point's successor slot.
+    /// Slice the live tail past `divergencePoint` off the top-level
+    /// array and attach `link` to the divergence-point entry's
+    /// ``Entry/branches``. The top-level array carries only live
+    /// conversation; rewinds dangle off their parent entry as
+    /// branches and are lifted to top-level visual peers at render
+    /// time.
     ///
     /// **Caller contract.** Before calling, the caller has:
     /// 1. Found the abandoned range (top-level entries past
@@ -331,30 +334,35 @@ public struct Transcript: Sendable, Equatable {
     ///    set the abandoned entries on the link's
     ///    ``SynthesizedEntry/subEntries`` field.
     ///
-    /// Deriving the link id from `rootUuid` (not from the
-    /// divergence point) is what makes link ids unique across multiple
-    /// rewinds to the same parent — each abandoned branch's first
-    /// entry has its own JSONL uuid.
-    ///
     /// **Behavior.**
     /// - If `divergencePoint` is not at top-level, no-op.
-    /// - If the abandoned range is empty (no entries past divergence),
-    ///   no-op.
-    /// - Otherwise: replaces `entries[(divIdx+1)..<count]` with
-    ///   `[.synthesized(link)]` via ``slice(from:length:replacingWith:)``.
-    ///   The displaced entries' index slots are re-pathed from their
-    ///   old top-level paths (`[k]`) to their new nested paths under
-    ///   the link (`[divIdx+1, k - (divIdx+1)]`).
-    /// - If the displaced range contained a prior branch link, that
-    ///   prior link is captured inside the new link's `subEntries`
-    ///   verbatim (caller built it that way) — nested rewinds work
-    ///   for free without folding logic.
+    /// - If the live tail is empty, no-op.
+    /// - Slice the live tail off top-level (no replacement); the
+    ///   abandoned entries fall out of the index here.
+    /// - Append `link` to the divergence-point entry's `branches`.
+    /// - Sibling rewinds at the same divergence: each new rewind
+    ///   appends to the same parent's `branches` after any prior
+    ///   siblings — naturally siblings, no scan logic.
+    /// - Nested rewinds (rewind from an earlier divergence whose
+    ///   abandoned range captures a later inner rewind): the inner
+    ///   rewind is already attached to its own parent's `branches`,
+    ///   which itself is in the broader abandoned range — it rides
+    ///   along inside the outer rewind's `subEntries` as part of its
+    ///   parent.
     public mutating func branchOff(at divergencePoint: EntryID, link: SynthesizedEntry) {
         guard let divPath = index[divergencePoint], divPath.count == 1 else { return }
         let firstAbandonedSlot = divPath[0] + 1
         guard firstAbandonedSlot < entries.count else { return }
         let firstAbandoned = entries[firstAbandonedSlot]
         let length = entries.count - firstAbandonedSlot
-        slice(from: firstAbandoned.id, length: length, replacingWith: .synthesized(link))
+        slice(from: firstAbandoned.id, length: length, replacingWith: nil)
+        // Attach the link to the divergence-point entry's `branches`.
+        // The link's pre-built `subEntries` (the abandoned tail) ride
+        // along on the link as a value — they're NOT in the index, but
+        // future JSONL lines never reference abandoned uuids in
+        // practice, so this is safe.
+        mutate(id: divergencePoint) { entry in
+            entry.branches.append(link)
+        }
     }
 }

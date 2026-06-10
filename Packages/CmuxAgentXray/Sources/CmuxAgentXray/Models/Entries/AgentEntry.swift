@@ -62,6 +62,13 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
     /// to construct.
     public internal(set) var subEntries: [Entry]
 
+    /// Abandoned-branch rewinds whose divergence point is this entry.
+    /// See ``Entry/branches`` for the universal contract — the renderer
+    /// lifts these to top-level visual peers right after this entry,
+    /// keeping the main transcript array clean of synthesized rewind
+    /// entries while still showing them inline at render time.
+    public internal(set) var branches: [SynthesizedEntry]
+
     public init(
         id: EntryID,
         header: Header,
@@ -72,7 +79,8 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
         messageCount: Int? = nil,
         model: String? = nil,
         endTime: Date? = nil,
-        subEntries: [Entry] = []
+        subEntries: [Entry] = [],
+        branches: [SynthesizedEntry] = []
     ) {
         self.id = id
         self.header = header
@@ -84,6 +92,7 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
         self.model = model
         self.endTime = endTime
         self.subEntries = subEntries
+        self.branches = branches
     }
 
     /// Wall-clock timestamp of the turn's start, projected from

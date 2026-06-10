@@ -17,19 +17,28 @@ public struct UserEntry: Identifiable, Equatable, Sendable {
     /// or a tail-pinned synthetic awaiting consumption (`.pending` —
     /// drives the icon's pulse animation).
     public let queuedState: QueuedState
+    /// Abandoned-branch rewinds whose divergence point is this entry.
+    /// See ``Entry/branches`` for the universal contract — the renderer
+    /// lifts these to top-level visual peers right after this entry.
+    /// `internal(set)` so ``Transcript/branchOff(at:link:)`` can attach
+    /// rewinds in place; readers outside the package see them but
+    /// can't mutate.
+    public internal(set) var branches: [SynthesizedEntry]
 
     public init(
         id: EntryID,
         header: Header,
         body: Body,
         promptId: String? = nil,
-        queuedState: QueuedState = .none
+        queuedState: QueuedState = .none,
+        branches: [SynthesizedEntry] = []
     ) {
         self.id = id
         self.header = header
         self.body = body
         self.promptId = promptId
         self.queuedState = queuedState
+        self.branches = branches
     }
 
     /// Wall-clock timestamp of this entry, projected from the header's
