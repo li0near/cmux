@@ -42,12 +42,12 @@ struct TranscriptTests {
         ))
     }
 
-    private func branchLink(parentBranchRoot: String, abandoned: [Entry]) -> SynthesizedEntry {
+    private func rewind(parentBranchRoot: String, abandoned: [Entry]) -> SynthesizedEntry {
         SynthesizedEntry(
-            id: .derived(parent: parentBranchRoot, kind: "branchLink"),
+            id: .derived(parent: parentBranchRoot, kind: "rewind"),
             header: Header(),
             body: Body(sections: []),
-            kind: .branchLink(branchRootUuid: parentBranchRoot),
+            kind: .rewind(rootUuid: parentBranchRoot),
             subEntries: abandoned
         )
     }
@@ -178,7 +178,7 @@ struct TranscriptTests {
         // Caller folds the abandoned tail (a1 with its tool sub-entry, plus u2)
         // into the link's subEntries before calling slice.
         let abandoned = Array(root.entries[1...])
-        let link = branchLink(parentBranchRoot: "a1", abandoned: abandoned)
+        let link = rewind(parentBranchRoot: "a1", abandoned: abandoned)
 
         // length = 2 (a1, u2). startIdx = 1.
         root.slice(from: .fromJSONL("a1"), length: 2,
@@ -205,14 +205,14 @@ struct TranscriptTests {
         root.append(parent: nil, entry: userEntry("a2"))
 
         let abandoned = Array(root.entries[1...])
-        let link = branchLink(parentBranchRoot: "a1", abandoned: abandoned)
+        let link = rewind(parentBranchRoot: "a1", abandoned: abandoned)
 
         root.branchOff(at: .fromJSONL("p1"), link: link)
 
         #expect(root.entries.count == 2)
         #expect(root.entries[0].id == .fromJSONL("p1"))
         if case .synthesized(let synth) = root.entries[1] {
-            #expect(synth.id == .derived(parent: "a1", kind: "branchLink"))
+            #expect(synth.id == .derived(parent: "a1", kind: "rewind"))
             #expect(synth.subEntries.count == 2)
             #expect(synth.subEntries[0].id == .fromJSONL("a1"))
             #expect(synth.subEntries[1].id == .fromJSONL("a2"))
@@ -225,7 +225,7 @@ struct TranscriptTests {
     func branchOffEmptyTailNoop() {
         var root = Transcript()
         root.append(parent: nil, entry: userEntry("p1"))
-        let link = branchLink(parentBranchRoot: "p1", abandoned: [])
+        let link = rewind(parentBranchRoot: "p1", abandoned: [])
         root.branchOff(at: .fromJSONL("p1"), link: link)
         #expect(root.entries.count == 1)
         #expect(root.entries[0].id == .fromJSONL("p1"))
@@ -236,7 +236,7 @@ struct TranscriptTests {
         var root = Transcript()
         root.append(parent: nil, entry: userEntry("p1"))
         root.append(parent: nil, entry: userEntry("p2"))
-        let link = branchLink(parentBranchRoot: "p2", abandoned: [root.entries[1]])
+        let link = rewind(parentBranchRoot: "p2", abandoned: [root.entries[1]])
         root.branchOff(at: .fromJSONL("ghost"), link: link)
         #expect(root.entries.count == 2)
     }
@@ -247,24 +247,24 @@ struct TranscriptTests {
         root.append(parent: nil, entry: userEntry("p"))
         root.append(parent: nil, entry: agentEntry("A"))
 
-        let link1 = branchLink(parentBranchRoot: "A", abandoned: [root.entries[1]])
+        let link1 = rewind(parentBranchRoot: "A", abandoned: [root.entries[1]])
         root.branchOff(at: .fromJSONL("p"), link: link1)
 
         root.append(parent: nil, entry: agentEntry("B"))
         let abandonedNow = Array(root.entries[1...])
         let firstOfTailUuid = "linkA"
         let link2 = SynthesizedEntry(
-            id: .derived(parent: firstOfTailUuid, kind: "branchLink"),
+            id: .derived(parent: firstOfTailUuid, kind: "rewind"),
             header: Header(),
             body: Body(sections: []),
-            kind: .branchLink(branchRootUuid: firstOfTailUuid),
+            kind: .rewind(rootUuid: firstOfTailUuid),
             subEntries: abandonedNow
         )
         root.branchOff(at: .fromJSONL("p"), link: link2)
 
         #expect(link1.id != link2.id)
-        #expect(link1.id == .derived(parent: "A", kind: "branchLink"))
-        #expect(link2.id == .derived(parent: firstOfTailUuid, kind: "branchLink"))
+        #expect(link1.id == .derived(parent: "A", kind: "rewind"))
+        #expect(link2.id == .derived(parent: firstOfTailUuid, kind: "rewind"))
 
         #expect(root.entries.count == 2)
         if case .synthesized(let synth) = root.entries[1] {
@@ -282,16 +282,16 @@ struct TranscriptTests {
         root.append(parent: nil, entry: userEntry("p"))
         root.append(parent: nil, entry: agentEntry("A"))
 
-        let link1 = branchLink(parentBranchRoot: "A", abandoned: [root.entries[1]])
+        let link1 = rewind(parentBranchRoot: "A", abandoned: [root.entries[1]])
         root.branchOff(at: .fromJSONL("p"), link: link1)
 
         root.append(parent: nil, entry: agentEntry("B"))
         let abandonedNow = Array(root.entries[1...])
         let link2 = SynthesizedEntry(
-            id: .derived(parent: "outer-root", kind: "branchLink"),
+            id: .derived(parent: "outer-root", kind: "rewind"),
             header: Header(),
             body: Body(sections: []),
-            kind: .branchLink(branchRootUuid: "outer-root"),
+            kind: .rewind(rootUuid: "outer-root"),
             subEntries: abandonedNow
         )
         root.branchOff(at: .fromJSONL("p"), link: link2)

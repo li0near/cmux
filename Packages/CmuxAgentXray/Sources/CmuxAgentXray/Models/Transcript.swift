@@ -3,7 +3,7 @@ public import Foundation
 /// The transcript document — a flat collection of top-level ``Entry``
 /// values plus a flat ``EntryID`` → path index for O(depth) lookups at
 /// any nesting depth. Container variants of `Entry` (`.agent`,
-/// `.synthesized(.branchLink)`) carry their own `subEntries: [Entry]`
+/// `.synthesized(.rewind)`) carry their own `subEntries: [Entry]`
 /// arrays; the recursion lives in the mutating helpers on this type
 /// rather than as a nested `Transcript` field on every container.
 ///
@@ -307,7 +307,7 @@ public struct Transcript: Sendable, Equatable {
     /// descendant at the corresponding nested path. Overwrites any
     /// pre-existing index entry for the same id (used by `slice` to
     /// re-path abandoned-tail entries from their old top-level paths
-    /// to their new nested paths under a `branchLink`).
+    /// to their new nested paths under a `rewind`).
     private mutating func registerSubtree(_ entry: Entry, at path: [Int]) {
         index[entry.id] = path
         for (i, child) in entry.subEntries.enumerated() {
@@ -324,14 +324,14 @@ public struct Transcript: Sendable, Equatable {
     /// **Caller contract.** Before calling, the caller has:
     /// 1. Found the abandoned range (top-level entries past
     ///    `divergencePoint` that are NOT on the new active branch).
-    /// 2. Captured `branchRootUuid = abandonedRange.first.id` (the
+    /// 2. Captured `rootUuid = abandonedRange.first.id` (the
     ///    first abandoned entry's id — **NOT** the divergence point).
     /// 3. Built the link with id
-    ///    `.derived(parent: branchRootUuid, kind: "branchLink")` and
+    ///    `.derived(parent: rootUuid, kind: "rewind")` and
     ///    set the abandoned entries on the link's
     ///    ``SynthesizedEntry/subEntries`` field.
     ///
-    /// Deriving the link id from `branchRootUuid` (not from the
+    /// Deriving the link id from `rootUuid` (not from the
     /// divergence point) is what makes link ids unique across multiple
     /// rewinds to the same parent — each abandoned branch's first
     /// entry has its own JSONL uuid.

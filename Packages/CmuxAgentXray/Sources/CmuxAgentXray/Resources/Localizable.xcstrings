@@ -254,7 +254,7 @@
         }
       }
     },
-    "agentXray.entry.branchLink.title" : {
+    "agentXray.entry.rewind.title" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {

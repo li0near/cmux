@@ -1,7 +1,7 @@
 public import Foundation
 
 /// Cmux-invented entry — has no JSONL counterpart. Two kinds today:
-/// - `branchLink`: appears at a divergence point in the active branch,
+/// - `rewind`: appears at a divergence point in the active branch,
 ///   pointing at the abandoned branch's transcript. The abandoned
 ///   entries travel in the top-level ``subEntries`` field; the
 ///   renderer treats this as a header-only link that opens the
@@ -15,7 +15,7 @@ public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
     public let kind: Kind
     /// Nested children (post-G1.5). Mirrors ``AgentEntry/subEntries``
     /// so all container variants expose children at the same structural
-    /// position. Populated for `.branchLink` (abandoned-branch entries);
+    /// position. Populated for `.rewind` (abandoned-branch entries);
     /// empty for `.prLink`.
     ///
     /// `internal(set) var` (post-G1.6): same read-only-from-outside,
@@ -47,11 +47,11 @@ public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
         /// ``SynthesizedEntry/subEntries`` field; the renderer walks
         /// it like any other transcript.
         ///
-        /// `branchRootUuid` is the JSONL uuid of the *first* abandoned
-        /// entry — derives the link's own id (`.derived(parent: branchRootUuid,
-        /// kind: "branchLink")`), making it unique across multiple
+        /// `rootUuid` is the JSONL uuid of the *first* abandoned
+        /// entry — derives the link's own id (`.derived(parent: rootUuid,
+        /// kind: "rewind")`), making it unique across multiple
         /// rewinds to the same divergence point.
-        case branchLink(branchRootUuid: String)
+        case rewind(rootUuid: String)
         /// External PR link entry. Carries the prNumber/url/repository so
         /// the renderer can format both title and external link target.
         case prLink(prNumber: Int, url: String, repository: String)

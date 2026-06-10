@@ -13,7 +13,7 @@ public import SwiftUI
 ///
 /// Post-G1.5: nested children live on the entry's `subEntries` field
 /// directly (not in `body.sections`). Container variants (`.agent` /
-/// `.tool` / `.synthesized.branchLink`) own their own sub-entry
+/// `.tool` / `.synthesized.rewind`) own their own sub-entry
 /// rendering — `AgentEntryView` walks `entry.subEntries` directly.
 /// `EntryView` no longer takes a `renderSubEntry` closure.
 ///

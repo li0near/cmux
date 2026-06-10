@@ -1,7 +1,7 @@
 /// Status-bar pill toggle: should rewound (abandoned-branch) entries be
 /// surfaced in the active list?
 ///
-/// - `.link` (default) — `SynthesizedEntry.branchLink` entries appear at
+/// - `.link` (default) — `SynthesizedEntry.rewind` entries appear at
 ///   each divergence point in the active list. Clicking opens the
 ///   abandoned branch's transcript in a sibling detail tab. The
 ///   transcript builder's emission is shaped for this state.

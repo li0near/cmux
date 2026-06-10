@@ -6,7 +6,7 @@
 ///   JSONL strings cross into the domain model.
 /// - **Derived** — synthetic id for entries that have no JSONL
 ///   counterpart (thinking blocks projected from assistant content
-///   blocks, abstract `branchLink`/`prLink` synthesizer entries, queued
+///   blocks, abstract `rewind`/`prLink` synthesizer entries, queued
 ///   pseudo-entries, etc.). The `parent` is the owning JSONL uuid;
 ///   the `kind` namespaces the derivation so siblings under the same
 ///   parent are unique.

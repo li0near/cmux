@@ -255,7 +255,7 @@ struct ClaudeTranscriptBuilder {
     /// Detect and apply a rewind. Solo purpose: when a top-level user
     /// prompt's `parentUuid` resolves to a top-level slot K with
     /// trailing entries past K, fold those entries into a synthesized
-    /// branchLink at slot K+1. No summarization (entry counts, preview
+    /// rewind at slot K+1. No summarization (entry counts, preview
     /// text, "Rewind X of Y" labels). Renders as a single collapsible
     /// "Rewind" entry at top-level by virtue of
     /// ``Transcript/branchOff(at:link:)``.
@@ -274,14 +274,14 @@ struct ClaudeTranscriptBuilder {
         guard let firstAbandoned = abandoned.first else { return }
         let firstUuid = firstAbandoned.id.stableString
         let link = SynthesizedEntry(
-            id: .derived(parent: firstUuid, kind: "branchLink"),
+            id: .derived(parent: firstUuid, kind: "rewind"),
             header: Header(
-                icon: .branchLink,
-                name: Self.loc("agentXray.entry.branchLink.title", "Rewind"),
+                icon: .rewind,
+                name: Self.loc("agentXray.entry.rewind.title", "Rewind"),
                 timeMarker: .clock(line.timestamp ?? .distantPast)
             ),
             body: Body(sections: []),
-            kind: .branchLink(branchRootUuid: firstUuid),
+            kind: .rewind(rootUuid: firstUuid),
             subEntries: abandoned
         )
         ctx.root.branchOff(at: parentId, link: link)

@@ -225,7 +225,7 @@ public struct TranscriptView: View {
     @ViewBuilder
     private func synthesizedEntryView(entry: SynthesizedEntry, palette: HudPalette) -> some View {
         switch entry.kind {
-        case .branchLink(let rootUUID):
+        case .rewind(let rootUUID):
             BranchLinkEntryRow(
                 palette: palette,
                 onOpenDetail: {
@@ -280,7 +280,7 @@ public struct TranscriptView: View {
             return .bodySection(targetID: id, sectionIndex: 0)
         case .synthesized(let s):
             switch s.kind {
-            case .branchLink:
+            case .rewind:
                 return .bodySection(targetID: id, sectionIndex: 0)
             case .prLink:
                 return nil
@@ -328,7 +328,7 @@ public struct TranscriptView: View {
         if panel.rewindVisibility == .hide {
             return postFilter.filter { entry in
                 if case .synthesized(let s) = entry,
-                   case .branchLink = s.kind { return false }
+                   case .rewind = s.kind { return false }
                 return true
             }
         }
@@ -567,7 +567,7 @@ private struct BranchLinkEntryRow: View {
                             .fixedSize()
                             .offset(x: Theme.Spacing.entryIconText / 2)
                     }
-                Image(systemName: EntryIcon.branchLink.collapsed)
+                Image(systemName: EntryIcon.rewind.collapsed)
                     .font(Theme.SubEntry.icon)
                     .foregroundStyle(palette.dim)
                 Text(titleText)
@@ -588,7 +588,7 @@ private struct BranchLinkEntryRow: View {
 
     private var titleText: String {
         String(
-            localized: "agentXray.entry.branchLink.title",
+            localized: "agentXray.entry.rewind.title",
             defaultValue: "Rewind",
             bundle: .module
         )

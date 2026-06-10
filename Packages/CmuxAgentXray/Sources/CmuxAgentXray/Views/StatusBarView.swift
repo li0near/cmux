@@ -226,7 +226,7 @@ public struct StatusBarView: View {
     private var rewindButton: some View {
         let visible = rewindVisibility == .link
         return iconButton(
-            systemName: EntryIcon.branchLink.collapsed,
+            systemName: EntryIcon.rewind.collapsed,
             color: visible ? palette.cyan : palette.dim,
             action: onCycleRewindVisibility,
             disabled: false,

@@ -62,7 +62,7 @@ extension PaletteRole {
             return .dim
         case .synthesized(let syn):
             switch syn.kind {
-            case .branchLink: return .dim
+            case .rewind: return .dim
             case .prLink:     return .blue
             }
         case .text, .tool:

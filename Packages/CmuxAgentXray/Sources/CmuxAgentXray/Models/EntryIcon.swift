@@ -72,9 +72,14 @@ extension EntryIcon {
     )
     /// External text-file edit. Same glyph collapsed/expanded.
     public static let editedTextFile = EntryIcon(collapsed: "pencil.line")
-    /// Branch-link synthesizer entry — reuses the `arrow.triangle.branch`
-    /// glyph for both rewind toggle and branch links.
-    public static let branchLink = EntryIcon(collapsed: "arrow.triangle.branch")
+    /// Rewind synthesizer entry — appears at a divergence point, the
+    /// "go back in time" affordance whose abandoned-branch transcript
+    /// inline-expands when the user clicks the chevron. The clock-badge
+    /// glyph reads more directly than an abstract branch fork.
+    public static let rewind = EntryIcon(
+        collapsed: "arrowshape.turn.up.backward.badge.clock",
+        expanded: "arrowshape.turn.up.backward.badge.clock.fill"
+    )
     /// External PR link.
     public static let prLink = EntryIcon(
         collapsed: "arrow.up.forward.square",

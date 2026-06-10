@@ -165,7 +165,7 @@ extension DetailContent {
             )
 
         case .synthesized(let s):
-            guard case .branchLink(let rootUuid) = s.kind else { return nil }
+            guard case .rewind(let rootUuid) = s.kind else { return nil }
             let transcript = s.subEntries
             return DetailContent(
                 title: localized(
@@ -177,7 +177,7 @@ extension DetailContent {
                     defaultValue: "diverged at \(timestamp)"
                 ),
                 sourceEntryID: rootUuid,
-                icon: EntryIcon.branchLink,
+                icon: EntryIcon.rewind,
                 accent: .dim,
                 source: .transcript(sourceEntryID: rootUuid, entries: transcript)
             )

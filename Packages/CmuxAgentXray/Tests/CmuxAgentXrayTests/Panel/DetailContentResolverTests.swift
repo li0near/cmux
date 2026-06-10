@@ -117,8 +117,8 @@ struct DetailContentResolverTests {
         #expect(DetailContent.resolve(request: request, entry: entry) == nil)
     }
 
-    @Test("Synthesized branchLink → .transcript with rootUuid as sourceEntryID")
-    func branchLinkTranscript() {
+    @Test("Synthesized rewind → .transcript with rootUuid as sourceEntryID")
+    func rewindTranscript() {
         let abandoned: [Entry] = [
             userEntry(id: "u-abandoned", body: .text(["old prompt"]))
         ]
@@ -127,7 +127,7 @@ struct DetailContentResolverTests {
                 id: .fromJSONL("synth-1"),
                 header: Header(),
                 body: Body(sections: []),
-                kind: .branchLink(branchRootUuid: "branch-root-uuid"),
+                kind: .rewind(rootUuid: "branch-root-uuid"),
                 subEntries: abandoned
             )
         )
