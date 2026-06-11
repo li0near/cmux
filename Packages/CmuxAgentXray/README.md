@@ -9,12 +9,13 @@ This package is a fork-side feature in `manaflow-ai/cmux`.
 ## What it does
 
 - Live-tails the active agent's JSONL transcript file (Claude Code or Codex).
-- Builds a typed `Transcript = [Entry]` model from raw JSONL lines.
+- Builds a typed `Transcript` model from raw JSONL lines.
 - Renders a streaming, expandable list of entries in a SwiftUI panel.
 - Supports two scroll modes: **free** (whole transcript) and **snap**
   (filtered to the turn(s) currently visible in the paired terminal viewport).
 - Surfaces hidden information (model version, token usage, thinking blocks,
-  tool I/O, sub-agent transcripts) via per-row expand/collapse.
+  tool I/O) via per-row expand/collapse.
+- Renders rewinds (abandoned branches) inline, expanded into the live tree.
 - Routes overflow content to a sibling **Detail** tab in the same workspace pane.
 
 ## Architecture (data flow)
@@ -23,10 +24,10 @@ This package is a fork-side feature in `manaflow-ai/cmux`.
 JSONL file
   → Streaming        (file watch, line stream, session resolution)
   → Adapters         (Claude / Codex transcript builders)
-  → Models           (Entry tree: Entry { Header + Body })
+  → Models           (Transcript + Entry tree)
   → Behavior         (expansion / visibility / anchors / bulk actions)
   → Snapshots        (immutable view-input DTOs)
-  → Views            (LazyVStack rendering)
+  → Views            (single recursive EntryView in a LazyVStack)
   → Panel            (@Observable ViewModel — AgentXrayPanel)
   ⇄  Host            (cmux app integration via AgentXrayHost protocol)
 ```
@@ -41,31 +42,65 @@ new branches — lives in
 
 ## Vocabulary
 
-- **Entry** — umbrella enum for every transcript item. Five top-level cases:
-  `user`, `agent`, `system`, `compact`, `synthesized`.
-- **Transcript** — a `[Entry]` document.
-- **AgentEntry** — the only container Entry; carries `subEntries: [SubEntry]`
-  where `SubEntry` is one of `text(TextSubEntry)` or `tool(ToolEntry)`.
-  `TextSubEntry` covers both thinking and final assistant text via its
-  `kind: .thinking | .assistant` discriminator. These two cases only ever
-  appear inside an AgentEntry.
-- **Header** — every Entry's display contract: `icon + name + label + title
-  + trailing + timeMarker`. Replaces the older `name`/`summary`/per-row
-  `icon` scatter. `timeMarker` is a `.clock(Date)` (top-level rows) or
-  `.duration(Int)` (tool sub-rows).
-- **Body** — every Entry's content: `sections: [Section]` where
-  `Section = .text([String], style: TextStyle) | .subentries([Entry])`. An
-  empty `sections` array means "header-only" (Variant A).
+- **Entry** — umbrella enum with 7 cases:
+  - **Top-level kinds**: `.user(UserEntry)`, `.agent(AgentEntry)`,
+    `.system(SystemEntry)`, `.compact(CompactEntry)`,
+    `.synthesized(SynthesizedEntry)`. These appear in
+    `Transcript.entries`.
+  - **Sub-entry kinds**: `.text(TextSubEntry)`, `.tool(ToolEntry)`. These
+    only appear nested inside an `AgentEntry.subEntries`. The builder
+    enforces this; a runtime assert in `Transcript.append(parent:entry:)`
+    catches regressions.
+  - `TextSubEntry` covers both thinking and final assistant text via its
+    `kind: .thinking | .assistant` discriminator.
+- **Container Entries** — kinds that carry `subEntries: [Entry]`:
+  - `AgentEntry.subEntries` — the agent turn's `.text` / `.tool` content
+    in JSONL arrival order.
+  - `SynthesizedEntry.subEntries` — when `.kind == .rewind(rootUuid:)`,
+    holds the abandoned-branch transcript inline (a slice of the
+    pre-rewind tree).
+- **Transcript** — the document. Holds `entries: [Entry]` (top-level
+  list) plus a flat `[EntryID: [Int]]` index keyed by every JSONL line
+  uuid for O(depth) lookup at any nesting depth. Mutation API:
+  `append(parent:entry:)`, `mutate(id:_:)`, `slice(from:length:replacingWith:)`.
+  `branchOff(at:link:)` is a thin wrapper over `slice` for rewind folding.
+- **Header** — every Entry's display contract:
+  `icon + name + label + title + trailing + timeMarker`. `timeMarker` is
+  `.clock(Date)` (most rows) or `.duration(Int)` (tool rows after the
+  `tool_result` lands).
+- **Body** — every Entry's content: `sections: [Section]`. An empty
+  `sections` array means a header-only entry. Section variants:
+  `.text([String], style: TextStyle)`, `.image(ImageSource)`,
+  `.toolReference(toolName: String)`, `.offloadedOutput(OffloadedOutput)`,
+  `.code(CodeContent)` (where `CodeContent = .plain(text:, lineNumberStart:)`
+  or `.diff(hunks: [DiffHunk])`). Nested children live on
+  `Entry.subEntries`, never in `body.sections`.
 
-The names `Row` and `Chunk` are deliberately absent in this package — they
-pulled toward "single line" vs "multi-line" mental models that didn't fit
-the actual variable-height entry semantics.
+## Rendering shape
+
+A single recursive `EntryView` renders every Entry kind at every depth.
+
+- One typography (`Theme.Entry`) and one icon column width
+  (`Theme.Metric.entryIconWidth = 14pt`) for every level.
+- Indent is depth-multiplied: `depth * Theme.Indent.unit` (= 22pt per
+  level) applied to the entry's leading padding.
+- First-level emphasis is name **weight** only — driven by
+  `Entry.isEmphasized` (returns `true` for top-level kinds, `false` for
+  `.text` / `.tool`). Adding / removing emphasized kinds is a one-line
+  edit in `Views/Entry+Emphasis.swift`.
+- Per-kind accent color comes from `PaletteRole.forEntry(_:)`.
+- Expanded containers draw a vertical gutter at the parent's icon
+  column (`GutterRail` private struct in `EntryView.swift`); click the
+  rail to collapse the parent.
+- Abandoned-branch sub-trees render dimmed via `HudPalette.dimmed`
+  propagation through the recursion — palette swap, not `.opacity()`,
+  so nesting is idempotent (nested rewinds compose without compounding).
 
 ## Layer map
 
 ```
 Sources/CmuxAgentXray/
-├── Models/                            # Pure value types
+├── Models/                            # Pure value types (Entry, Transcript, Body, …)
 ├── Streaming/                         # JSONL tail + transcript stream + session resolver
 ├── Adapters/{Claude,Codex}/           # Per-agent transcript builders
 ├── Behavior/{Expansion,Visibility,Anchors}/  # State machines & policies
@@ -87,8 +122,8 @@ for the protocol surface.
 How AgentX-ray decides which Claude/Codex session is running in the
 focused terminal and streams its transcript. See
 **[`docs/session-attach.md`](docs/session-attach.md)** for the full
-flow diagrams, three resolution paths, the Phase-18 hook-before-first-
-prompt fix, remote-`$HOME` resolution, `RemoteSessionStore`, the
+flow diagrams, three resolution paths, the hook-before-first-prompt
+fix, remote-`$HOME` resolution, `RemoteSessionStore`, the
 ControlPath piggyback, per-tab SSH inference, and failure modes.
 
 ## Build and test
@@ -106,116 +141,40 @@ CMUX_ZIG=/opt/homebrew/opt/zig@0.15/bin/zig \
 ./scripts/reload.sh --tag agentxray --launch
 ```
 
-## Status
+## Pending work
 
-This package landed in cmux on **2026-06-04**. **All migration phases
-are complete** — phases 1–15 plus 17pre / 17a / 17b / 17c / 17d. Every
-parity row across the 5 groups (Group 1 behavioural correctness,
-Group 2 visual parity, Group 3 per-row layout, Group 4 detail-mode
-chrome, Group 5 polish) shipped ✅; Phase 12 (AsyncStream focus
-pipeline) closed via 17d.
+Live list in `MIGRATION_PLAN.md` §16 (deferred-by-policy ledger). Notable
+items still genuinely pending:
 
-**Current state:** dogfood iterations + a structural refactor pass
-(2026-06-05 → 2026-06-06, phases 19a–19f) landed on top of the migration
-commits. Highlights of the refactor:
-- Sub-entries now interleave (`.text` + `.tool` in JSONL arrival
-  order — preserves the "narrate → tool → narrate → tool" flow).
-- `TimeMarker` collapses `Header.timestamp` + `TrailingItem.duration`.
-- `TextSubEntry { kind: .thinking | .assistant }` replaces
-  `ThinkingEntry` + `AssistantTextEntry`.
-- DetailRequest collapses to single `.bodySection(targetID:sectionIndex:)`.
-- Body rendering unified through one `cappedBody` walker.
+1. **Sub-agent-as-AgentEntry surfacing** — Task / Agent tool transcripts
+   resolve via the universal alias rule but don't yet surface as
+   top-level `AgentEntry` rows the way the dropped `ToolEntry.subEntries`
+   shape implied. (`MIGRATION_PLAN.md` §16.B.)
+2. **System / compact image drop (audit S3)** — `buildSystemEntry` and
+   `buildCompactEntry` project to `String` via the Wire layer's
+   `allText()`, dropping image blocks. Corpus has 0 hits today; the
+   fix is to project to `[Section]` like user/assistant entries do.
+3. **Async `DetailContent.resolve(...)`** — the offloaded-output read is
+   sync today (`String(contentsOf:)`); gated on a broader resolver-
+   pipeline async refactor. (§16.O.)
+4. **E2E framework** — Layer 1/2/2.5/2.6 design lives at
+   `docs/e2e-framework-handover.md`; not yet implemented.
+5. **Codex adapter migration** to the post-G6 streaming-dispatch model.
+   The Claude adapter is on it; the Codex adapter still uses the
+   pre-G6 multi-pass shape. (`MIGRATION_PLAN.md` §16.L.)
 
-See `MIGRATION_PLAN.md` §14 rows 19a–19i for commits.
+## For the next session
 
-**Pending work** is tracked in `MIGRATION_PLAN.md` §16 (deferred-by-policy
-items). The
-2026-06-07 Phase A–E refactor + audit-cleanup pass landed every Tier
-3/4/5 item from the previous handover, plus a structural folder
-cleanup and a 6-commit audit trim that shrank `ClaudeTranscriptBuilder.swift`
-from 1441 → 1050 LOC. See `MIGRATION_PLAN.md` §14 rows 19j–19r. The
-2026-06-08 Phase D-rev pass migrated detail-tab rich rendering from
-in-package stubs to cmux-native surfaces (cmux's `MarkdownWebRenderer`
-+ Apple's `QLPreviewView`, zero new dependencies). See §14 row 19s.
-The 2026-06-08 Phase E redesign **superseded Phase D-rev's embed
-approach** — detail-tab opens now redirect through cmux's existing
-panel-open pipeline (`Workspace.openFileSurfaces`), giving users
-full panel chrome for free. See §14 row 19t. The 2026-06-08 Phase F
-content-type cleanup collapsed `DetailContent` to a single
-discriminated `source: DetailSource`, dropped the parallel
-`openImageInPanel` host method, and added a sniffer arm for `git
-diff` Bash output. See §14 row 19u. The 2026-06-08/09 Phase G
-work (rows 19v–19x) migrated `ClaudeTranscriptBuilder` to a per-line
-streaming dispatch model with a single `Transcript` mutation API
-(`append` / `mutate` / `slice`), deleted four pre-pass resolvers
-(`ClaudeBranchResolver`, `ClaudeQueuedPromptResolver`,
-`ClaudeSkillCommandResolver`, `ClaudeTurnDurationResolver`), and
-landed inline rewind detection + parallel-tool-result `awaitingParent`
-pool. Phase G is fully landed. The 2026-06-09 Phase H pass
-**replaced Phase F's wrong-shape Edit / MultiEdit / Write rendering**
-with a structured-patch path: every Edit-shape `tool_result` JSONL
-line carries a `toolUseResult.structuredPatch: [Hunk]` envelope that
-ships exactly the data Claude Code's TUI uses (no filesystem access,
-no diff algorithm). New `Section.diffHunks([DiffHunk])` case + new
-`DiffHunkView` paint full git-diff parity inline (line-number gutters,
-hunk headers, context + removed + added rows with full-width
-backgrounds); the detail tab serializes hunks back to a unified-diff
-string fenced as ``` ```diff ``` markdown so cmux's `MarkdownPanel` +
-highlight.js paints it. Phase H also lands a JSONL fixture-loader
-test infra (`JSONLFixture.line(named:lineIndex:)`). Phase F's
-`.diffAdded` / `.diffRemoved` `TextStyle` and `ToolInputParser.diffSections`
-are gone. See §14 row 19y.
+Read in this order:
 
-**Carry-forward items** (still genuinely pending; not in §16
-deferred-by-policy because they're shippable, just not yet
-prioritized):
-1. **Richer transcript renderer (FU 3)** — sticky header, search,
-   fold, diff-vs-parent. Sub-agent / abandoned-branch transcripts
-   stay in-package; future enhancement.
-2. **Screenshot vs Image discrimination** — small follow-up if
-   it becomes user-visible.
-3. **Pane placement fine-tuning** — single-parameter change if
-   default placement isn't what users expect.
-4. **Audit deferral S3** — system/compact image drop (corpus
-   has 0 hits today).
-5. **Sub-agent-as-AgentEntry surfacing** — Task / Agent tool
-   transcripts currently render via universal alias rule but the
-   `branchLink`-style top-level row treatment hasn't been wired.
-   See §14 row 19x for context (the dropped `ToolEntry.subEntries`
-   shape).
-
-**Deferred-by-policy items** still tracked in `MIGRATION_PLAN.md` §16:
-- B. Inline sub-agent transcript rendering (future UX evolution)
-- C. ToolEntry shape evolution (speculative)
-- E. ObservableObject migration in cmux-app-side adapter (gated on
-     cmux-wide architectural changes)
-- G. xcstrings → .strings SPM build-time precompile
-- K. Daemon-side process enumeration RPC (gated on cmux daemon team)
-- L. Codex consolidated deferred work
-- N. AgentXrayWorkspaceHost split (no forcing function yet)
-- O. Async `DetailContent.resolve(...)` pipeline (gated on broader
-     resolver-pipeline async refactor)
-
-These stay deferred per CLAUDE.md "don't pre-solve hypothetical
-future requirements" — none block current functionality.
-
-**For the next session resuming this work, read in this order:**
-
-1. `MIGRATION_PLAN.md` (sibling file) — full phase plan, status table
-   (§1), progress log (§14), bug-fix ledger (§15), deferred-task
-   ledger (§16), open questions resolved (§17), origin cross-reference
-   (§18).
+1. `MIGRATION_PLAN.md` (sibling file) — phase log (§14), bug-fix ledger
+   (§15), deferred-task ledger (§16), open questions resolved (§17),
+   origin cross-reference (§18).
 2. `FORK_NOTES.md` (sibling file) — upstream-touch surface ledger;
    update on any fork-side edit outside the package.
-4. `docs/claude-jsonl-mapping.md` §11 — canonical content-block type
-   reference (Phase B/C/E findings).
-5. `Sources/Panels/AgentXray/README.md` — cmux-app-target adapter
-   seam; how the package mounts into the host app.
-
-The `AttachStage` feature (status-bar attach-progress labels) and the
-behavioural-correctness batch (`scrollForFilter`,
-`InspectorRowAnchorsKey`, bulk-action handlers, etc.) shipped on top
-of the visual-parity commit — see plan §1 rows 17a/17b/17c.
+3. `docs/claude-jsonl-mapping.md` — canonical content-block type
+   reference.
+4. `Sources/Panels/AgentXray/README.md` — cmux-app-target adapter seam.
 
 ## Conventions (must read)
 

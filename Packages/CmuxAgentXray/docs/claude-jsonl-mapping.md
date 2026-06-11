@@ -203,7 +203,7 @@ abandoned-branch link.
 | `attachment`  | `type == "plan_mode_reentry"`                | `.renderSpecial(.planModeReentered)`   | `SystemEntry.planMode(.reentered)`   | `AttachmentLineDispatcher.swift:48`                           |
 | `attachment`  | `type == "edited_text_file"`                 | `.renderSpecial(.editedTextFile)`      | `SystemEntry.editedTextFile`         | `AttachmentLineDispatcher.swift:54`                           |
 | `attachment`  | other types (hook_success, …)                | `.skip`                                | —                                    | `AttachmentLineDispatcher.swift:60`                           |
-| (any)         | `activeBranchAvailable && uuid ∉ activeBranch` | `.skipBranchAffiliated`              | rolled into `SynthesizedEntry.branchLink` at divergence point | `ClaudeLineDispatcher.swift:116`         |
+| (any)         | `activeBranchAvailable && uuid ∉ activeBranch` | `.skipBranchAffiliated`              | rolled into `SynthesizedEntry.rewind` at divergence point | `ClaudeLineDispatcher.swift:116`         |
 | (unknown)     | `type` doesn't match any case                | `.skip` + DEBUG warning                | —                                    | `ClaudeLineDispatcher.swift:110`                          |
 
 ## 6. Per-line dispatch (post-G6 — no resolvers)
@@ -258,7 +258,10 @@ fires after every successful uuid registration. Single-child invariant
 **Rewind detection** is inline at top-level user-typed prompt arrival:
 when the new prompt's `parentUuid` resolves to a top-level slot K with
 trailing entries past K, fold the tail into a synthesized
-`.branchLink` at slot K+1 via `Transcript.branchOff`.
+`.rewind` at slot K+1 via `Transcript.branchOff`. Sibling rewinds at
+the same divergence point are siblings at top level (each call to
+`branchOff` advances the divergence-point's index past the new rewind
+so the next slice naturally starts at the live tail past prior siblings).
 
 ## 7. Special-case stitching
 
@@ -268,12 +271,13 @@ trailing entries past K, fold the tail into a synthesized
   to the pooled sub-agent transcript. The sub-agent transcript itself
   is built by recursively running the same pipeline over the pooled
   lines.
-- **Abandoned-branch synthesis.** For each `ClaudeAbandonedBranch`,
-  the builder rebuilds a per-branch transcript by feeding the branch's
-  member lines through a fresh `ClaudeTranscriptBuilder`. The result
-  becomes the `subentries` body of a `SynthesizedEntry.branchLink`
-  emitted at the branch's divergence point. Orphan branches (no
-  active ancestor) pin to the head of the transcript.
+- **Abandoned-branch synthesis.** When a top-level user prompt's
+  `parentUuid` points back at an earlier slot K, the trailing entries
+  past K are sliced into a `SynthesizedEntry.rewind`'s `subEntries`
+  via `Transcript.branchOff` (inline, not a separate pre-pass). The
+  rewind sits at slot K+1 as a top-level peer; the renderer
+  inline-expands its abandoned transcript via the same recursive
+  `EntryView` used for live entries.
 - **Pending-prompt synthesis.** Unconsumed `queue-operation enqueue`
   events become tail-pinned `UserEntry(isQueuedPending: true,
   wasQueued: true)` rows constructed from the resolver's

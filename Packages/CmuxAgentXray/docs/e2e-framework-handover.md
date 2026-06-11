@@ -108,18 +108,18 @@ methods asserting on the loaded `[Entry]` shape:
 struct RewindFoldsTailE2E {
     @Test func transcriptShape() throws {
         let entries = try E2EFixture.loadAndBuild("rewind-folds-tail")
-        // top-level: [user, branchLink-with-abandoned-agent, user]
+        // top-level: [user, rewind-with-abandoned-agent, user]
         try #require(entries.count == 3)
         guard case .synthesized(let link) = entries[1],
-              case .branchLink = link.kind else {
-            Issue.record("expected branchLink at slot 1; got \(entries[1])")
+              case .rewind = link.kind else {
+            Issue.record("expected rewind at slot 1; got \(entries[1])")
             return
         }
         #expect(link.subEntries.count == 1)
         if case .agent(let abandoned) = link.subEntries[0] {
             #expect(abandoned.id == .fromJSONL("a1"))
         } else {
-            Issue.record("expected abandoned .agent inside branchLink")
+            Issue.record("expected abandoned .agent inside rewind")
         }
     }
 }
@@ -447,7 +447,7 @@ leaves the existing fixture untouched.
 - Email addresses, URLs (with hostnames), ticket-ID-shaped strings → masked
 
 **Tests can assert on:** entry kinds, status enums, sub-entry counts,
-routing decisions (`branchLink` exists, FIFO consumption fires),
+routing decisions (`.rewind` exists, FIFO consumption fires),
 token-usage aggregation, durationMs presence.
 
 **Tests cannot assert on:** specific prompt text, specific assistant
