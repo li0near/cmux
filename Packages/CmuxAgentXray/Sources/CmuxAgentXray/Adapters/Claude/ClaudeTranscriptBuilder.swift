@@ -464,11 +464,11 @@ struct ClaudeTranscriptBuilder {
             ))
         case .editedTextFile:
             guard let filename = line.attachment?.filename, !filename.isEmpty else { return }
-            let basename = URL(fileURLWithPath: filename).lastPathComponent
             let snippet = line.attachment?.snippet
             ctx.root.append(parent: nil, entry: Self.makeSystemEntry(
                 id: id, ts: ts, icon: .editedTextFile,
-                name: Self.loc("agentXray.entry.externalEdit.title", "External edit · \(basename)"),
+                name: Self.loc("agentXray.entry.externalEdit.name", "External edit"),
+                title: filename,
                 body: snippet.map { Body.text([$0]) } ?? .empty,
                 subType: .editedTextFile(path: filename)
             ))

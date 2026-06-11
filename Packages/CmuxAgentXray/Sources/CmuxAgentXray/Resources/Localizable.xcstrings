@@ -298,13 +298,13 @@
         }
       }
     },
-    "agentXray.entry.externalEdit.title" : {
+    "agentXray.entry.externalEdit.name" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "External edit · %@"
+            "value" : "External edit"
           }
         }
       }
