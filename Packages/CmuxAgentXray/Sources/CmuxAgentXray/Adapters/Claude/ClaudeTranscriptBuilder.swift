@@ -412,8 +412,8 @@ struct ClaudeTranscriptBuilder {
         case .skill(let name, let basePath, let b):
             ctx.root.append(parent: nil, entry: Self.makeSystemEntry(
                 id: id, ts: ts, icon: .skill,
-                name: Self.loc("agentXray.entry.skill.title", "Skill: \(name)"),
-                title: basePath,
+                name: Self.loc("agentXray.entry.skill.name", "Skill"),
+                title: name,
                 body: .text([b]),
                 subType: .skill(name: name, basePath: basePath)
             ))

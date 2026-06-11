@@ -364,13 +364,13 @@
         }
       }
     },
-    "agentXray.entry.skill.title" : {
+    "agentXray.entry.skill.name" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Skill: %@"
+            "value" : "Skill"
           }
         }
       }
