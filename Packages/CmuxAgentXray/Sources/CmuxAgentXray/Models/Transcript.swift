@@ -22,8 +22,8 @@ public import Foundation
 /// Reads are ``entry(id:)`` (any depth) and ``entries`` (top-level
 /// projection — what the panel renders).
 ///
-/// **Index aliasing (post-G6).** ``index`` carries two kinds of entries:
-/// real entries (written by ``append``) and **aliases** (written by
+/// **Index aliasing.** ``index`` carries two kinds of entries: real
+/// entries (written by ``append``) and **aliases** (written by
 /// ``registerAlias(lineUuid:path:)``). Aliases let JSONL line uuids
 /// that don't themselves produce a transcript entry — chained
 /// assistant lines whose blocks fold into an existing AgentEntry,
@@ -43,12 +43,12 @@ public import Foundation
 /// recursive helpers (`doAppend` / `doMutate` / `doSlice`) descend
 /// without copy-extract-repack.
 ///
-/// **Slice scope (post-G6).** Production callers slice top-level only
-/// — both tail (``branchOff`` slices `divIdx + 1 ..< entries.count`)
-/// and non-tail (FIFO consumption slices a single `.pending` UserEntry
-/// by id, length=1, regardless of position). The general algorithm
-/// in ``slice(from:length:replacingWith:)`` supports nested slices,
-/// kept as a safety net for future containers; no production caller
+/// **Slice scope.** Production callers slice top-level only — both
+/// tail (``branchOff`` slices `divIdx + 1 ..< entries.count`) and
+/// non-tail (FIFO consumption slices a single `.pending` UserEntry by
+/// id, length=1, regardless of position). The general algorithm in
+/// ``slice(from:length:replacingWith:)`` supports nested slices, kept
+/// as a safety net for future containers; no production caller
 /// exercises that path today.
 ///
 /// Also: ``mutate(id:_:)`` closures must not change `entry.id`. The
@@ -76,7 +76,7 @@ public struct Transcript: Sendable, Equatable {
     }
 
     /// Look up the full path of an entry by id. Returns nil if absent.
-    /// Internal — used by the Phase G dispatcher to find the
+    /// Internal — used by the streaming dispatcher to find the
     /// divergence point's top-level slot at rewind time.
     internal func path(of id: EntryID) -> [Int]? {
         return index[id]
@@ -187,9 +187,8 @@ public struct Transcript: Sendable, Equatable {
     /// `&entries[head].subEntries` — a writeable lvalue thanks to
     /// `Entry.subEntries`'s settable accessor + `internal(set) var`
     /// on ``AgentEntry/subEntries`` and
-    /// ``SynthesizedEntry/subEntries``. Without that lvalue chain, we
-    /// would need the pre-G1.6 copy-extract-repack helpers
-    /// (`withSubEntries` etc.). With it, this is three lines.
+    /// ``SynthesizedEntry/subEntries``. With that lvalue chain, this
+    /// is three lines (no copy-extract-repack ceremony).
     private static func doMutate(_ entries: inout [Entry],
                                  at path: [Int],
                                  _ body: (inout Entry) -> Void) {

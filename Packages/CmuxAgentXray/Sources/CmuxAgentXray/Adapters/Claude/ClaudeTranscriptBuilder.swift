@@ -3,9 +3,9 @@ import Foundation
 /// Builds an `[Entry]` transcript from a stream of raw Claude JSONL
 /// lines.
 ///
-/// **Per-line dispatch (post-G6).** Each JSONL line stands on its
-/// own. There is no "current turn" pointer, no skeleton variable, and
-/// no close-turn boundary. The dispatcher routes via
+/// **Per-line dispatch.** Each JSONL line stands on its own. There is
+/// no "current turn" pointer, no skeleton variable, and no close-turn
+/// boundary. The dispatcher routes via
 /// ``ClaudeLineDispatcher/route(_:logger:)`` and mutates the
 /// ``Transcript`` document — append top-level (top-level kinds),
 /// resolve-then-fold blocks (assistant lines), `mutate` (tool_result,
@@ -19,17 +19,15 @@ import Foundation
 /// in O(1) without re-walking the JSONL chain.
 ///
 /// **Out-of-order pool.** Lines whose `parentUuid` isn't yet in
-/// `index` are parked in `awaitingParent[parentUuid]` (single-child
-/// per parent uuid; corpus 0/731 with 2+). Drain triggers on every
-/// successful uuid registration.
+/// `index` are parked in `awaitingParent[parentUuid]`. Drain triggers
+/// on every successful uuid registration.
 ///
 /// **Pending-prompt FIFO.** `queue-operation enqueue` appends a
 /// `.pending` UserEntry top-level and pushes its `(id, text)` onto
 /// `pendingPromptQueue`. Both `attachment.queued_command` and
 /// slash-cmd input lines pop the matching head text and replace the
 /// `.pending` entry with a fresh `.consumed` UserEntry. If never
-/// consumed, the `.pending` entry stays — same end-state as the
-/// pre-G6 tail-emit, achieved without a post-loop step.
+/// consumed, the `.pending` entry stays at top-level.
 struct ClaudeTranscriptBuilder {
 
     // MARK: - Tag constants
@@ -85,13 +83,12 @@ struct ClaudeTranscriptBuilder {
 
     // MARK: - Build context (per-snapshot mutable state)
 
-    /// Per-snapshot mutable state. Four fields — every per-turn
-    /// abstraction from the legacy PendingTurn pipeline is gone.
+    /// Per-snapshot mutable state.
     fileprivate struct BuildContext {
         /// Forwarded from the parent builder so re-entrant code paths
         /// inherit the same logger.
         let logger: any AgentXrayLogger
-        /// The Phase G transcript document. Source of truth —
+        /// The transcript document. Source of truth —
         /// ``transcript()`` returns `root.entries`.
         var root = Transcript()
         /// File-order FIFO of pending queued prompts. Each entry is a
@@ -677,7 +674,7 @@ struct ClaudeTranscriptBuilder {
         }
     }
 
-    // MARK: - Per-line assistant application (post-G6)
+    // MARK: - Per-line assistant application
 
     /// Apply one assistant-classified line. Resolves the target
     /// `AgentEntry` via the index walk: if the parent's top-level slot

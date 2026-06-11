@@ -390,8 +390,8 @@ public struct TranscriptView: View {
 
     // MARK: - Detail view (frozen)
 
-    /// Detail-mode rendering. Phase E redirects every non-transcript
-    /// detail click through cmux's panel-open pipeline before reaching
+    /// Detail-mode rendering. Every non-transcript detail click
+    /// redirects through cmux's panel-open pipeline before reaching
     /// the package's `.detail` mode at all (see
     /// `AgentXrayWorkspaceHost.openDetailTab` routing). This view is
     /// therefore reachable only for `.transcript` content

@@ -201,9 +201,8 @@ struct ClaudeJSONLLine: Decodable {
 
     /// Reconstructed `/cmd args` form of a slash-command user line, or
     /// nil if this line is not a slash-command-shaped user line. Used
-    /// by the inline FIFO queued-prompt matcher (post-G5) to pair
-    /// consumed slash-commands against earlier `queue-operation
-    /// enqueue` lines.
+    /// by the inline FIFO queued-prompt matcher to pair consumed
+    /// slash-commands against earlier `queue-operation enqueue` lines.
     var consumedSlashCommandText: String? {
         let raw = message?.content?.firstText() ?? ""
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -223,7 +222,7 @@ struct ClaudeJSONLLine: Decodable {
     /// True when this line is session-global metadata with no
     /// `parentUuid` and no renderable body.
     ///
-    /// `queue-operation` is **not** in this set anymore (post-G6) —
+    /// `queue-operation` is **not** in this set —
     /// `CommonLineDispatcher` routes `enqueue` operations to
     /// `.queueOperation(text:)` so the builder can append a
     /// `.pending` UserEntry inline.

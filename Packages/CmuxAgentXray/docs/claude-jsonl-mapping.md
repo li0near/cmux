@@ -135,7 +135,7 @@ ClaudeLineDispatcher.route(line)                                            Clau
 │   └── otherwise                                              → render(.agent)
 │
 ├── type == "system" ── SystemLineDispatcher.parse(line)                        Dispatchers/SystemLineDispatcher.swift:13
-│   ├── subtype == "turn_duration"                            → .skip       (consumed by ClaudeTurnDurationResolver)
+│   ├── subtype == "turn_duration"                            → .skip       (applies TurnDurationUpdate to the parent AgentEntry; aliases up)
 │   ├── subtype == "away_summary"                             → renderSpecial(.recap)
 │   ├── subtype == "compact_boundary"                         → render(.compact)
 │   ├── subtype == "local_command":
@@ -190,7 +190,7 @@ abandoned-branch link.
 | `user`        | non-meta + stdout/stderr envelope            | (builder) → `.system`                  | `SystemEntry.localCommand`           | `ClaudeTranscriptBuilder.swift:965`                       |
 | `assistant`   | `model == "<synthetic>"`                     | `.skip`                                | —                                    | `AssistantLineDispatcher.swift:20`                            |
 | `assistant`   | otherwise                                    | `.render(.agent)`                      | merged into pending `AgentEntry`     | `AssistantLineDispatcher.swift:23`                            |
-| `system`      | `subtype == "turn_duration"`                 | `.skip`                                | (read by `ClaudeTurnDurationResolver`) | `SystemLineDispatcher.swift:20`                             |
+| `system`      | `subtype == "turn_duration"`                 | `.skip`                                | mutates parent `AgentEntry` (perTurnDurationMs / messageCount); aliases up | `SystemLineDispatcher.swift:20`                             |
 | `system`      | `subtype == "away_summary"`                  | `.renderSpecial(.recap)`               | `SystemEntry.recap`                  | `SystemLineDispatcher.swift:23`                               |
 | `system`      | `subtype == "compact_boundary"`              | `.render(.compact)`                    | `CompactEntry`                       | `SystemLineDispatcher.swift:29`                               |
 | `system`      | `subtype == "local_command"` (input)         | `.renderSpecial(.slashCmdInput)`       | `SystemEntry.slashCmdInput`          | `SystemLineDispatcher.swift:45`                               |
@@ -285,8 +285,8 @@ so the next slice naturally starts at the live tail past prior siblings).
 - **Compact-boundary stitching.** `system, subtype: compact_boundary`
   lines have `parentUuid: null` (the tree breaks at the compact event).
   They carry `logicalParentUuid` pointing at the pre-compaction tail;
-  `ClaudeBranchResolver` treats `parentUuid ?? logicalParentUuid` as the
-  effective parent so the active chain stitches across compactions.
+  the dispatcher resolves parents as `parentUuid ?? logicalParentUuid`
+  so the active chain stitches across compactions.
 
 ## 8. `<xml-style>` tag conventions
 

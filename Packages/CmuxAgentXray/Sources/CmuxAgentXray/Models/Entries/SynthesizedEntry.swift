@@ -3,9 +3,9 @@ public import Foundation
 /// Cmux-invented entry — has no JSONL counterpart. Two kinds today:
 /// - `rewind`: appears at a divergence point in the active branch,
 ///   pointing at the abandoned branch's transcript. The abandoned
-///   entries travel in the top-level ``subEntries`` field; the
-///   renderer treats this as a header-only link that opens the
-///   subtree in a detail tab.
+///   entries travel in the top-level ``subEntries`` field; the renderer
+///   inline-expands them via the same recursive `EntryView` used for
+///   live entries.
 /// - `prLink`: external GitHub PR reference detected in entry text.
 ///   ``subEntries`` is empty; click opens the PR URL externally.
 public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
@@ -13,12 +13,12 @@ public struct SynthesizedEntry: Identifiable, Equatable, Sendable {
     public let header: Header
     public let body: Body
     public let kind: Kind
-    /// Nested children (post-G1.5). Mirrors ``AgentEntry/subEntries``
-    /// so all container variants expose children at the same structural
+    /// Nested children. Mirrors ``AgentEntry/subEntries`` so all
+    /// container variants expose children at the same structural
     /// position. Populated for `.rewind` (abandoned-branch entries);
     /// empty for `.prLink`.
     ///
-    /// `internal(set) var` (post-G1.6): same read-only-from-outside,
+    /// `internal(set) var`: same read-only-from-outside,
     /// writeable-inside-the-package contract as
     /// ``AgentEntry/subEntries`` — see that field's doc.
     public internal(set) var subEntries: [Entry]

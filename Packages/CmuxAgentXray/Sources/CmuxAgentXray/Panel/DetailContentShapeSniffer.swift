@@ -109,8 +109,7 @@ enum DetailContentShapeSniffer {
     /// heading.
     ///
     /// Used by the detail tab to render each section under its own
-    /// label. Phase D's stub markdown renderer ignores this split;
-    /// the follow-up rich markdown renderer consumes it.
+    /// label.
     static func splitMarkdownSections(text: String) -> [(heading: String?, body: String)] {
         var sections: [(heading: String?, body: String)] = []
         var currentHeading: String? = nil

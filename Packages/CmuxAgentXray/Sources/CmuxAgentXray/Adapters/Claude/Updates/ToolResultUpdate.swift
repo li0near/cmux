@@ -10,8 +10,7 @@ import Foundation
 /// ``ToolEntry`` already exists in the transcript at call time —
 /// `tool_use` lands first; `tool_result` landing before its
 /// `tool_use` is parked in `awaitingParent` until ordering is
-/// restored. There is no synthetic-fallback path in the post-G6
-/// dispatcher.
+/// restored. There is no synthetic-fallback path in the dispatcher.
 ///
 /// Example:
 ///

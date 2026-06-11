@@ -5,14 +5,12 @@ import Foundation
 /// `↗ Open detail` link is clicked because an expandable section
 /// overflowed the inline cap.
 ///
-/// Phase F reshape: the content payload now lives in a single
-/// discriminated `source: DetailSource` field instead of the prior
-/// mix of `body` / `entries` / `existingFilePath` / `contentType`
-/// fields. The host conformance switches on `DetailSource` directly
-/// — file paths open via cmux's panel pipeline, inline text /
-/// image content materializes to a temp file with the suggested
-/// basename (extension drives cmux dispatch), and transcripts keep
-/// in-package rendering.
+/// The content payload lives in a single discriminated
+/// `source: DetailSource` field. The host conformance switches on
+/// `DetailSource` directly — file paths open via cmux's panel
+/// pipeline, inline text / image content materializes to a temp file
+/// with the suggested basename (extension drives cmux dispatch), and
+/// transcripts keep in-package rendering.
 public struct DetailContent: Equatable, Sendable {
     /// Title shown in the tab bar and detail header
     /// (e.g. "Tool result · Read /foo.ts").
@@ -103,9 +101,8 @@ extension DetailContent {
         case .user(let user):
             // Image-only message: text body is empty but the user
             // pasted an image. Open the image directly instead of
-            // returning nil (Phase F fix — the prior resolver bailed
-            // here, so user-paste images couldn't reach a detail tab
-            // through the normal click flow).
+            // returning nil so user-paste images can reach a detail
+            // tab through the normal click flow.
             if let imageSource = firstImageSection(user.body) {
                 let body = user.body.textContent
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -286,10 +283,10 @@ extension DetailContent {
     }
 
     /// Resolve a `.bodySection` request whose target is a sub-entry —
-    /// post-G1.5 this is an `Entry.text` or `Entry.tool` value living
-    /// in a parent agent's `subEntries`. Other `Entry` cases never
-    /// appear inside an agent turn (DEBUG asserts in
-    /// ``Transcript/append(parent:entry:)``); fall through to nil.
+    /// an `Entry.text` or `Entry.tool` value living in a parent agent's
+    /// `subEntries`. Other `Entry` cases never appear inside an agent
+    /// turn (DEBUG asserts in ``Transcript/append(parent:entry:)``);
+    /// fall through to nil.
     private static func resolveSubEntry(
         _ sub: Entry,
         sectionIndex: Int,

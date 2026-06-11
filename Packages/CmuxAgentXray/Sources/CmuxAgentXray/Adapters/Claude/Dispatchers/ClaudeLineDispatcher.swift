@@ -67,16 +67,15 @@ enum ClaudeSpecialKind: Equatable {
 ///
 /// Dispatch order:
 ///   1. `CommonLineDispatcher` claims session-orphan metadata + `pr-link`
-///      + `queue-operation` (post-G6 inline FIFO routing).
+///      + `queue-operation` (inline FIFO routing).
 ///   2. Sidechain check — `isSidechain: true` → `.skip` wholesale
 ///      (sub-agent transcripts will surface as top-level AgentEntry
-///      entries in a future commit; pre-G6's collect-and-attach pipeline
-///      is gone).
+///      entries in a future commit).
 ///   3. Per-`type` parser.
 ///   4. Unknown `type` — log in DEBUG, route to `.skip`.
 ///
-/// Post-G4 the active-branch filter is gone — `ClaudeTranscriptBuilder`
-/// detects rewinds inline at user-prompt arrival and slices the
+/// `ClaudeTranscriptBuilder` detects rewinds inline at user-prompt
+/// arrival and slices the
 /// abandoned tail into a synthesized branch link via
 /// `Transcript.branchOff`.
 enum ClaudeLineDispatcher {

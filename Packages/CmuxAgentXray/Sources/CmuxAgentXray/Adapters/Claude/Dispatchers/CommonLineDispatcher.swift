@@ -3,7 +3,7 @@ import Foundation
 /// Cross-type catch-all for JSONL `type` values that need no per-type
 /// branching: session-orphan metadata (always skip), one-shot direct
 /// routes (currently `pr-link`), and `queue-operation enqueue`
-/// (post-G6 inline FIFO).
+/// (inline FIFO).
 ///
 /// Returns `nil` to signal "this type is not Common-handled — caller
 /// should dispatch to a per-type parser." Returning `nil` also causes

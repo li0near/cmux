@@ -1,9 +1,8 @@
 public import SwiftUI
 
 /// Single recursive depth-driven row view for every transcript entry.
-/// Replaces the prior `EntryView` / `AgentEntryView` / `RewindEntryView`
-/// dispatch by collapsing all three into one renderer parameterized
-/// by ``Entry`` + ``depth``.
+/// One renderer parameterized by ``Entry`` + ``depth`` covers every
+/// kind at every nesting level.
 ///
 /// **Universal rendering rule.** At every nest depth the view:
 /// 1. Renders ``EntryHeaderView`` with the entry's accent

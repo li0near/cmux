@@ -12,15 +12,15 @@ public import Foundation
 public struct AgentEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
     /// Header data (icon, name, label, trailing items, time marker).
-    /// Settable inside the package (post-G3) so the builder can update
-    /// the friendly model label and token-pill trailing item
-    /// incrementally as those values arrive on later assistant lines.
+    /// Settable inside the package so the builder can update the
+    /// friendly model label and token-pill trailing item incrementally
+    /// as those values arrive on later assistant lines.
     public internal(set) var header: Header
     public let body: Body
 
     /// Aggregated token usage across every assistant message folded into
-    /// this turn. Settable inside the package (post-G3) — the builder
-    /// updates this incrementally on each usage-bearing line.
+    /// this turn. Settable inside the package — the builder updates this
+    /// incrementally on each usage-bearing line.
     public internal(set) var usage: TokenUsage
     /// `stop_reason` from the **last** assistant message folded into this
     /// turn (e.g. "end_turn", "max_tokens", "pause_turn"). Settable
@@ -48,14 +48,13 @@ public struct AgentEntry: Identifiable, Equatable, Sendable {
     public internal(set) var endTime: Date?
 
     /// Canonical ordered child projection. Holds `.text` / `.tool`
-    /// `Entry` cases (post-G1.5 the prior dedicated `SubEntry` enum is
-    /// merged into `Entry`). The builder enforces the
-    /// "only `.text` / `.tool` at this depth" convention; runtime
-    /// asserts in ``Transcript/append(parent:entry:)`` catch any
-    /// regression that places a non-text/tool entry here.
+    /// `Entry` cases. The builder enforces the "only `.text` / `.tool`
+    /// at this depth" convention; runtime asserts in
+    /// ``Transcript/append(parent:entry:)`` catch any regression that
+    /// places a non-text/tool entry here.
     ///
-    /// `internal(set) var` (post-G1.6): the field is read-only to the
-    /// cmux app target and to renderers, but writeable inside the
+    /// `internal(set) var`: the field is read-only to the cmux app
+    /// target and to renderers, but writeable inside the
     /// `CmuxAgentXray` package so ``Transcript`` can mutate the
     /// transcript tree in place via the recursive `_modify` accessor
     /// chain. External code still uses the public `init(... subEntries:)`
@@ -180,10 +179,9 @@ public struct TextSubEntry: Identifiable, Equatable, Sendable {
 public struct ToolEntry: Identifiable, Equatable, Sendable {
     public let id: EntryID
     public let parentEntryID: EntryID
-    /// Header data. Settable inside the package (post-G6) so
-    /// ``ToolResultUpdate`` can swap `timeMarker` from `.clock(...)`
-    /// (set at tool_use append time) to `.duration(ms)` when the
-    /// matching `tool_result` lands.
+    /// Header data. Settable inside the package so ``ToolResultUpdate``
+    /// can swap `timeMarker` from `.clock(...)` (set at tool_use append
+    /// time) to `.duration(ms)` when the matching `tool_result` lands.
     public internal(set) var header: Header
     /// Body sections — `[.text(input)]` at append time;
     /// ``ToolResultUpdate`` appends one or more result sections when
@@ -192,11 +190,11 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
 
     /// Three-state tool status. `pending` = awaiting result; `ok` =
     /// completed without error; `error` = result was an error.
-    /// Settable inside the package (post-G6).
+    /// Settable inside the package.
     public internal(set) var status: Status
     /// Duration in milliseconds between `tool_use` and `tool_result`
     /// entries when both timestamps are known. nil while pending.
-    /// Settable inside the package (post-G6).
+    /// Settable inside the package.
     public internal(set) var durationMs: Int?
     /// Sub-agent metadata for `Task` / `Agent` tools — `subagent_type`,
     /// `name`, `team_name`. nil for non-Task tools.
@@ -271,6 +269,3 @@ public struct ToolEntry: Identifiable, Equatable, Sendable {
     /// top-level ``AgentEntry`` entries in the main transcript, NOT as
     /// children of this tool entry.
 }
-
-// (`AssistantTextEntry` and `ThinkingEntry` are gone — use
-//  `TextSubEntry(kind: .assistant, ...)` and `TextSubEntry(kind: .thinking, ...)`.)

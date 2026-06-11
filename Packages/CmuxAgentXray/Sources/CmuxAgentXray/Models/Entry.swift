@@ -82,18 +82,15 @@ public enum Entry: Identifiable, Equatable, Sendable {
     }
 
     /// Children carried by container variants. Empty for non-container
-    /// variants. Replaces the ad-hoc walks of `body.sections` for
-    /// `.subentries(...)` that existed pre-G1.5.
+    /// variants.
     ///
-    /// **Settable (post-G1.6).** The setter case-rebuilds the inner
-    /// container struct with `newValue` for `.agent` / `.synthesized`,
-    /// and silently no-ops for non-container cases (a DEBUG assert
-    /// flags the misuse). This makes `&entries[i].subEntries` a
-    /// writeable lvalue — Swift's `_modify` accessor composes the
-    /// chain through nested arrays so ``Transcript`` can recurse to
-    /// any depth without the copy-extract-repack ceremony the
-    /// pre-G1.6 helpers (`withSubEntries` / `withAppendedSubEntry` /
-    /// `withRemovedSubEntryAt`) needed.
+    /// **Settable.** The setter case-rebuilds the inner container struct
+    /// with `newValue` for `.agent` / `.synthesized`, and silently
+    /// no-ops for non-container cases (a DEBUG assert flags the
+    /// misuse). This makes `&entries[i].subEntries` a writeable lvalue
+    /// — Swift's `_modify` accessor composes the chain through nested
+    /// arrays so ``Transcript`` can recurse to any depth without
+    /// copy-extract-repack ceremony.
     ///
     /// `.tool` is NOT a container variant — sub-agent (Task / Agent
     /// tool) transcripts will be modeled as top-level ``AgentEntry``

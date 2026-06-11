@@ -32,7 +32,7 @@ struct ClaudeContentBlock: Decodable, Equatable {
     /// Inner `source` payload of an image (or document) block. The
     /// corpus only exercises `type:"base64"` today; `type:"url"` is
     /// in the spec but absent so the consumer treats it as
-    /// unsupported (Phase B scope).
+    /// unsupported.
     struct Source: Decodable, Equatable {
         let type: String
         let mediaType: String?

@@ -148,8 +148,7 @@ items still genuinely pending:
 
 1. **Sub-agent-as-AgentEntry surfacing** — Task / Agent tool transcripts
    resolve via the universal alias rule but don't yet surface as
-   top-level `AgentEntry` rows the way the dropped `ToolEntry.subEntries`
-   shape implied. (`MIGRATION_PLAN.md` §16.B.)
+   top-level `AgentEntry` rows. (`MIGRATION_PLAN.md` §16.B.)
 2. **System / compact image drop (audit S3)** — `buildSystemEntry` and
    `buildCompactEntry` project to `String` via the Wire layer's
    `allText()`, dropping image blocks. Corpus has 0 hits today; the

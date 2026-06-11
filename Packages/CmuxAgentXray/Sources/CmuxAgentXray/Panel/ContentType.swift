@@ -1,16 +1,11 @@
 /// Discriminator for how a ``DetailContent``'s body — or one
 /// `.text` ``Section`` of an inline body — should be rendered.
 ///
-/// Phase A introduced the two foundational cases (`.plainText` for the
-/// existing string-body rendering, `.transcript` for `.entries`-bearing
-/// content). Phase D extends with rich-content cases driven by the
-/// detail-tab renderers landing as follow-up PRs.
-///
 /// `Section.text(...)` carries an optional content-type annotation that
-/// the detail tab uses to dispatch to the matching renderer. Phase E's
-/// shape-sniffer and Phase D's per-server hints are the two upstream
-/// producers of non-`.plainText` annotations; inline rendering ignores
-/// the annotation and stays flat.
+/// the detail tab uses to dispatch to the matching renderer. The
+/// shape-sniffer and per-server hints are the two upstream producers
+/// of non-`.plainText` annotations; inline rendering ignores the
+/// annotation and stays flat.
 public enum ContentType: Equatable, Sendable {
     /// Render the `body` string as plain text (default).
     case plainText
@@ -30,6 +25,6 @@ public enum ContentType: Equatable, Sendable {
     /// applies basic syntax coloring.
     case json
     /// Unified-diff content. Detail-tab renderer applies per-line
-    /// `.diffAdded` / `.diffRemoved` ``TextStyle`` treatment.
+    /// added / removed / context coloring.
     case diff
 }
